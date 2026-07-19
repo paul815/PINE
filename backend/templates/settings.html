@@ -1,0 +1,1698 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PINE — Settings</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/pine.png') }}" />
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
+<style>html{font-size:{{ init_font_size }}px !important;}</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script>
+var _fontStacks = {
+  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  inter: "'Inter',sans-serif",
+  'source-sans-3': "'Source Sans 3',sans-serif",
+  'open-sans': "'Open Sans',sans-serif",
+  roboto: "'Roboto',sans-serif",
+};
+function _applyTheme(t) {
+  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+}
+/* Apply server-rendered values instantly (no network wait) */
+_applyTheme('{{ init_theme }}');
+document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
+document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks['inter']);
+if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
+let _appSettings = {};
+fetch('/api/settings').then(r => r.json()).then(s => {
+  _appSettings = s;
+  const t = s.theme || 'system';
+  _applyTheme(t);
+  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
+  const ff = s.font_family || 'inter';
+  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks['inter']);
+}).catch(() => { _applyTheme('system'); });
+</script>
+<script>
+(function () {
+  const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
+  const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
+  const LEASE_KEY = 'pine_tab_lease_id';
+  let internalNavigation = false;
+  let suppressUnloadPrompt = false;
+  let timer = null;
+  let quitLifecycleStarted = false;
+  let leaseId = '';
+  try {
+    leaseId = sessionStorage.getItem(LEASE_KEY) || '';
+    if (!leaseId) {
+      leaseId = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+      sessionStorage.setItem(LEASE_KEY, leaseId);
+    }
+  } catch (e) {
+    leaseId = 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+  function postSupervisor(path, payload, keepalive) {
+    return fetch(SUPERVISOR_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
+      body: JSON.stringify(payload || {}),
+      keepalive: !!keepalive,
+      mode: keepalive ? 'no-cors' : 'cors',
+    });
+  }
+  function heartbeat() {
+    postSupervisor('/lease/heartbeat', { lease_id: leaseId }, false).catch(() => {});
+  }
+  function shutdownPayload(reason) {
+    return {
+      reason: reason || 'unknown',
+      source: 'settings_page',
+      lease_id: leaseId,
+    };
+  }
+  function releaseAndQuit() {
+    if (quitLifecycleStarted) return;
+    quitLifecycleStarted = true;
+    const payload = shutdownPayload('tab_or_page_closed');
+    try { postSupervisor('/lease/release', { lease_id: leaseId }, true); } catch (e) {}
+    try {
+      const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/api/quit', quitBody);
+    } catch (e) {}
+    try {
+      fetch('/api/quit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+        mode: 'no-cors',
+      });
+    } catch (e) {}
+    try {
+      postSupervisor('/shutdown', payload, true);
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') heartbeat();
+  });
+  function markInternalNavigation() {
+    internalNavigation = true;
+    setTimeout(() => { internalNavigation = false; }, 2000);
+  }
+  function resolveEventElement(event) {
+    const raw = event && event.target;
+    if (!raw) return null;
+    if (raw instanceof Element) return raw;
+    return raw.parentElement instanceof Element ? raw.parentElement : null;
+  }
+  document.addEventListener('click', (event) => {
+    const target = resolveEventElement(event);
+    if (!target) return;
+    const link = target.closest('a[href]');
+    if (link) {
+      const href = link.getAttribute('href') || '';
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        markInternalNavigation();
+      }
+      return;
+    }
+    const withOnclick = target.closest('[onclick]');
+    if (!withOnclick) return;
+    const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
+    if (handlerText.includes('window.location')) {
+      markInternalNavigation();
+    }
+    if (handlerText.includes('fetch(\'/api/quit') || handlerText.includes('fetch("/api/quit')) {
+      suppressUnloadPrompt = true;
+    }
+  }, true);
+  window.addEventListener('beforeunload', (event) => {
+    if (suppressUnloadPrompt || internalNavigation) return;
+    const msg = 'Close PINE tab and stop all background processing?';
+    event.preventDefault();
+    event.returnValue = msg;
+    return msg;
+  });
+  window.addEventListener('pagehide', () => {
+    if (internalNavigation) return;
+    releaseAndQuit();
+  });
+  heartbeat();
+  clearInterval(timer);
+  timer = setInterval(heartbeat, 3000);
+})();
+</script>
+<style>
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens: light (default) ── */
+:root {
+  --bg:         hsl(220, 20%, 97%);
+  --fg:         hsl(220, 25%, 10%);
+  --card:       hsl(0, 0%, 100%);
+  --muted:      hsl(220, 15%, 94%);
+  --muted-fg:   hsl(220, 10%, 46%);
+  --accent:     hsl(152, 60%, 42%);
+  --accent-fg:  #fff;
+  --accent-dim: hsla(152, 60%, 42%, 0.10);
+  --accent-bd:  hsla(152, 60%, 42%, 0.25);
+  --border:     hsl(220, 15%, 88%);
+  --secondary:  hsl(220, 15%, 92%);
+  --destr:      hsl(0, 72%, 51%);
+  --destr-dim:  hsla(0, 72%, 51%, 0.10);
+  --destr-bd:   hsla(0, 72%, 51%, 0.25);
+  --warn:       hsl(38, 90%, 55%);
+  --warn-dim:   hsla(38, 90%, 55%, 0.10);
+  --warn-bd:    hsla(38, 90%, 55%, 0.25);
+  --sunken:     hsl(220, 20%, 95%);
+  --radius:     6px;
+  --font-body:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+}
+
+/* ── Design tokens: dark ── */
+:root[data-theme="dark"] {
+  --bg:         hsl(220, 20%, 7%);
+  --fg:         hsl(220, 15%, 93%);
+  --card:       hsl(220, 16%, 11%);
+  --muted:      hsl(220, 14%, 14%);
+  --muted-fg:   hsl(220, 10%, 54%);
+  --accent:     hsl(152, 55%, 45%);
+  --accent-dim: hsla(152, 55%, 45%, 0.12);
+  --accent-bd:  hsla(152, 55%, 45%, 0.28);
+  --border:     hsl(220, 16%, 17%);
+  --secondary:  hsl(220, 14%, 16%);
+  --destr:      hsl(0, 62%, 60%);
+  --destr-dim:  hsla(0, 62%, 60%, 0.12);
+  --destr-bd:   hsla(0, 62%, 60%, 0.28);
+  --warn:       hsl(38, 85%, 60%);
+  --warn-dim:   hsla(38, 85%, 60%, 0.10);
+  --warn-bd:    hsla(38, 85%, 60%, 0.25);
+  --sunken:     hsl(220, 18%, 9%);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body { font-size: inherit; }
+
+.shell { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Top bar ── */
+.top-bar {
+  height: 48px; flex-shrink: 0; background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 0; padding: 0 16px; z-index: 200;
+}
+.tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
+  padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
+.tb-logo:hover { background: var(--muted); }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
+.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; }
+.tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* ── Content ── */
+.content { flex: 1; overflow-y: auto; padding: 28px; background: var(--sunken); }
+.content-inner { max-width: 640px; margin: 0 auto; }
+
+/* ── Sections ── */
+.section { margin-bottom: 28px; }
+.sec-title {
+  font-size: 1.077rem; font-weight: 600; color: var(--fg); margin-bottom: 12px;
+}
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  padding: 16px 18px; margin-bottom: 8px;
+}
+
+/* ── Rows ── */
+.row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row-lbl { font-size: 1.077rem; color: var(--fg); }
+.row-lbl-with-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 48px); }
+.row-sub { font-size: 0.923rem; color: var(--muted-fg); margin-top: 2px; }
+.row-sub-tight { margin-top: 4px; }
+.row-lbl-inline { margin: 0; }
+
+.sec-note {
+  margin-bottom: 10px;
+  font-size: 1rem;
+  color: var(--muted-fg);
+}
+
+.control-value {
+  font-size: 0.923rem;
+  font-weight: 500;
+}
+
+.control-value.volume {
+  min-width: 40px;
+}
+
+.control-value.threshold {
+  min-width: 32px;
+  text-align: center;
+}
+
+.assistive-text {
+  font-size: 0.846rem;
+  color: var(--muted-fg);
+}
+
+.assistive-text.range-end {
+  white-space: nowrap;
+}
+
+.assistive-text.help {
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.backup-about {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.923rem;
+  color: var(--muted-fg);
+  line-height: 1.55;
+}
+
+.backup-about p { margin: 0; }
+.backup-about p + p { margin-top: 10px; }
+.backup-about strong { color: var(--fg); font-weight: 600; }
+
+.inline-select {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 0.923rem;
+  padding: 5px 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ── Toggle switch ── */
+.sw {
+  width: 36px; height: 20px; border-radius: 10px; background: var(--secondary); cursor: pointer;
+  position: relative; transition: background 0.2s; flex-shrink: 0;
+}
+.sw::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--muted-fg); transition: all 0.2s;
+}
+.sw.on { background: var(--accent); }
+.sw.on::after { left: 18px; background: #fff; }
+
+/* ── Pill button groups (size / theme / font / format) ── */
+.size-group, .theme-group, .font-group, .fmt-group { display: flex; flex-wrap: wrap; gap: 4px; }
+.btn-link-icon { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.btn-link-icon svg { width: 14px; height: 14px; flex-shrink: 0; }
+.font-preview-system { font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.font-preview-inter { font-family: 'Inter',sans-serif; }
+.font-preview-source-sans-3 { font-family: 'Source Sans 3',sans-serif; }
+.font-preview-open-sans { font-family: 'Open Sans',sans-serif; }
+.font-preview-roboto { font-family: 'Roboto',sans-serif; }
+
+/* ── Text input ── */
+.input-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.text-input {
+  flex: 1; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px; font-size: 1rem; color: var(--fg); font-family: var(--font-body);
+  outline: none; transition: border-color 0.15s;
+}
+.text-input:focus { border-color: var(--accent-bd); }
+input[type="range"] { font-family: var(--font-body); font-size: 13px; }
+
+/* ── Disk bar ── */
+.disk-row { margin-top: 8px; }
+.disk-bar { height: 6px; border-radius: 3px; background: var(--secondary); overflow: hidden; margin-top: 6px; }
+.disk-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
+.disk-lbl { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); margin-top: 4px; }
+
+/* ── Textarea ── */
+.textarea-input {
+  width: 100%; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px; font-size: 1rem; color: var(--fg);
+  font-family: var(--font-mono); line-height: 1.55;
+  outline: none; transition: border-color 0.15s; resize: vertical; min-height: 130px;
+  margin-top: 8px;
+}
+.textarea-input:focus { border-color: var(--accent-bd); }
+.prompt-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
+
+/* ── Token ── */
+.token-display {
+  font-size: 1rem; color: var(--muted-fg); font-family: var(--font-mono);
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 7px 10px; margin-top: 8px;
+}
+.token-ok { color: var(--accent); font-size: 0.923rem; margin-left: 8px; }
+.token-err { color: var(--destr); font-size: 0.923rem; margin-left: 8px; }
+
+/* Toast and inline save status live in css/save-status.css */
+
+/* ── Reset section ── */
+.reset-section .sec-title { color: var(--destr); }
+.reset-warn {
+  color: var(--destr); font-size: 1rem; line-height: 1.5;
+}
+
+/* ── Backup list ── */
+.backup-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid var(--border); gap: 8px;
+}
+.backup-item:last-child { border-bottom: none; }
+.backup-meta { flex: 1; min-width: 0; }
+.backup-name { font-size: 0.923rem; color: var(--fg); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.backup-info { font-size: 0.846rem; color: var(--muted-fg); margin-top: 2px; }
+.backup-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.backup-actions button { padding: 4px 10px; font-size: 1rem; }
+
+/* ── Restore modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal-box {
+  background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius)*2);
+  padding: 20px 22px; width: 480px; max-width: 92vw; max-height: 80vh;
+  display: flex; flex-direction: column;
+}
+.modal-title { font-size: 1.077rem; font-weight: 600; margin-bottom: 14px; }
+.modal-body { flex: 1; overflow-y: auto; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.chk-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 1rem; }
+.chk-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.radio-group { display: flex; gap: 6px; margin-top: 6px; }
+.radio-group label { display: flex; align-items: center; gap: 4px; font-size: 0.923rem; color: var(--muted-fg); cursor: pointer; }
+.radio-group input[type="radio"] {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  position: relative;
+  border-radius: 50%;
+  border: 2px solid var(--accent-bd);
+  background: var(--card);
+  display: inline-block;
+  cursor: pointer;
+}
+.radio-group input[type="radio"]::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform .12s ease-out;
+}
+.radio-group input[type="radio"]:checked { border-color: var(--accent); }
+.radio-group input[type="radio"]:checked::before { transform: translate(-50%, -50%) scale(1); }
+.radio-group input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+</style>
+<script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
+</head>
+<body>
+
+<div class="shell">
+  <header class="top-bar">
+    <a class="tb-logo" href="/" title="Go to projects">
+      <img src="{{ url_for('static', filename='icons/pine.png') }}" alt="PINE icon" class="tb-logo-icon" />
+      <span class="tb-name">PINE</span>
+    </a>
+    <div class="tb-sep"></div>
+    <a class="back-btn" href="/">
+      <svg viewBox="0 0 13 13" fill="none" width="13" height="13"><path d="M8 2.5L4 6.5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Back to Projects
+    </a>
+    <div class="tb-sep"></div>
+    <span class="tb-sub">Settings</span>
+  </header>
+
+  <div class="content">
+    <div class="content-inner">
+
+      <!-- APP LAUNCH -->
+      <div class="section" id="sec-app-launch">
+        <div class="sec-title">App launch</div>
+        <div class="card">
+          <div class="row" id="startMenuRow" style="display:none">
+            <div>
+              <div class="row-lbl" id="startMenuLabel">Start Menu</div>
+              <div class="row-sub" id="startMenuDesc">Shortcut in Start Menu</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="row-sub" id="startMenuStatus">Not added</span>
+              <button class="btn-outline" id="startMenuBtn" onclick="toggleAppLauncher('start_menu')">Add</button>
+            </div>
+          </div>
+          <div class="row" id="desktopRow" style="display:none">
+            <div>
+              <div class="row-lbl" id="desktopLabel">Desktop shortcut</div>
+              <div class="row-sub" id="desktopDesc">Shortcut on your Desktop</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="row-sub" id="desktopStatus">Not added</span>
+              <button class="btn-outline" id="desktopBtn" onclick="toggleAppLauncher('desktop')">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DISPLAY -->
+      <div class="section" id="sec-display">
+        <div class="sec-title">Display <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="row-lbl">Font size</div>
+              <div class="row-sub">Applies to transcript and UI text</div>
+            </div>
+            <div class="size-group" id="fontSizeGroup">
+              <button class="size-btn" data-size="12" onclick="setFontSize('12',this)">S</button>
+              <button class="size-btn on" data-size="13" onclick="setFontSize('13',this)">M</button>
+              <button class="size-btn" data-size="15" onclick="setFontSize('15',this)">L</button>
+              <button class="size-btn" data-size="17" onclick="setFontSize('17',this)">XL</button>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <div class="row-lbl">Font</div>
+              <div class="row-sub">Body text font family</div>
+            </div>
+            <div class="font-group" id="fontFamilyGroup">
+              <button class="font-btn font-preview-system" data-font="system" onclick="setFontFamily('system',this)">System</button>
+              <button class="font-btn font-preview-inter" data-font="inter" onclick="setFontFamily('inter',this)">Inter</button>
+              <button class="font-btn font-preview-source-sans-3" data-font="source-sans-3" onclick="setFontFamily('source-sans-3',this)">Source Sans 3</button>
+              <button class="font-btn font-preview-open-sans" data-font="open-sans" onclick="setFontFamily('open-sans',this)">Open Sans</button>
+              <button class="font-btn font-preview-roboto" data-font="roboto" onclick="setFontFamily('roboto',this)">Roboto</button>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <div class="row-lbl">Theme</div>
+            </div>
+            <div class="theme-group" id="themeGroup">
+              <button class="theme-btn" data-theme="system" onclick="setTheme('system',this)">System</button>
+              <button class="theme-btn" data-theme="dark" onclick="setTheme('dark',this)">Dark</button>
+              <button class="theme-btn" data-theme="light" onclick="setTheme('light',this)">Light</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXPORT DEFAULTS -->
+      <div class="section" id="sec-export">
+        <div class="sec-title">Export defaults <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="card">
+          <div class="row">
+            <div class="row-lbl">Default format</div>
+            <div class="fmt-group" id="fmtGroup">
+              <button class="fmt-btn on" data-fmt="md" onclick="setFmt('md',this)">Markdown</button>
+              <button class="fmt-btn" data-fmt="odt" onclick="setFmt('odt',this)">ODT</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-lbl">Include comments</div>
+            <div class="sw on" id="expComments" onclick="toggleSw(this,'export_default_comments')"></div>
+          </div>
+          <div class="row">
+            <div class="row-lbl">Include codes</div>
+            <div class="sw on" id="expTags" onclick="toggleSw(this,'export_default_tags')"></div>
+          </div>
+          <div class="row">
+            <div class="row-lbl">Include project details</div>
+            <div class="sw on" id="expProjectDetails" onclick="toggleSw(this,'export_default_project_details')"></div>
+          </div>
+          <div class="row">
+            <div class="row-lbl">Include participant details</div>
+            <div class="sw on" id="expDefParticipant" onclick="toggleSw(this,'export_default_participant_details')"></div>
+          </div>
+          <div class="row">
+            <div class="row-lbl">Anonymize PII</div>
+            <div class="sw" id="expDefPii" onclick="toggleSw(this,'export_default_remove_pii')"></div>
+          </div>
+          <div class="row">
+            <div class="row-lbl row-lbl-with-hint">
+              Include LLM prompt
+              <button type="button" class="hint-tip" aria-label="What Include LLM prompt does" title="When this is on, your saved instruction is added at the very beginning of exported files. Paste the export into an LLM (ChatGPT, Claude, etc.) and the model already knows your goal—synthesis across interviews, a one-recording summary, pulling themes, or a custom task—so you do not have to retype instructions each time.">?</button>
+            </div>
+            <div class="sw" id="expDefIncludePrompt" onclick="toggleSw(this,'export_default_include_prompt')"></div>
+          </div>
+          <div style="margin-top:14px">
+            <div class="row-lbl">LLM prompt (whole project / multi-recording export)</div>
+            <div class="row-sub" style="margin-bottom:6px">Prepended when you export from the Projects screen or combine multiple recordings in one file.</div>
+            <textarea class="textarea-input" id="exportPrompt" rows="4" placeholder="e.g. You need to conduct a synthesis stage..." oninput="schedulePromptSave()" onblur="flushPromptSave()"></textarea>
+          </div>
+          <div style="margin-top:14px">
+            <div class="row-lbl">LLM prompt (single recording export)</div>
+            <div class="row-sub" style="margin-bottom:6px">Prepended when you export one recording from the Recording screen.</div>
+            <textarea class="textarea-input" id="exportPromptRecording" rows="4" placeholder="e.g. Summarize this interview and list action items..." oninput="schedulePromptRecordingSave()" onblur="flushPromptRecordingSave()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECORDINGS -->
+      <div class="section" id="sec-recordings">
+        <div class="sec-title">Recordings <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="card">
+          <div class="row" style="align-items:flex-start;gap:16px">
+            <div style="flex:1">
+              <div class="row-lbl">Link files instead of copying them into the project</div>
+              <div class="row-sub" style="margin-top:4px">When enabled, PINE saves the recording’s location on disk instead of copying it into the project folder.<br><br>If you move, rename, or delete the original file, you won’t be able to play the recording in the project until the file is back at its original path. Your transcripts, codes, comments, and speaker labels remain in the project and won’t be lost.</div>
+            </div>
+            <div class="sw" id="linkRecordings" onclick="toggleSw(this,'link_recordings')" style="margin-top:2px;flex-shrink:0"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRANSCRIPTION MODEL -->
+      <div class="section" id="sec-stt">
+        <div class="sec-title">Transcription process <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="sec-sub sec-note">Current model: <span id="sttCurrentModel">—</span></div>
+        <div class="card">
+          <div class="row" style="align-items:flex-start;gap:16px">
+            <div style="flex:1">
+              <div class="row-lbl">Play a sound when transcription finishes</div>
+              <div class="row-sub row-sub-tight">Same chime as when setup finishes. Played by the system, not the browser tab.</div>
+            </div>
+            <div class="sw" id="txCompleteSound" onclick="toggleTxCompleteSound(this)" style="margin-top:2px;flex-shrink:0"></div>
+          </div>
+          <div class="row" style="align-items:center;gap:12px;flex-wrap:wrap">
+            <div class="row-lbl row-lbl-inline">Volume</div>
+            <input type="range" id="txCompleteSoundVol" min="0" max="100" step="1" value="70"
+                   style="flex:1;min-width:160px;max-width:320px;accent-color:var(--accent)"
+                   oninput="updateTxCompleteVolLabel(this.value)" onchange="saveTxCompleteVol(this.value)" />
+            <span id="txCompleteSoundVolPct" class="control-value volume">70%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PII MODEL -->
+      <div class="section" id="sec-pii">
+        <div class="sec-title">PII removal <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="sec-sub sec-note">GLiNER v2 multilingual model — removes names, addresses, emails before export.</div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="row-lbl">Status</div>
+              <div class="row-sub" id="piiStatus">Checking...</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div class="model-size" id="piiSize">~900 MB</div>
+              <button class="btn-outline" id="piiBtn" onclick="togglePiiModel()" style="display:none">Install</button>
+            </div>
+          </div>
+          <div id="piiProgress" style="display:none;margin-top:10px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+            <div style="height:4px;background:var(--muted);border-radius:2px;overflow:hidden">
+              <div id="piiBar" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div>
+            </div>
+            <div id="piiProgressText" class="assistive-text help"></div>
+          </div>
+          <!-- PII Threshold (separator is row border-bottom above, or piiProgress border-bottom when installing) -->
+          <div id="piiThresholdSection" style="margin-top:16px;padding-top:0">
+            <div class="row-lbl">Detection sensitivity</div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+              <span class="assistive-text range-end">Aggressive</span>
+              <input type="range" id="piiThreshold" min="0.3" max="0.9" step="0.05" value="0.8"
+                     style="flex:1;accent-color:var(--accent)"
+                     oninput="updatePiiThresholdLabel(this.value)" onchange="savePiiThreshold(this.value)" />
+              <span class="assistive-text range-end">Conservative</span>
+              <span id="piiThresholdVal" class="control-value threshold">0.8</span>
+            </div>
+            <div id="piiThresholdHelp" class="assistive-text help"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BACKUP & RESTORE -->
+      <div class="section" id="sec-backup">
+        <div class="sec-title">Backup & Restore <span class="save-status" role="status" aria-live="polite">Saved</span></div>
+        <div class="card">
+          <div class="backup-about">
+            <p><strong>What goes into a backup.</strong> Each ZIP includes a full export of your app data (settings, projects, recordings metadata, transcript segments), your project files on disk (transcripts, codes, annotations), optional packaged ODT exports, and a manifest. Turn on <strong>Include recordings (audio, video)</strong> to also copy the original media files; leave it off to keep archives smaller while still preserving text and structure.</p>
+            <p><strong>Your data.</strong> Your interviews and research material are of extreme importance to the developer of this project. Backups are designed to help you stay in control of your work—use them together with any other safeguards you rely on.</p>
+          </div>
+          <!-- Backup location -->
+          <div class="row" style="align-items:flex-start">
+            <div style="flex:1">
+              <div class="row-lbl">Backup location</div>
+              <div class="row-sub">Where backup ZIP files are stored</div>
+              <div class="input-row">
+                <input class="text-input" id="backupPath" placeholder="Default: .../PINE/backups/" onblur="saveBackupPath()" />
+                <button type="button" class="btn-outline" onclick="browseBackupFolder()">Browse…</button>
+                <button type="button" class="btn-outline" onclick="openBackupFolder()" title="Open the backup folder in your file manager">Open</button>
+              </div>
+            </div>
+          </div>
+          <!-- Include recordings (media files) -->
+          <div class="row">
+            <div>
+              <div class="row-lbl">Include recordings (audio, video)</div>
+              <div class="row-sub">Files can be very large</div>
+            </div>
+            <div class="sw" id="backupAudio" onclick="toggleSw(this,'backup_include_audio')"></div>
+          </div>
+          <!-- Auto-backup -->
+          <div class="row">
+            <div>
+              <div class="row-lbl">Automatic backups</div>
+              <div class="row-sub">Back up on startup and on a schedule</div>
+            </div>
+            <select id="autoBackupFreq" class="inline-select" onchange="setAutoBackupFreq(this.value)">
+              <option value="24">Once a day</option>
+              <option value="168" selected>Once a week</option>
+              <option value="720">Once a month</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <!-- Retention -->
+          <div class="row">
+            <div class="row-lbl">Keep last N backups</div>
+            <div class="fmt-group" id="retentionGroup">
+              <button class="fmt-btn" data-val="3" onclick="setRetention('3',this)">3</button>
+              <button class="fmt-btn on" data-val="5" onclick="setRetention('5',this)">5</button>
+              <button class="fmt-btn" data-val="10" onclick="setRetention('10',this)">10</button>
+              <button class="fmt-btn" data-val="0" onclick="setRetention('0',this)">All</button>
+            </div>
+          </div>
+          <!-- Create backup -->
+          <div class="row" style="border-bottom:none">
+            <div>
+              <div class="row-lbl">Create backup now</div>
+              <div class="row-sub" id="lastBackupInfo">Loading...</div>
+            </div>
+            <button class="btn-save" id="createBackupBtn" onclick="createBackup()">Back up</button>
+          </div>
+          <!-- Progress -->
+          <div id="backupProgress" style="display:none;margin-top:4px">
+            <div class="disk-bar"><div class="disk-fill" id="backupProgressFill" style="width:0%"></div></div>
+            <div class="disk-lbl" id="backupProgressMsg">Preparing...</div>
+          </div>
+          <!-- Backup list -->
+          <div id="backupList" style="margin-top:10px"></div>
+          <!-- Upload / restore -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div class="row-lbl">Restore from file</div>
+              <div class="row-sub">Upload an external backup ZIP</div>
+            </div>
+            <div style="flex-shrink:0">
+              <input type="file" id="uploadBackupInput" accept=".zip" style="display:none" onchange="uploadBackup(this)" />
+              <button type="button" class="btn-outline" onclick="document.getElementById('uploadBackupInput').click()">Upload backup ZIP</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Restore modal -->
+      <div class="modal-overlay" id="restoreModal">
+        <div class="modal-box">
+          <div class="modal-title">Restore from backup</div>
+          <div class="modal-body" id="restoreModalBody">Loading...</div>
+          <div id="restoreProgress" style="display:none;margin-top:8px">
+            <div class="disk-bar"><div class="disk-fill" id="restoreProgressFill" style="width:0%"></div></div>
+            <div class="disk-lbl" id="restoreProgressMsg">Restoring...</div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-outline" onclick="closeRestoreModal()">Cancel</button>
+            <button class="btn-save" id="restoreConfirmBtn" onclick="doRestore()">Restore</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABOUT / UPDATES -->
+      <div class="section">
+        <div class="sec-title">About</div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="row-lbl">Version</div>
+              <div class="row-sub" id="appVersion">—</div>
+            </div>
+            <button class="btn-outline" id="checkUpdateBtn" onclick="checkForUpdates()">Check for updates</button>
+          </div>
+          <div id="updateResult" style="margin-top:8px;display:none"></div>
+          <div class="row">
+            <div>
+              <div class="row-lbl">Developer</div>
+        <div class="row-sub">Pavel Kornilov</div>
+            </div>
+            <div class="row-sub" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+              <a href="https://www.linkedin.com/in/kornilovpr/" target="_blank" rel="noopener" class="btn-outline btn-link-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M22.225 0H1.771C0.792 0 0 0.774 0 1.729v20.542C0 23.227 0.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 0.774 23.2 0 22.222 0h0.003zM7.119 20.452H3.555V9h3.564v11.452zM5.337 7.433c-1.144 0-2.063-0.926-2.063-2.065 0-1.138 0.92-2.063 2.063-2.063 1.14 0 2.064 0.925 2.064 2.063 0 1.139-0.925 2.065-2.064 2.065zM20.452 20.452h-3.554v-5.569c0-1.328-0.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h0.046c0.477-0.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286z"/>
+                </svg>
+                <span>LinkedIn</span>
+              </a>
+              <a href="https://t.me/kornilovpr" target="_blank" rel="noopener" class="btn-outline btn-link-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 7.224-1.97 9.29c-0.149 0.658-0.538 0.822-1.089 0.512l-3.011-2.22-1.452 1.397c-0.16 0.16-0.295 0.295-0.604 0.295l0.213-3.052 5.56-5.022c0.242-0.213-0.054-0.333-0.373-0.12l-6.874 4.327-2.962-0.925c-0.644-0.203-0.658-0.644 0.135-0.953l11.479-4.423c0.533-0.198 0.998 0.128 0.948 0.894z"/>
+                </svg>
+                <span>Telegram</span>
+              </a>
+              <button type="button" class="btn-outline btn-link-icon" onclick="copyDeveloperEmail(this)">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm0.5 2.2 8.5 5.667L20.5 7.2V7H3.5v0.2zm17 2.203-8.223 5.482a0.5 0.5 0 0 1-0.554 0L3.5 9.403V17h17V9.403z"/>
+                </svg>
+                <span class="email-btn-label">Email</span>
+              </button>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <div class="row-lbl">GitHub</div>
+            </div>
+            <div class="row-sub" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+              <a href="https://github.com/paul815/pine" target="_blank" rel="noopener" class="btn-outline btn-link-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38 0.6 0.11 0.82-0.26 0.82-0.58 0-0.29-0.01-1.04-0.02-2.05-3.34 0.73-4.04-1.61-4.04-1.61-0.55-1.39-1.33-1.76-1.33-1.76-1.09-0.74 0.08-0.73 0.08-0.73 1.2 0.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 0.11-0.77 0.42-1.3 0.76-1.6-2.66-0.3-5.46-1.33-5.46-5.93 0-1.31 0.47-2.39 1.24-3.23-0.12-0.3-0.54-1.52 0.12-3.16 0 0 1.01-0.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23 0.66 1.64 0.24 2.86 0.12 3.16 0.77 0.84 1.24 1.92 1.24 3.23 0 4.61-2.8 5.62-5.47 5.92 0.43 0.37 0.82 1.11 0.82 2.23 0 1.61-0.01 2.9-0.01 3.29 0 0.32 0.22 0.7 0.83 0.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                <span>Project page</span>
+              </a>
+              <a href="https://github.com/paul815/pine/issues" target="_blank" rel="noopener" class="btn-outline btn-link-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38 0.6 0.11 0.82-0.26 0.82-0.58 0-0.29-0.01-1.04-0.02-2.05-3.34 0.73-4.04-1.61-4.04-1.61-0.55-1.39-1.33-1.76-1.33-1.76-1.09-0.74 0.08-0.73 0.08-0.73 1.2 0.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 0.11-0.77 0.42-1.3 0.76-1.6-2.66-0.3-5.46-1.33-5.46-5.93 0-1.31 0.47-2.39 1.24-3.23-0.12-0.3-0.54-1.52 0.12-3.16 0 0 1.01-0.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23 0.66 1.64 0.24 2.86 0.12 3.16 0.77 0.84 1.24 1.92 1.24 3.23 0 4.61-2.8 5.62-5.47 5.92 0.43 0.37 0.82 1.11 0.82 2.23 0 1.61-0.01 2.9-0.01 3.29 0 0.32 0.22 0.7 0.83 0.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                <span>Report an issue</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESET -->
+      <div class="section reset-section">
+        <div class="sec-title" style="color:var(--destr)">Danger zone</div>
+        <div class="card reset-card">
+          <p class="reset-warn">Reset all data? This will permanently remove all projects, recordings, transcripts, and annotations. This cannot be undone.</p>
+          <div class="input-row" style="margin-top:12px">
+            <input class="text-input" id="resetConfirmInput" placeholder="Type Yes to confirm" style="max-width:200px" />
+            <button class="btn-reset" id="resetBtn" onclick="doReset()">Reset</button>
+          </div>
+          <div id="resetMsg" style="margin-top:8px;font-size:0.923rem"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/settings';
+let settings = {};
+const _launchers = {
+  start_menu: {
+    supported: false, added: false,
+    rowId: 'startMenuRow', statusId: 'startMenuStatus', btnId: 'startMenuBtn',
+    labelId: 'startMenuLabel', descId: 'startMenuDesc',
+    label: 'Start Menu', description: 'Shortcut in Start Menu',
+  },
+  desktop: {
+    supported: false, added: false,
+    rowId: 'desktopRow', statusId: 'desktopStatus', btnId: 'desktopBtn',
+    labelId: 'desktopLabel', descId: 'desktopDesc',
+    label: 'Desktop shortcut', description: 'Shortcut on your Desktop',
+  },
+};
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  const i = Math.floor(Math.log(b) / Math.log(1024));
+  return (b / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
+}
+
+// toast() comes from js/save-status.js
+
+async function copyDeveloperEmail(btn) {
+  const email = 'kornilovpr@protonmail.com';
+  let copied = false;
+
+  try {
+    await navigator.clipboard.writeText(email);
+    copied = true;
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = email;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'absolute';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (_) {
+      copied = false;
+    }
+  }
+
+  const label = btn.querySelector('.email-btn-label');
+  if (!copied || !label) {
+    toast('Failed to copy email');
+    return;
+  }
+
+  if (btn._copiedTimer) clearTimeout(btn._copiedTimer);
+  label.textContent = 'Copied';
+  btn._copiedTimer = setTimeout(() => {
+    label.textContent = 'Email';
+    btn._copiedTimer = null;
+  }, 2000);
+}
+
+async function loadSettings() {
+  try {
+    const res = await fetch(API);
+    if (!res.ok) throw new Error('Server error');
+    settings = await res.json();
+    applySettings();
+    await loadAppLaunchStatus();
+  } catch (e) { toast('Failed to load settings: ' + e.message); }
+}
+
+let _mql = null;
+
+const fontStacks = {
+  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  inter: "'Inter', sans-serif",
+  'source-sans-3': "'Source Sans 3', sans-serif",
+  'open-sans': "'Open Sans', sans-serif",
+  roboto: "'Roboto', sans-serif",
+};
+
+function applySettings() {
+  // Theme
+  const theme = settings.theme || 'system';
+  _applyTheme(theme);
+  document.querySelectorAll('#themeGroup .theme-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.theme === theme);
+  });
+  if (_mql) { _mql.removeEventListener('change', _onSystemThemeChange); _mql = null; }
+  if (theme === 'system') {
+    _mql = window.matchMedia('(prefers-color-scheme: dark)');
+    _mql.addEventListener('change', _onSystemThemeChange);
+  }
+
+  // Font size
+  const fs = settings.font_size || '14';
+  document.documentElement.style.setProperty('font-size', fs + 'px', 'important');
+  document.querySelectorAll('#fontSizeGroup .size-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.size === fs);
+  });
+
+  // Font family
+  const ff = settings.font_family || 'inter';
+  document.documentElement.style.setProperty('--font-body', fontStacks[ff] || fontStacks['system']);
+  document.querySelectorAll('#fontFamilyGroup .font-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.font === ff);
+  });
+
+  // Export defaults
+  const fmt = settings.export_default_format || 'md';
+  document.querySelectorAll('#fmtGroup .fmt-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.fmt === fmt);
+  });
+  document.getElementById('expComments').classList.toggle('on', settings.export_default_comments !== 'false');
+  document.getElementById('expTags').classList.toggle('on', settings.export_default_tags !== 'false');
+  document.getElementById('expProjectDetails').classList.toggle('on', settings.export_default_project_details !== 'false');
+  document.getElementById('expDefParticipant').classList.toggle('on', settings.export_default_participant_details !== 'false');
+  document.getElementById('expDefPii').classList.toggle('on', settings.export_default_remove_pii === 'true');
+  document.getElementById('expDefIncludePrompt').classList.toggle('on', settings.export_default_include_prompt !== 'false');
+
+  // Recordings
+  document.getElementById('linkRecordings').classList.toggle('on', settings.link_recordings === 'true');
+  const promptEl = document.getElementById('exportPrompt');
+  if (promptEl) promptEl.value = settings.export_default_prompt || '';
+  const promptRecEl = document.getElementById('exportPromptRecording');
+  if (promptRecEl) promptRecEl.value = settings.export_default_prompt_recording || '';
+
+  // Transcription model
+  const sttId = settings.stt_model_id || 'whisperx-large-v3';
+  const sttModel = (settings.models || []).find(m => m.id === sttId);
+  document.getElementById('sttCurrentModel').textContent = sttModel ? sttModel.name : sttId;
+
+  const txSoundOn = settings.transcription_complete_sound_enabled !== 'false';
+  const txSw = document.getElementById('txCompleteSound');
+  if (txSw) txSw.classList.toggle('on', txSoundOn);
+  let txv = parseInt(settings.transcription_complete_sound_volume, 10);
+  if (Number.isNaN(txv)) txv = 70;
+  txv = Math.max(0, Math.min(100, txv));
+  const txVol = document.getElementById('txCompleteSoundVol');
+  if (txVol) {
+    txVol.value = String(txv);
+    txVol.disabled = !txSoundOn;
+    updateTxCompleteVolLabel(String(txv));
+  }
+
+  // PII model
+  updatePiiUI();
+
+  // Version
+  if (settings.app_version) {
+    document.getElementById('appVersion').textContent = 'v' + settings.app_version;
+  }
+  applyAppLaunchUI();
+}
+
+function applyAppLaunchUI() {
+  Object.values(_launchers).forEach(item => {
+    const row = document.getElementById(item.rowId);
+    const status = document.getElementById(item.statusId);
+    const btn = document.getElementById(item.btnId);
+    const labelEl = document.getElementById(item.labelId);
+    const descEl = document.getElementById(item.descId);
+    if (!row || !status || !btn) return;
+    if (labelEl) labelEl.textContent = item.label;
+    if (descEl) descEl.textContent = item.description;
+    if (!item.supported) {
+      row.style.display = 'none';
+      return;
+    }
+    row.style.display = 'flex';
+    status.textContent = item.added ? 'Added' : 'Not added';
+    status.style.color = item.added ? 'var(--accent)' : 'var(--muted-fg)';
+    btn.textContent = item.added ? 'Remove' : 'Add';
+    btn.disabled = false;
+  });
+}
+
+async function loadAppLaunchStatus() {
+  try {
+    const res = await fetch(API + '/app-launch');
+    if (!res.ok) throw new Error('Status failed');
+    const data = await res.json();
+    const startMenu = data.start_menu || {};
+    const desktop = data.desktop || {};
+    _launchers.start_menu.supported = !!startMenu.supported;
+    _launchers.start_menu.added = !!startMenu.added;
+    if (startMenu.label) _launchers.start_menu.label = startMenu.label;
+    if (startMenu.description) _launchers.start_menu.description = startMenu.description;
+    _launchers.desktop.supported = !!desktop.supported;
+    _launchers.desktop.added = !!desktop.added;
+    if (desktop.label) _launchers.desktop.label = desktop.label;
+    if (desktop.description) _launchers.desktop.description = desktop.description;
+  } catch (_) {
+    _launchers.start_menu.supported = false;
+    _launchers.start_menu.added = false;
+    _launchers.desktop.supported = false;
+    _launchers.desktop.added = false;
+  }
+  applyAppLaunchUI();
+}
+
+async function toggleAppLauncher(kind) {
+  const item = _launchers[kind];
+  if (!item || !item.supported) return;
+  const btn = document.getElementById(item.btnId);
+  const action = item.added ? 'remove' : 'add';
+  btn.disabled = true;
+  btn.textContent = action === 'add' ? 'Adding...' : 'Removing...';
+  try {
+    const apiKind = kind === 'start_menu' ? 'start-menu' : 'desktop';
+    const res = await fetch(API + '/' + apiKind + '/' + action, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Action failed');
+    item.added = !!data.added;
+    applyAppLaunchUI();
+    toast(item.added ? (item.label + ' added') : (item.label + ' removed'));
+  } catch (e) {
+    applyAppLaunchUI();
+    toast('Failed: ' + e.message);
+  }
+}
+
+// Kept as a thin alias so the existing call sites read unchanged.
+function showSaved(sectionId) { showSectionSaved(sectionId, 'saved'); }
+
+async function patchSetting(key, value, sectionId) {
+  const body = {}; body[key] = value;
+  try {
+    const res = await fetch(API, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error('Server error');
+    if (sectionId) showSaved(sectionId);
+    return true;
+  } catch (e) {
+    // Errors stay in the section, next to the control that failed — not in a toast.
+    if (sectionId) showSectionSaved(sectionId, 'error', () => patchSetting(key, value, sectionId));
+    else toast('Couldn’t save setting: ' + e.message, true);
+    return false;
+  }
+}
+
+function setFontSize(size, btn) {
+  document.querySelectorAll('#fontSizeGroup .size-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.documentElement.style.setProperty('font-size', size + 'px', 'important');
+  settings.font_size = size;
+  patchSetting('font_size', size, 'sec-display');
+}
+
+function setFontFamily(font, btn) {
+  document.querySelectorAll('#fontFamilyGroup .font-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.documentElement.style.setProperty('--font-body', fontStacks[font] || fontStacks['system']);
+  settings.font_family = font;
+  patchSetting('font_family', font, 'sec-display');
+}
+
+function _onSystemThemeChange() { _applyTheme('system'); }
+
+function setTheme(theme, btn) {
+  document.querySelectorAll('#themeGroup .theme-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  _applyTheme(theme);
+  if (_mql) { _mql.removeEventListener('change', _onSystemThemeChange); _mql = null; }
+  if (theme === 'system') {
+    _mql = window.matchMedia('(prefers-color-scheme: dark)');
+    _mql.addEventListener('change', _onSystemThemeChange);
+  }
+  patchSetting('theme', theme, 'sec-display');
+}
+
+function setFmt(fmt, btn) {
+  document.querySelectorAll('#fmtGroup .fmt-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  patchSetting('export_default_format', fmt, 'sec-export');
+}
+
+function toggleSw(el, key) {
+  el.classList.toggle('on');
+  const val = el.classList.contains('on') ? 'true' : 'false';
+  const secId = el.closest('.section')?.id || '';
+  patchSetting(key, val, secId);
+}
+
+function updateTxCompleteVolLabel(v) {
+  const el = document.getElementById('txCompleteSoundVolPct');
+  if (el) el.textContent = v + '%';
+}
+
+async function saveTxCompleteVol(v) {
+  const iv = Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+  try {
+    const res = await fetch(API, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcription_complete_sound_volume: String(iv) }),
+    });
+    if (!res.ok) throw new Error('Server error');
+    settings.transcription_complete_sound_volume = String(iv);
+    showSaved('sec-stt');
+  } catch (e) { toast('Failed to save: ' + e.message); }
+}
+
+function toggleTxCompleteSound(el) {
+  el.classList.toggle('on');
+  const val = el.classList.contains('on') ? 'true' : 'false';
+  const volEl = document.getElementById('txCompleteSoundVol');
+  if (volEl) volEl.disabled = val !== 'true';
+  patchSetting('transcription_complete_sound_enabled', val, 'sec-stt');
+}
+
+let _promptTimer = null;
+function schedulePromptSave() {
+  clearTimeout(_promptTimer);
+  _promptTimer = setTimeout(saveExportPrompt, 800);
+}
+function flushPromptSave() {
+  clearTimeout(_promptTimer);
+  saveExportPrompt();
+}
+
+async function saveExportPrompt() {
+  const val = document.getElementById('exportPrompt')?.value?.trim() || '';
+  try {
+    const res = await fetch(API, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ export_default_prompt: val }),
+    });
+    if (!res.ok) throw new Error('Server error');
+    settings.export_default_prompt = val;
+    showSaved('sec-export');
+  } catch (e) { toast('Failed to save: ' + e.message); }
+}
+
+let _promptRecTimer = null;
+function schedulePromptRecordingSave() {
+  clearTimeout(_promptRecTimer);
+  _promptRecTimer = setTimeout(saveExportPromptRecording, 800);
+}
+function flushPromptRecordingSave() {
+  clearTimeout(_promptRecTimer);
+  saveExportPromptRecording();
+}
+
+async function saveExportPromptRecording() {
+  const val = document.getElementById('exportPromptRecording')?.value?.trim() || '';
+  try {
+    const res = await fetch(API, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ export_default_prompt_recording: val }),
+    });
+    if (!res.ok) throw new Error('Server error');
+    settings.export_default_prompt_recording = val;
+    showSaved('sec-export');
+  } catch (e) { toast('Failed to save: ' + e.message); }
+}
+
+/* ============ PII Model ============ */
+let _piiInstalled = false;
+let _piiSocket = null;
+
+function updatePiiUI() {
+  const piiModel = (settings.models || []).find(m => m.id === 'gliner-pii');
+  const btn = document.getElementById('piiBtn');
+  const status = document.getElementById('piiStatus');
+  if (!piiModel) { status.textContent = 'Model not found in registry'; return; }
+  _piiInstalled = piiModel.status === 'ready';
+  status.textContent = _piiInstalled ? 'Installed' : 'Not installed';
+  status.style.color = _piiInstalled ? 'var(--accent)' : 'var(--muted-fg)';
+  btn.textContent = _piiInstalled ? 'Remove' : 'Install';
+  btn.style.display = '';
+  document.getElementById('piiProgress').style.display = 'none';
+  // Threshold
+  const thresh = parseFloat(settings.pii_threshold || '0.8');
+  document.getElementById('piiThreshold').value = thresh;
+  updatePiiThresholdLabel(thresh);
+}
+
+const _piiThresholdHints = {
+  0.30: 'Catches almost everything — full names, partial names, single-word references, locations, dates. High false-positive rate: may flag ordinary words as PII.',
+  0.35: 'Very aggressive — catches most name fragments, locations, and organizations. Expect some false positives on common words.',
+  0.40: 'Aggressive — reliably catches full names, emails, phone numbers, addresses, organizations, and locations. Some short or ambiguous names may trigger false positives.',
+  0.45: 'Moderately aggressive — catches full names (e.g. "John Smith"), organizations ("Acme Corp"), emails, phone numbers, addresses, SSNs. Occasional false positives on short first names.',
+  0.50: 'Balanced — the threshold used in GLiNER examples. Catches clear PII: full person names, organization names, email addresses, phone numbers, physical addresses, SSNs, credit card numbers. Low false-positive rate.',
+  0.55: 'Balanced-conservative — catches well-formed PII entities with good confidence. May miss some less obvious references like single first names or abbreviated company names.',
+  0.60: 'Catches high-confidence PII: full names, email addresses, phone numbers, street addresses, SSNs, credit card numbers, dates of birth. Skips ambiguous matches.',
+  0.65: 'Conservative — only redacts PII the model is quite confident about. Clear full names, emails, and phone numbers will be caught. Unusual name spellings or informal references may be missed.',
+  0.70: 'More conservative — only the most obvious PII is caught. Works best for clean, well-formatted text where names and identifiers are clearly stated.',
+  0.75: 'Strict — redacts only entities with very high confidence. Some real names and organizations may be missed if they are uncommon or appear in ambiguous contexts.',
+  0.80: 'Default — very strict, minimal redaction. Only catches PII that the model is highly certain about (e.g. well-known name patterns, standard email/phone formats).',
+  0.85: 'Near-minimal — very few entities will be redacted. Only the most unambiguous PII is caught.',
+  0.90: 'Minimal — almost nothing is redacted. Use only if you want to preserve nearly all text and handle PII manually.',
+};
+
+function updatePiiThresholdLabel(val) {
+  val = parseFloat(val);
+  document.getElementById('piiThresholdVal').textContent = val.toFixed(2);
+  // Find the closest hint
+  const keys = Object.keys(_piiThresholdHints).map(Number).sort((a, b) => a - b);
+  let closest = keys[0];
+  for (const k of keys) {
+    if (Math.abs(k - val) < Math.abs(closest - val)) closest = k;
+  }
+  document.getElementById('piiThresholdHelp').textContent = _piiThresholdHints[closest];
+}
+
+function savePiiThreshold(val) {
+  patchSetting('pii_threshold', val, 'sec-pii');
+}
+
+async function togglePiiModel() {
+  const btn = document.getElementById('piiBtn');
+  if (_piiInstalled) {
+    if (!confirm('Remove PII model? You can re-install it later.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Removing...';
+    try {
+      const res = await fetch(API + '/pii-model/remove', { method: 'POST' });
+      if (!res.ok) throw new Error('Remove failed');
+      toast('PII model removed');
+      await loadSettings();
+    } catch (e) { toast('Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Installing...';
+  document.getElementById('piiProgress').style.display = 'block';
+  document.getElementById('piiProgressText').textContent = 'Preparing...';
+  document.getElementById('piiBar').style.width = '0';
+
+  if (!_piiSocket) {
+    _piiSocket = window._settingsSocket || io();
+    _piiSocket.on('install:log', d => {
+      document.getElementById('piiProgressText').textContent = d.line;
+    });
+    _piiSocket.on('download:progress', d => {
+      if (d.model_id === 'gliner-pii' && d.total_bytes > 0) {
+        const pct = Math.min((d.downloaded_bytes / d.total_bytes) * 100, 100);
+        document.getElementById('piiBar').style.width = pct.toFixed(1) + '%';
+        document.getElementById('piiProgressText').textContent = 'Downloading... ' + Math.round(pct) + '%';
+      }
+    });
+    _piiSocket.on('download:model_complete', d => {
+      if (d.model_id === 'gliner-pii') {
+        document.getElementById('piiBar').style.width = '100%';
+        document.getElementById('piiProgressText').textContent = 'Done';
+        toast('PII model installed');
+        loadSettings();
+      }
+    });
+    _piiSocket.on('download:error', d => {
+      if (d.model_id === 'gliner-pii') {
+        document.getElementById('piiProgressText').textContent = 'Error: ' + d.error;
+        document.getElementById('piiProgressText').style.color = 'var(--destr)';
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    });
+  }
+  try {
+    const res = await fetch(API + '/pii-model/install', { method: 'POST' });
+    if (!res.ok) throw new Error('Install failed');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Install';
+    document.getElementById('piiProgress').style.display = 'none';
+  }
+}
+
+async function doReset() {
+  const input = document.getElementById('resetConfirmInput');
+  const btn = document.getElementById('resetBtn');
+  const msg = document.getElementById('resetMsg');
+  const confirmVal = (input?.value || '').trim();
+  if (confirmVal !== 'Yes') {
+    msg.innerHTML = '<span style="color:var(--destr)">Type "Yes" and press Reset to proceed.</span>';
+    return;
+  }
+  msg.innerHTML = '';
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(API + '/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'Yes' }),
+    });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch (_) { throw new Error('Server error (' + res.status + ')'); }
+    if (!res.ok) throw new Error(data.error || 'Reset failed');
+    msg.innerHTML = '<span style="color:var(--accent)">' + esc(data.message || 'Done.') + '</span>';
+    if (data.shutdown) {
+      toast('Reset complete. Closing PINE to finish cleanup...');
+      return;
+    }
+    toast('Reset complete. Reloading...');
+    setTimeout(() => window.location.href = '/', 1500);
+  } catch (e) {
+    msg.innerHTML = '<span style="color:var(--destr)">' + esc(e.message) + '</span>';
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function checkForUpdates() {
+  const btn = document.getElementById('checkUpdateBtn');
+  const result = document.getElementById('updateResult');
+  btn.disabled = true;
+  btn.textContent = 'Checking\u2026';
+  result.style.display = 'none';
+  try {
+    const res = await fetch(API + '/check-update', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      result.innerHTML = '<span style="color:var(--muted-fg)">' + esc(data.error || 'Check failed') + '</span>';
+    } else if (data.update_available) {
+      result.innerHTML = '<span style="color:var(--accent);font-weight:500">Version ' + esc(data.latest_version) + ' is available!</span> '
+        + '<a href="' + esc(data.release_url) + '" target="_blank" rel="noopener" '
+        + 'style="color:var(--accent);text-decoration:underline">View release</a>';
+    } else {
+      const msg = data.message || 'You\u2019re up to date (v' + esc(data.current_version) + ')';
+      result.innerHTML = '<span style="color:var(--accent)">' + esc(msg) + '</span>';
+    }
+    result.style.display = 'block';
+  } catch (e) {
+    result.innerHTML = '<span style="color:var(--muted-fg)">Could not check for updates.</span>';
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check for updates';
+  }
+}
+
+// ── Backup & Restore ──
+const BACKUP_API = '/api/backup';
+let _restoreFilename = '';
+let _restoreManifest = null;
+
+function applyBackupSettings() {
+  const bp = settings.backup_path || '';
+  document.getElementById('backupPath').value = bp;
+  document.getElementById('backupAudio').classList.toggle('on', settings.backup_include_audio === 'true');
+  const autoOn = settings.auto_backup_enabled === 'true';
+  let interval = settings.auto_backup_interval_hours || '168';
+  const legacyInterval = { '6': '24', '12': '24', '72': '168' };
+  if (legacyInterval[interval]) interval = legacyInterval[interval];
+  document.getElementById('autoBackupFreq').value = autoOn ? interval : 'off';
+  const retention = settings.backup_retention_count || '5';
+  document.querySelectorAll('#retentionGroup .fmt-btn').forEach(b => b.classList.toggle('on', b.dataset.val === retention));
+  loadBackupList();
+}
+
+async function browseBackupFolder() {
+  const cur = document.getElementById('backupPath').value.trim();
+  const params = cur ? ('?initial=' + encodeURIComponent(cur)) : '';
+  try {
+    const res = await fetch('/api/onboarding/browse-folder' + params);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Browse failed');
+    if (!data.path) return;
+    document.getElementById('backupPath').value = data.path;
+    await saveBackupPath();
+  } catch (e) {
+    toast('Could not choose folder: ' + e.message);
+  }
+}
+
+async function openBackupFolder() {
+  try {
+    const res = await fetch(BACKUP_API + '/open-folder', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Open failed');
+  } catch (e) {
+    toast('Could not open backup folder: ' + e.message);
+  }
+}
+
+async function saveBackupPath() {
+  const val = document.getElementById('backupPath').value.trim();
+  const prev = (settings.backup_path || '').trim();
+  if (val === prev) return;
+  // patchSetting already reports into the section indicator — no toast on top of it.
+  if (await patchSetting('backup_path', val, 'sec-backup')) settings.backup_path = val;
+}
+
+function setAutoBackupFreq(val) {
+  if (val === 'off') {
+    patchSetting('auto_backup_enabled', 'false', 'sec-backup');
+  } else {
+    patchSetting('auto_backup_enabled', 'true', 'sec-backup');
+    patchSetting('auto_backup_interval_hours', val, 'sec-backup');
+  }
+}
+
+function setRetention(val, btn) {
+  document.querySelectorAll('#retentionGroup .fmt-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  patchSetting('backup_retention_count', val, 'sec-backup');
+}
+
+async function createBackup() {
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  document.getElementById('backupProgress').style.display = 'block';
+  try {
+    await fetch(BACKUP_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  } catch (e) {
+    toast('Failed to start backup: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Back up';
+  }
+}
+
+function _onBackupProgress(data) {
+  document.getElementById('backupProgress').style.display = 'block';
+  document.getElementById('backupProgressFill').style.width = (data.percent || 0) + '%';
+  document.getElementById('backupProgressMsg').textContent = data.message || '';
+}
+
+function _onBackupComplete(data) {
+  document.getElementById('backupProgress').style.display = 'none';
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = false;
+  btn.textContent = 'Back up';
+  toast('Backup complete (' + fmtBytes(data.size_bytes) + ')');
+  loadBackupList();
+}
+
+function _onBackupError(data) {
+  document.getElementById('backupProgress').style.display = 'none';
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = false;
+  btn.textContent = 'Back up';
+  toast('Backup failed: ' + (data.message || 'unknown error'));
+}
+
+const _BACKUP_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtBackupDate(d) {
+  return _BACKUP_MONTHS[d.getMonth()] + ' ' + d.getDate() + ' ' + d.getFullYear();
+}
+
+async function loadBackupList() {
+  try {
+    const res = await fetch(BACKUP_API);
+    const list = await res.json();
+    const container = document.getElementById('backupList');
+    if (!list.length) {
+      container.innerHTML = '';
+      document.getElementById('lastBackupInfo').textContent = 'No backups yet';
+      return;
+    }
+    const newest = list[0];
+    const d = new Date(newest.created_at);
+    document.getElementById('lastBackupInfo').textContent = 'Last: ' + fmtBackupDate(d) + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ' (' + fmtBytes(newest.size_bytes) + ')';
+
+    container.innerHTML = list.map(b => {
+      const dt = new Date(b.created_at);
+      const dateStr = fmtBackupDate(dt) + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      const audioTag = b.include_audio ? ' + audio' : '';
+      return '<div class="backup-item">'
+        + '<div class="backup-meta">'
+        + '<div class="backup-name">' + esc(b.filename) + '</div>'
+        + '<div class="backup-info">' + dateStr + ' &middot; ' + fmtBytes(b.size_bytes) + ' &middot; ' + b.project_count + ' projects' + audioTag + '</div>'
+        + '</div>'
+        + '<div class="backup-actions">'
+        + '<button class="btn-outline" onclick="openRestoreModal(\'' + esc(b.filename) + '\')">Restore</button>'
+        + '<button class="btn-outline btn-outline-danger" onclick="deleteBackup(\'' + esc(b.filename) + '\')">Delete</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('lastBackupInfo').textContent = 'Could not load backups';
+  }
+}
+
+async function deleteBackup(filename) {
+  if (!confirm('Delete backup ' + filename + '?')) return;
+  try {
+    await fetch(BACKUP_API + '/' + encodeURIComponent(filename), { method: 'DELETE' });
+    toast('Backup deleted');
+    loadBackupList();
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+async function uploadBackup(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch(BACKUP_API + '/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    toast('Uploaded: ' + data.filename + ' (' + data.project_count + ' projects)');
+    loadBackupList();
+  } catch (e) { toast('Upload failed: ' + e.message); }
+  input.value = '';
+}
+
+async function openRestoreModal(filename) {
+  _restoreFilename = filename;
+  const modal = document.getElementById('restoreModal');
+  const body = document.getElementById('restoreModalBody');
+  body.innerHTML = '<div style="color:var(--muted-fg)">Loading manifest...</div>';
+  document.getElementById('restoreProgress').style.display = 'none';
+  document.getElementById('restoreConfirmBtn').disabled = false;
+  modal.classList.add('open');
+
+  try {
+    const res = await fetch(BACKUP_API + '/' + encodeURIComponent(filename) + '/manifest');
+    if (!res.ok) throw new Error('Could not read backup');
+    _restoreManifest = await res.json();
+    const m = _restoreManifest;
+    const dt = new Date(m.created_at);
+    let html = '<div style="font-size:0.923rem;color:var(--muted-fg);margin-bottom:10px">'
+      + dt.toLocaleDateString() + ' &middot; ' + m.project_count + ' projects &middot; ' + m.recording_count + ' recordings'
+      + (m.include_audio ? ' &middot; includes audio' : '') + '</div>';
+
+    html += '<div class="chk-row"><input type="checkbox" id="restoreSelectAll" checked onchange="toggleRestoreAll(this.checked)"><label for="restoreSelectAll" style="font-weight:500">Select all projects</label></div>';
+    (m.projects || []).forEach((p, i) => {
+      html += '<div class="chk-row" style="padding-left:20px"><input type="checkbox" class="restore-proj-chk" data-folder="' + esc(p.folder_name) + '" id="rp' + i + '" checked><label for="rp' + i + '">' + esc(p.name) + ' <span style="color:var(--muted-fg);font-size:0.846rem">(' + p.recording_count + ' rec.)</span></label></div>';
+    });
+
+    html += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">';
+    html += '<div class="chk-row"><input type="checkbox" id="restoreSettingsChk"><label for="restoreSettingsChk">Restore settings</label></div>';
+    html += '</div>';
+
+    html += '<div style="margin-top:10px"><div class="row-lbl" style="font-size:0.923rem">If project already exists:</div>';
+    html += '<div class="radio-group">';
+    html += '<label><input type="radio" name="conflictStrategy" value="skip" checked> Skip</label>';
+    html += '<label><input type="radio" name="conflictStrategy" value="overwrite"> Overwrite</label>';
+    html += '<label><input type="radio" name="conflictStrategy" value="rename"> Rename</label>';
+    html += '</div></div>';
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<div style="color:var(--destr)">' + esc(e.message) + '</div>';
+  }
+}
+
+function closeRestoreModal() {
+  document.getElementById('restoreModal').classList.remove('open');
+}
+
+function toggleRestoreAll(checked) {
+  document.querySelectorAll('.restore-proj-chk').forEach(c => c.checked = checked);
+}
+
+async function doRestore() {
+  const folders = [];
+  document.querySelectorAll('.restore-proj-chk:checked').forEach(c => folders.push(c.dataset.folder));
+  const restoreSettings = document.getElementById('restoreSettingsChk')?.checked || false;
+  const strategy = document.querySelector('input[name="conflictStrategy"]:checked')?.value || 'skip';
+
+  if (!folders.length && !restoreSettings) {
+    toast('Select at least one project or settings');
+    return;
+  }
+
+  document.getElementById('restoreConfirmBtn').disabled = true;
+  document.getElementById('restoreProgress').style.display = 'block';
+
+  try {
+    await fetch(BACKUP_API + '/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: _restoreFilename,
+        project_folders: folders,
+        restore_settings: restoreSettings,
+        conflict_strategy: strategy,
+      }),
+    });
+  } catch (e) {
+    toast('Restore failed: ' + e.message);
+    document.getElementById('restoreConfirmBtn').disabled = false;
+    document.getElementById('restoreProgress').style.display = 'none';
+  }
+}
+
+function _onRestoreProgress(data) {
+  document.getElementById('restoreProgress').style.display = 'block';
+  document.getElementById('restoreProgressFill').style.width = (data.percent || 0) + '%';
+  document.getElementById('restoreProgressMsg').textContent = data.message || '';
+}
+
+function _onRestoreComplete(data) {
+  document.getElementById('restoreProgress').style.display = 'none';
+  closeRestoreModal();
+  toast('Restored ' + (data.projects_restored || 0) + ' project(s)' + (data.settings_restored ? ' + settings' : ''));
+  loadSettings();
+}
+
+function _onRestoreError(data) {
+  document.getElementById('restoreProgress').style.display = 'none';
+  document.getElementById('restoreConfirmBtn').disabled = false;
+  toast('Restore failed: ' + (data.message || 'unknown error'));
+}
+
+// ── SocketIO for backup events ──
+(function() {
+  const script = document.createElement('script');
+  script.src = '{{ url_for("static", filename="js/socket.io.min.js") }}';
+  script.onload = function() {
+    const socket = io();
+    window._settingsSocket = socket;
+    socket.on('backup:progress', _onBackupProgress);
+    socket.on('backup:complete', _onBackupComplete);
+    socket.on('backup:error', _onBackupError);
+    socket.on('backup:restore_progress', _onRestoreProgress);
+    socket.on('backup:restore_complete', _onRestoreComplete);
+    socket.on('backup:restore_error', _onRestoreError);
+    socket.on('disconnect', (reason) => console.warn('[SocketIO] Settings: Disconnected:', reason));
+    let _settingsWasConnected = false;
+    socket.on('connect', () => {
+      if (!_settingsWasConnected) { _settingsWasConnected = true; return; }
+      console.info('[SocketIO] Settings: Reconnected');
+    });
+  };
+  document.head.appendChild(script);
+})();
+
+// Hook into applySettings to also apply backup settings
+const _origApplySettings = applySettings;
+applySettings = function() {
+  _origApplySettings();
+  applyBackupSettings();
+};
+
+loadSettings();
+</script>
+</body>
+</html>

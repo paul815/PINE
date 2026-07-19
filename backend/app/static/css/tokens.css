@@ -1,0 +1,192 @@
+/* ==========================================================================
+   PINE — design tokens
+   --------------------------------------------------------------------------
+   Single source of truth for the shared visual language. Load this BEFORE
+   any page-level <style> block and before button-system.css.
+
+   Structure: light-first. `:root` holds the light theme; `[data-theme="dark"]`
+   overrides. Theme is set on <html> by the inline boot script in each template.
+
+   Values here were extracted verbatim from the six templates, which had all
+   drifted into carrying private copies of the same palette. Do not "tidy"
+   the numbers — they are the shipped appearance.
+   ========================================================================== */
+
+:root {
+  /* ---- surfaces & text ------------------------------------------------ */
+  --bg:            hsl(220, 20%, 97%);
+  --fg:            hsl(220, 25%, 10%);
+  --card:          hsl(0, 0%, 100%);
+  --sunken:        hsl(220, 20%, 95%);
+  --muted:         hsl(220, 15%, 94%);
+  --muted-fg:      hsl(220, 10%, 46%);
+  --secondary:     hsl(220, 15%, 92%);
+  --border:        hsl(220, 15%, 88%);
+
+  /* ---- brand accent --------------------------------------------------- */
+  /* -on-dim = contrast-corrected variant for TEXT sitting on a *-dim fill. */
+  --accent:            hsl(152, 60%, 42%);
+  --accent-fg:         #fff;
+  --accent-dim:        hsla(152, 60%, 42%, 0.10);
+  --accent-bd:         hsla(152, 60%, 42%, 0.25);
+  --accent-on-dim:     hsl(152, 60%, 27%);
+  --accent-bd-solid:   hsl(152, 60%, 27%);
+
+  /* ---- semantic: destructive ------------------------------------------ */
+  --destr:             hsl(0, 72%, 51%);
+  --destr-dim:         hsla(0, 72%, 51%, 0.10);
+  --destr-bd:          hsla(0, 72%, 51%, 0.25);
+  --destr-on-dim:      hsl(0, 72%, 42%);
+
+  /* ---- semantic: warning ---------------------------------------------- */
+  /* -on-dim was previously recording.html's private `--amber`. Kept in hex:
+     an hsl() round-trip shifts it by 1-2 units per channel. */
+  --warn:              hsl(38, 90%, 55%);
+  --warn-dim:          hsla(38, 90%, 55%, 0.10);
+  --warn-bd:           hsla(38, 90%, 55%, 0.25);
+  --warn-on-dim:       #c47d0a;
+
+  /* ---- semantic: success (new) ---------------------------------------- */
+  /* Hue family 148 — deliberately a touch cooler than the 152 brand accent
+     so "succeeded" never reads as "branded". Values adopted from the
+     unused `--green` pair that recording.html carried. */
+  --ok:                #1fa85e;
+  --ok-dim:            rgba(31, 168, 94, 0.10);
+  --ok-bd:             rgba(31, 168, 94, 0.25);
+  --ok-on-dim:         #1a8c4e;
+
+  /* ---- semantic: info (new) ------------------------------------------- */
+  /* Adopted from recording.html's `--mod-lbl` / `--mod-bg` speaker-label blue. */
+  --info:              #2b7bbf;
+  --info-dim:          rgba(43, 123, 191, 0.10);
+  --info-bd:           rgba(43, 123, 191, 0.25);
+  --info-on-dim:       #22638f;
+  --info-surface:      #e8f2fb;
+
+  /* ---- tag categories --------------------------------------------------
+     Qualitative coding categories (pain / insight / delight / confusion /
+     follow-up). These are CONTENT categories, not UI status — deliberately
+     kept separate from --destr/--warn/--ok even where hues overlap.
+     Canonical values taken from tags.html, which modelled them per-theme;
+     recording.html previously hardcoded the dark values into both themes. */
+  --tag-pain:    #c0392b;  --tag-pain-bg: rgba(192,57,43,0.08);   --tag-pain-bd: rgba(192,57,43,0.25);
+  --tag-ins:     #1a9650;  --tag-ins-bg:  rgba(26,150,80,0.08);   --tag-ins-bd:  rgba(26,150,80,0.25);
+  --tag-del:     #b06400;  --tag-del-bg:  rgba(176,100,0,0.08);   --tag-del-bd:  rgba(176,100,0,0.25);
+  --tag-conf:    #1a70b0;  --tag-conf-bg: rgba(26,112,176,0.08);  --tag-conf-bd: rgba(26,112,176,0.25);
+  --tag-fu:      #606078;  --tag-fu-bg:   rgba(96,96,120,0.06);   --tag-fu-bd:   rgba(96,96,120,0.20);
+
+  /* ---- typography ------------------------------------------------------ */
+  /* --font-body is only the pre-JS fallback: the boot script overwrites it
+     from the user's `font_family` setting (backend default: 'inter'). */
+  --font-body:     'Inter', sans-serif;
+  --font-mono:     'JetBrains Mono', monospace;
+  --font-display:  'Space Grotesk', sans-serif;
+
+  /* Root font-size is user-controlled (`font_size`, set as an !important
+     inline style on <html>), so the rem scale below floats with it. */
+  --text-xs:       0.769rem;
+  --text-sm:       0.846rem;
+  --text-base:     0.923rem;
+  --text-md:       1rem;
+  --text-lg:       1.077rem;
+  --text-xl:       1.231rem;
+  --text-2xl:      1.385rem;
+  --text-3xl:      1.538rem;
+
+  /* ---- geometry -------------------------------------------------------- */
+  --radius:        6px;
+  --radius-sm:     4px;
+  --radius-lg:     10px;
+  --radius-pill:   999px;
+
+  /* ---- elevation ------------------------------------------------------- */
+  --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-lg:     0 12px 32px rgba(0, 0, 0, 0.16);
+
+  /* ---- motion ---------------------------------------------------------- */
+  --dur-fast:      0.12s;
+  --dur-base:      0.18s;
+  --dur-slow:      0.28s;
+  --ease:          cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- spacing --------------------------------------------------------- */
+  --space-1:       4px;
+  --space-2:       8px;
+  --space-3:       12px;
+  --space-4:       16px;
+  --space-5:       20px;
+  --space-6:       24px;
+
+  /* ---- stacking -------------------------------------------------------- */
+  --z-base:        0;
+  --z-raised:      1;
+  --z-sticky:      100;
+  --z-dropdown:    200;
+  --z-overlay:     500;
+  --z-modal:       1000;
+  --z-popover:     1200;
+  --z-toast:       2000;
+  --z-max:         9999;
+}
+
+/* Scoped to :root on purpose — unscoped, this also matches any element that
+   happens to carry data-theme="dark" (e.g. the theme picker's own Dark button),
+   redefining the whole palette on it. */
+:root[data-theme="dark"] {
+  /* ---- surfaces & text ------------------------------------------------ */
+  --bg:            hsl(220, 20%, 7%);
+  --fg:            hsl(220, 15%, 93%);
+  --card:          hsl(220, 16%, 11%);
+  --sunken:        hsl(220, 18%, 9%);
+  --muted:         hsl(220, 14%, 14%);
+  --muted-fg:      hsl(220, 10%, 54%);
+  --secondary:     hsl(220, 14%, 16%);
+  --border:        hsl(220, 16%, 17%);
+
+  /* ---- brand accent --------------------------------------------------- */
+  --accent:            hsl(152, 55%, 45%);
+  --accent-fg:         #fff;
+  --accent-dim:        hsla(152, 55%, 45%, 0.12);
+  --accent-bd:         hsla(152, 55%, 45%, 0.28);
+  --accent-on-dim:     hsl(152, 55%, 45%);
+  --accent-bd-solid:   hsla(152, 55%, 45%, 0.55);
+
+  /* ---- semantic: destructive ------------------------------------------ */
+  --destr:             hsl(0, 62%, 60%);
+  --destr-dim:         hsla(0, 62%, 60%, 0.12);
+  --destr-bd:          hsla(0, 62%, 60%, 0.28);
+  --destr-on-dim:      hsl(0, 62%, 60%);
+
+  /* ---- semantic: warning ---------------------------------------------- */
+  --warn:              hsl(38, 85%, 60%);
+  --warn-dim:          hsla(38, 85%, 60%, 0.10);
+  --warn-bd:           hsla(38, 85%, 60%, 0.25);
+  --warn-on-dim:       #f5a623;
+
+  /* ---- semantic: success ---------------------------------------------- */
+  --ok:                #34c97a;
+  --ok-dim:            rgba(52, 201, 122, 0.12);
+  --ok-bd:             rgba(52, 201, 122, 0.28);
+  --ok-on-dim:         #34c97a;
+
+  /* ---- semantic: info -------------------------------------------------- */
+  --info:              #5da8e0;
+  --info-dim:          rgba(93, 168, 224, 0.12);
+  --info-bd:           rgba(93, 168, 224, 0.28);
+  --info-on-dim:       #5da8e0;
+  --info-surface:      #0f1f2e;
+
+  /* ---- tag categories --------------------------------------------------- */
+  --tag-pain:    #f04f4f;  --tag-pain-bg: rgba(240,79,79,0.12);   --tag-pain-bd: rgba(240,79,79,0.30);
+  --tag-ins:     #34c97a;  --tag-ins-bg:  rgba(52,201,122,0.10);  --tag-ins-bd:  rgba(52,201,122,0.28);
+  --tag-del:     #f5a623;  --tag-del-bg:  rgba(245,166,35,0.10);  --tag-del-bd:  rgba(245,166,35,0.28);
+  --tag-conf:    #5da8e0;  --tag-conf-bg: rgba(93,168,224,0.10);  --tag-conf-bd: rgba(93,168,224,0.28);
+  --tag-fu:      #a0a0b8;  --tag-fu-bg:   rgba(160,160,184,0.08); --tag-fu-bd:   rgba(160,160,184,0.22);
+
+  /* ---- elevation ------------------------------------------------------- */
+  /* Dark surfaces need deeper, tighter shadows to read as elevation at all. */
+  --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.50);
+  --shadow-lg:     0 12px 32px rgba(0, 0, 0, 0.60);
+}

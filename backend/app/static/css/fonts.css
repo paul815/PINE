@@ -1,0 +1,48 @@
+/* ==========================================================================
+   PINE — webfont declarations
+   --------------------------------------------------------------------------
+   Previously duplicated inline in all six templates (17-22 @font-face blocks
+   each, ~112 declarations for the 22 files that actually exist). Declared once
+   here instead.
+
+   Paths are relative to this file (static/css/ -> ../fonts/), so no Jinja
+   url_for() is needed and the file can be served as a plain static asset.
+
+   font-display: swap — text paints in the fallback immediately rather than
+   blocking on the woff2, which matters because the boot script sets
+   --font-body before these have loaded.
+   ========================================================================== */
+
+/* ---- Inter — default body face (backend `font_family` default) ---------- */
+@font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/Inter-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/Inter-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/Inter-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/Inter-Bold.woff2') format('woff2'); }
+
+/* ---- Source Sans 3 — user-selectable body face ------------------------- */
+@font-face { font-family: 'Source Sans 3'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/SourceSans3-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/SourceSans3-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/SourceSans3-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/SourceSans3-Bold.woff2') format('woff2'); }
+
+/* ---- Open Sans — user-selectable body face ----------------------------- */
+@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-Bold.woff2') format('woff2'); }
+
+/* ---- Roboto — user-selectable body face (no 600 weight shipped) --------- */
+@font-face { font-family: 'Roboto'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Bold.woff2') format('woff2'); }
+
+/* ---- Space Grotesk — display face (--font-display), not user-selectable -- */
+@font-face { font-family: 'Space Grotesk'; font-weight: 300; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Light.woff2') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Bold.woff2') format('woff2'); }
+
+/* ---- JetBrains Mono — code/timecode face (--font-mono) ------------------ */
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/JetBrainsMono-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/JetBrainsMono-Medium.woff2') format('woff2'); }

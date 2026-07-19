@@ -1,0 +1,3081 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PINE — Recording</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/pine.png') }}" />
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
+<style>html{font-size:{{ init_font_size }}px !important;}</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script>
+var _fontStacks={system:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",'space-grotesk':"'Space Grotesk',sans-serif",inter:"'Inter',sans-serif",'source-sans-3':"'Source Sans 3',sans-serif",'open-sans':"'Open Sans',sans-serif",roboto:"'Roboto',sans-serif"};
+function _applyTheme(t){
+  if(t==='system')t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  document.documentElement.setAttribute('data-theme',t);
+}
+_applyTheme('{{ init_theme }}');
+document.documentElement.style.setProperty('font-size','{{ init_font_size }}'+'px','important');
+document.documentElement.style.setProperty('--font-body',_fontStacks['{{ init_font_family }}']||_fontStacks.inter);
+if('{{ init_theme }}'==='system')window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>_applyTheme('system'));
+fetch('/api/settings').then(r=>r.json()).then(s=>{
+  window.appSettings=s||{};
+  const t=s.theme||'system';
+  _applyTheme(t);
+  if(s.font_size)document.documentElement.style.setProperty('font-size',s.font_size+'px','important');
+  const ff=s.font_family||'system';
+  document.documentElement.style.setProperty('--font-body',_fontStacks[ff]||_fontStacks.inter);
+}).catch(()=>{window.appSettings={};_applyTheme('system');});
+</script>
+<script>
+(function () {
+  const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
+  const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
+  const LEASE_KEY = 'pine_tab_lease_id';
+  let internalNavigation = false;
+  let suppressUnloadPrompt = false;
+  let timer = null;
+  let quitLifecycleStarted = false;
+  let leaseId = '';
+  try {
+    leaseId = sessionStorage.getItem(LEASE_KEY) || '';
+    if (!leaseId) {
+      leaseId = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+      sessionStorage.setItem(LEASE_KEY, leaseId);
+    }
+  } catch (e) {
+    leaseId = 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+  function postSupervisor(path, payload, keepalive) {
+    return fetch(SUPERVISOR_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
+      body: JSON.stringify(payload || {}),
+      keepalive: !!keepalive,
+      mode: keepalive ? 'no-cors' : 'cors',
+    });
+  }
+  function heartbeat() {
+    postSupervisor('/lease/heartbeat', { lease_id: leaseId }, false).catch(() => {});
+  }
+  function shutdownPayload(reason) {
+    return {
+      reason: reason || 'unknown',
+      source: 'recording_page',
+      lease_id: leaseId,
+    };
+  }
+  function releaseAndQuit() {
+    if (quitLifecycleStarted) return;
+    quitLifecycleStarted = true;
+    const payload = shutdownPayload('tab_or_page_closed');
+    try { postSupervisor('/lease/release', { lease_id: leaseId }, true); } catch (e) {}
+    try {
+      const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/api/quit', quitBody);
+    } catch (e) {}
+    try {
+      fetch('/api/quit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+        mode: 'no-cors',
+      });
+    } catch (e) {}
+    try {
+      postSupervisor('/shutdown', payload, true);
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') heartbeat();
+  });
+  function markInternalNavigation() {
+    internalNavigation = true;
+    setTimeout(() => { internalNavigation = false; }, 2000);
+  }
+  function resolveEventElement(event) {
+    const raw = event && event.target;
+    if (!raw) return null;
+    if (raw instanceof Element) return raw;
+    return raw.parentElement instanceof Element ? raw.parentElement : null;
+  }
+  document.addEventListener('click', (event) => {
+    const target = resolveEventElement(event);
+    if (!target) return;
+    const link = target.closest('a[href]');
+    if (link) {
+      const href = link.getAttribute('href') || '';
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        markInternalNavigation();
+      }
+      return;
+    }
+    const withOnclick = target.closest('[onclick]');
+    if (!withOnclick) return;
+    const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
+    if (handlerText.includes('window.location')) {
+      markInternalNavigation();
+    }
+    if (handlerText.includes('fetch(\'/api/quit') || handlerText.includes('fetch("/api/quit')) {
+      suppressUnloadPrompt = true;
+    }
+  }, true);
+  window.addEventListener('beforeunload', (event) => {
+    if (suppressUnloadPrompt || internalNavigation) return;
+    const msg = 'Close PINE tab and stop all background processing?';
+    event.preventDefault();
+    event.returnValue = msg;
+    return msg;
+  });
+  window.addEventListener('pagehide', () => {
+    if (internalNavigation) return;
+    releaseAndQuit();
+  });
+  heartbeat();
+  clearInterval(timer);
+  timer = setInterval(heartbeat, 3000);
+})();
+</script>
+<style>
+@font-face { font-family:'Space Grotesk'; font-weight:300; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Light.woff2") }}') format('woff2'); }
+@font-face { font-family:'Space Grotesk'; font-weight:400; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'Space Grotesk'; font-weight:500; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Space Grotesk'; font-weight:600; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Space Grotesk'; font-weight:700; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-weight:400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'JetBrains Mono'; font-weight:500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Inter'; font-weight:400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'Inter'; font-weight:500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Inter'; font-weight:600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Inter'; font-weight:700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Source Sans 3'; font-weight:400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'Source Sans 3'; font-weight:500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Source Sans 3'; font-weight:600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Source Sans 3'; font-weight:700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Open Sans'; font-weight:400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'Open Sans'; font-weight:500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Open Sans'; font-weight:600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Open Sans'; font-weight:700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family:'Roboto'; font-weight:400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family:'Roboto'; font-weight:500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family:'Roboto'; font-weight:700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Page-local tokens ──
+   The core palette (surfaces, accent, destr, warn, radius, fonts) now comes
+   from static/css/tokens.css — 21 exact duplicates were removed from here.
+   What remains is genuinely specific to the transcript view:
+
+     --active-*        focus ring / glow for the currently-playing utterance
+     --mod-*, --p1..p4 speaker palette (moderator + up to four participants)
+     --amber, --a-*    warning banner. NOT the same colour as --warn-*:
+                       these are darkened for legibility as body text, so
+                       they are kept until that is reconciled deliberately.
+
+   The speaker picker paints its swatches from --<cls>-lbl directly, so
+   these are the single source for speaker colour. */
+:root {
+  --active-ring: hsla(220, 20%, 18%, 0.88);
+  --active-ring-soft: hsla(220, 16%, 36%, 0.28);
+  --active-glow: hsla(220, 22%, 42%, 0.12);
+  --active-surface: hsla(220, 35%, 100%, 0.32);
+  --mod-bg: #e8f2fb; --mod-bd: #bad4ee; --mod-lbl: #2b7bbf;
+  --p1-bg: #e6f5ee; --p1-bd: #b3ddc6; --p1-lbl: #1e8a4a;
+  --p2-bg: #f2e8f8; --p2-bd: #d8b4ec; --p2-lbl: #8030b8;
+  --p3-bg: #faf3e0; --p3-bd: #e8d090; --p3-lbl: #9a6c00;
+  --p4-bg: #fde8e8; --p4-bd: #f0aaaa; --p4-lbl: #b82020;
+  --amber: #c47d0a; --a-dim: rgba(196,125,10,.08); --a-bd: rgba(196,125,10,.22);
+}
+
+[data-theme="dark"] {
+  --active-ring: hsla(210, 30%, 88%, 0.92);
+  --active-ring-soft: hsla(210, 24%, 72%, 0.42);
+  --active-glow: hsla(210, 30%, 68%, 0.18);
+  --active-surface: hsla(210, 24%, 96%, 0.05);
+  --mod-bg: #0f1f2e; --mod-bd: #1a3a55; --mod-lbl: #5da8e0;
+  --p1-bg: #0f221a; --p1-bd: #1a4530; --p1-lbl: #4dbe80;
+  --p2-bg: #221426; --p2-bd: #42225a; --p2-lbl: #c07ae8;
+  --p3-bg: #241d0e; --p3-bd: #4a3a18; --p3-lbl: #d4a940;
+  --p4-bg: #221010; --p4-bd: #4a1818; --p4-lbl: #e05c5c;
+  --amber: #f5a623; --a-dim: rgba(245,166,35,.10); --a-bd: rgba(245,166,35,.25);
+}
+
+html, body { height: 100%; font-family: var(--font-body, 'Inter', system-ui, sans-serif); background: var(--bg); color: var(--fg);
+  line-height: 1.5; -webkit-font-smoothing: antialiased; overflow: hidden; }
+body { font-size: inherit; }
+
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.top-bar {
+  height: 48px; flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 0; padding: 0 16px; z-index: 200;
+}
+.tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
+  padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
+.tb-logo:hover { background: var(--muted); }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
+.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; flex-shrink: 0; }
+.tb-rec-name-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.tb-rec-name { font-size: 0.923rem; font-weight: 500; color: var(--fg); flex: 0 1 auto;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tb-rec-edit {
+  width: 22px; height: 22px; border-radius: var(--radius);
+  background: none; border: none; cursor: pointer; color: var(--muted-fg);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.7; transition: all 0.12s; flex-shrink: 0;
+}
+.tb-rec-edit:hover { color: var(--accent); background: var(--accent-dim); opacity: 1; }
+.tb-rec-edit svg { width: 11px; height: 11px; }
+.tb-rec-name-edit {
+  flex: 1; min-width: 0; font-size: 0.923rem; font-weight: 500; color: var(--fg);
+  background: var(--muted); border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 4px 8px; outline: none; font-family: var(--font-body);
+}
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.proj-pill { user-select: none; }
+.proj-pill.open { border-color: var(--accent-bd); color: var(--fg); background: var(--muted); }
+
+.proj-tooltip {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 310px;
+  background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) * 2); padding: 0;
+  opacity: 0; pointer-events: none;
+  transform: translateY(-6px) scale(.98); transition: all .18s; z-index: 500; overflow: hidden;
+}
+.proj-pill.open .proj-tooltip { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
+.tooltip-row { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+.tooltip-row:last-child { border-bottom: none; }
+.tooltip-lbl { font-size: 0.769rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 4px; }
+.tooltip-val { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; }
+
+.tag-pain, .tag-ins, .tag-del, .tag-conf, .tag-fu { --tag-bg: rgba(0,0,0,.06); --tag-bd: currentColor; }
+.tagged { border-radius: 2px; padding: 0 1px; border-bottom: 1.5px solid; cursor: pointer; }
+/* Tag category colours come from tokens.css so the transcript matches the
+   tags page. These used to be the dark-theme hexes hardcoded flat, which
+   made light theme show a different red/green/amber than tags.html did. */
+.t-pain { background: var(--tag-pain-bg); border-color: var(--tag-pain); }
+.t-ins { background: var(--tag-ins-bg); border-color: var(--tag-ins); }
+.t-del { background: var(--tag-del-bg); border-color: var(--tag-del); }
+.t-conf { background: var(--tag-conf-bg); border-color: var(--tag-conf); }
+.t-fu { background: var(--tag-fu-bg); border-color: var(--tag-fu); }
+.cmt-dot { display: inline-flex; align-items: center; gap: 4px; font-size: 0.769rem; color: var(--accent);
+  background: var(--accent-dim); border: 1px solid var(--accent-bd); border-radius: 4px; padding: 1px 6px;
+  margin: 2px 3px; vertical-align: middle; cursor: pointer; font-family: var(--font-mono);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmt-dot:hover { background: var(--accent-bd); color: var(--fg); }
+.cmt-dot svg { width: 10px; height: 10px; flex-shrink: 0; }
+.comment-anchor {
+  border-radius: 2px;
+  transition: background .15s;
+  background: var(--accent-dim);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.comment-anchor:hover,
+.comment-anchor.cmt-hover-highlight { background: var(--accent-bd); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 0.846rem; font-weight: 500;
+  padding: 3px 9px 3px 7px; border-radius: 99px; cursor: pointer; border: 1px solid transparent; }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.chip .n { font-family: var(--font-mono); font-size: 0.769rem; opacity: .65; }
+.new-tag-form {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px;
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.new-tag-form input {
+  flex: 1; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 10px; font-size: 0.923rem; color: var(--fg);
+  font-family: var(--font-body); outline: none;
+}
+.new-tag-form input:focus { border-color: var(--accent); }
+.new-tag-form input::placeholder { color: var(--muted-fg); }
+
+.cmt-textarea {
+  width: 100%;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 0.923rem;
+  color: var(--fg);
+  font-family: var(--font-body);
+  resize: vertical;
+  outline: none;
+}
+
+.cmt-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+.cmt-action-btn {
+  width: auto;
+  padding: 0 12px;
+}
+
+.cmt-action-btn.is-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.q-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px;
+  margin-bottom: 7px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
+.q-card:hover { border-color: var(--border); }
+.q-card-content { flex: 1; min-width: 0; }
+.q-card-remove { flex-shrink: 0; width: 22px; height: 22px; border-radius: var(--radius); background: none;
+  border: 1px solid transparent; color: var(--muted-fg); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; padding: 0; transition: all .15s; opacity: 0.6; }
+.q-card-remove:hover { background: var(--destr-dim); color: var(--destr); border-color: var(--destr-bd); opacity: 1; }
+.chip-clickable { cursor: pointer; }
+.q-text { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 6px; }
+.q-meta { display: flex; justify-content: space-between; font-size: 0.769rem; font-family: var(--font-mono); color: var(--muted-fg); }
+.cmt-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 11px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
+.cmt-card-content { flex: 1; min-width: 0; }
+.cmt-card-remove { flex-shrink: 0; width: 22px; height: 22px; border-radius: var(--radius); background: none;
+  border: 1px solid transparent; color: var(--muted-fg); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; padding: 0; transition: all .15s; opacity: 0.6; }
+.cmt-card-remove:hover { background: var(--destr-dim); color: var(--destr); border-color: var(--destr-bd); opacity: 1; }
+.cmt-anchor { font-size: 0.846rem; color: var(--muted-fg); font-style: italic; border-left: 2px solid var(--border); padding-left: 8px; margin-bottom: 7px; }
+.cmt-body { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 6px; white-space: pre-wrap; }
+.cmt-meta { font-size: 0.769rem; color: var(--muted-fg); font-family: var(--font-mono); }
+
+.sel-popup {
+  position: fixed; z-index: 1000; width: 270px; height: 400px;
+  background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) * 2);
+  box-shadow: 0 16px 48px rgba(0,0,0,.65); display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none; transition: all .18s; overflow: hidden;
+}
+.sel-popup.show { opacity: 1; pointer-events: all; }
+.sel-highlight { background: var(--accent-dim); border-radius: 2px; }
+.popup-hd { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); font-size: 0.846rem; font-weight: 500; color: var(--muted-fg); }
+.popup-search { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.popup-search input { flex: 1; min-width: 0; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 10px; font-size: 0.923rem; outline: none; }
+.tag-color-swatch {
+  width: 24px; height: 24px; border-radius: var(--radius); flex-shrink: 0;
+  border: 2px solid var(--border); cursor: pointer; padding: 0;
+  transition: border-color .15s, transform .1s;
+}
+.tag-color-swatch:hover { border-color: var(--accent-bd); transform: scale(1.05); }
+.color-picker-popover {
+  position: fixed; z-index: 1100; padding: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transition: opacity .15s;
+}
+.color-picker-popover.show { opacity: 1; pointer-events: all; }
+.spk-popover {
+  position: fixed; z-index: 1200; padding: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transition: opacity .15s;
+  display: flex; flex-direction: column; gap: 7px; min-width: 170px;
+}
+.spk-popover.show { opacity: 1; pointer-events: all; }
+.spk-popover-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--secondary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 7px; font-size: 0.846rem; color: var(--fg);
+  font-family: var(--font-body, 'Space Grotesk', system-ui, sans-serif);
+}
+.spk-popover-input:focus { outline: none; border-color: var(--accent); }
+.spk-color-row { display: flex; gap: 5px; }
+.spk-color-swatch {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
+}
+.spk-color-swatch:hover { transform: scale(1.15); }
+.spk-color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
+.color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 5px; }
+.color-grid .color-swatch {
+  width: 22px; height: 22px; border-radius: 4px; border: 2px solid transparent;
+  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
+}
+.color-grid .color-swatch:hover { transform: scale(1.15); }
+.color-grid .color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
+
+.tag-chip-popover {
+  position: fixed; z-index: 1100; padding: 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transition: opacity .15s; display: flex; flex-direction: column; gap: 10px;
+}
+.tag-chip-popover.show { opacity: 1; pointer-events: all; }
+.tag-chip-popover-colors { display: grid; grid-template-columns: repeat(6, 22px); gap: 5px; }
+.tag-chip-name-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--secondary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 7px; font-size: 0.846rem; color: var(--fg);
+  font-family: var(--font-body, 'Space Grotesk', system-ui, sans-serif);
+}
+.tag-chip-name-input:focus { outline: none; border-color: var(--accent); }
+.tag-chip-popover-colors .color-swatch {
+  width: 22px; height: 22px; border-radius: 4px; border: 2px solid transparent;
+  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
+}
+.tag-chip-popover-colors .color-swatch:hover { transform: scale(1.15); }
+.tag-chip-popover-colors .color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
+.tag-chip-remove-btn { width: 100%; }
+.popup-tags { flex: 1; overflow-y: auto; padding: 5px 8px; }
+.ptag-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius);
+  cursor: pointer; font-size: 0.923rem; color: var(--muted-fg); }
+.ptag-row:hover { background: var(--muted); color: var(--fg); }
+.ptag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.popup-footer { padding: 8px 10px; border-top: 1px solid var(--border); }
+.add-cmt-btn { width: 100%; }
+
+.body { flex: 1; display: flex; overflow: hidden; }
+.left { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+.video-area { flex-shrink: 0; background: #080810; border-bottom: 1px solid var(--border); position: relative; }
+.video-area.audio-only .video-stage { height: 150px; }
+.video-stage { height: 300px; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
+.video-stage video, .video-stage audio { max-width: 100%; max-height: 100%; }
+.video-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted-fg); }
+.video-placeholder svg { width: 36px; height: 36px; opacity: .4; }
+.audio-only-state {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  flex-direction: column; gap: 14px;
+}
+.audio-icon-wrap {
+  width: 56px; height: 56px; border-radius: 50%; background: var(--card); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; color: var(--muted-fg);
+}
+.audio-icon-wrap svg { width: 22px; height: 22px; }
+.audio-label { font-size: 0.923rem; color: var(--muted-fg); font-family: var(--font-mono); }
+
+.timeline-bar {
+  height: 38px; background: var(--card); border-top: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 12px; gap: 10px;
+}
+.play-btn {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .15s, opacity .15s;
+}
+.play-btn:hover { transform: scale(1.08); opacity: 0.85; }
+.play-btn svg { width: 10px; height: 10px; fill: white; margin-left: 1px; }
+.play-btn.paused svg { margin-left: 0; }
+
+.tl-time { font-family: var(--font-mono); font-size: 0.846rem; color: var(--muted-fg); flex-shrink: 0; width: 52px; }
+.tl-time.end { text-align: right; }
+.vol-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.vol-wrap input[type="range"] { width: 70px; height: 4px; accent-color: var(--accent); cursor: pointer; }
+.speed-select { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted-fg); background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; cursor: pointer; flex-shrink: 0; transition: color .15s, border-color .15s; }
+.speed-select:hover { color: var(--fg); border-color: var(--fg); }
+#mediaVideo:fullscreen, #mediaVideo:-webkit-full-screen, #mediaVideo:-ms-fullscreen { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
+#videoStage:fullscreen, #videoStage:-webkit-full-screen, #videoStage:-ms-fullscreen { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background: #080810; }
+
+.tl-track { flex: 1; height: 5px; background: var(--secondary); border-radius: 99px; position: relative; cursor: pointer; }
+.tl-track:hover .tl-fill { filter: brightness(1.15); }
+.tl-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0%; position: relative; pointer-events: none; transition: filter .15s; }
+.tl-thumb { position: absolute; right: -5px; top: 50%; transform: translateY(-50%);
+  width: 12px; height: 12px; border-radius: 50%; background: var(--accent-fg); box-shadow: 0 0 0 2.5px var(--accent);
+  opacity: 0; transition: opacity .15s; }
+.tl-track:hover .tl-thumb { opacity: 1; }
+
+.resize-handle {
+  height: 7px; cursor: row-resize; display: flex; align-items: center; justify-content: center;
+  background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; user-select: none; -webkit-user-select: none;
+}
+.resize-handle:hover, .resize-handle:active { background: var(--secondary); }
+.resize-grip { width: 32px; height: 3px; border-radius: 2px; background: var(--muted-fg); opacity: .35; }
+.resize-handle:hover .resize-grip { opacity: .6; }
+
+.fr-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.fr-label { font-size: 0.8rem; color: var(--muted-fg); }
+.fr-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--fg); font-size: 1rem; }
+.fr-input:focus { outline: none; border-color: var(--accent); }
+.transcript-panel {
+  flex: 1; overflow-y: auto; padding: 12px 14px;
+  scrollbar-width: thin; scrollbar-color: var(--secondary) transparent;
+}
+.transcript-panel::-webkit-scrollbar { width: 4px; }
+.transcript-panel::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 99px; }
+
+.utt {
+  display: flex; gap: 10px; border-radius: var(--radius); padding: 7px 10px; cursor: pointer;
+  border: 1px solid transparent;
+  box-shadow: 0 0 0 0 transparent;
+  transition: border-color .14s, box-shadow .18s, transform .14s, filter .14s;
+  margin-bottom: 2px; position: relative;
+}
+.utt:hover { filter: brightness(1.08); }
+.utt.playing {
+  border-color: var(--active-ring);
+  background-image: linear-gradient(0deg, var(--active-surface), var(--active-surface));
+  box-shadow:
+    inset 0 0 0 1px var(--active-ring-soft),
+    0 0 0 1px var(--active-ring-soft),
+    0 12px 28px var(--active-glow);
+  transform: translateY(-1px);
+  filter: saturate(1.03) brightness(1.04);
+  z-index: 1;
+}
+.utt.playing:hover {
+  box-shadow:
+    inset 0 0 0 1px var(--active-ring),
+    0 0 0 1px var(--active-ring),
+    0 14px 30px var(--active-glow);
+  filter: saturate(1.04) brightness(1.06);
+}
+.utt.playing::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--active-ring);
+  box-shadow: 0 0 0 1px var(--active-ring-soft);
+}
+.utt.mod { background: var(--mod-bg); }
+.utt.p1 { background: var(--p1-bg); }
+.utt.p2 { background: var(--p2-bg); }
+.utt.p3 { background: var(--p3-bg); }
+.utt.p4 { background: var(--p4-bg); }
+
+.utt-ts { font-family: var(--font-mono); font-size: 0.769rem; color: var(--muted-fg); flex-shrink: 0; width: 42px; padding-top: 4px; text-align: right; }
+.utt-inner { flex: 1; min-width: 0; }
+.utt-spk { font-size: 0.846rem; font-weight: 600; margin-bottom: 2px; letter-spacing: .02em; display: inline-block; }
+.utt.mod .utt-spk { color: var(--mod-lbl); }
+.utt.p1 .utt-spk { color: var(--p1-lbl); }
+.utt.p2 .utt-spk { color: var(--p2-lbl); }
+.utt.p3 .utt-spk { color: var(--p3-lbl); }
+.utt.p4 .utt-spk { color: var(--p4-lbl); }
+.utt.playing .utt-ts {
+  color: var(--active-ring);
+  font-weight: 600;
+}
+.utt-spk[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: var(--accent-dim); }
+.utt-text { font-size: 1.154rem; color: var(--fg); line-height: 1.65; user-select: text; }
+.utt-text .word { cursor: pointer; }
+::highlight(pinePendingTagSel) {
+  background-color: hsla(48, 100%, 50%, 0.5);
+  color: inherit;
+  text-shadow: 0 0 0.5px hsla(42, 100%, 22%, 0.35);
+}
+[data-theme="dark"] ::highlight(pinePendingTagSel) {
+  background-color: hsla(48, 90%, 45%, 0.42);
+  text-shadow: 0 0 1px hsla(48, 85%, 8%, 0.45);
+}
+mark.pending-selection-highlight {
+  background: hsla(48, 100%, 50%, 0.48);
+  color: inherit;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  box-shadow: 0 0 0 1px hsla(42, 100%, 40%, 0.35);
+}
+[data-theme="dark"] mark.pending-selection-highlight {
+  background: hsla(48, 90%, 45%, 0.4);
+  box-shadow: 0 0 0 1px hsla(48, 80%, 55%, 0.25);
+}
+
+.right {
+  width: 290px; flex-shrink: 0; border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; background: var(--card);
+}
+.rtab-bar { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.rtab { flex: 1; border-bottom: 2px solid transparent; }
+.rtab-content { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: var(--secondary) transparent; }
+.rtab-content::-webkit-scrollbar { width: 3px; }
+.rtab-content::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 99px; }
+.sec-lbl { font-size: 0.846rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 8px; }
+.right-placeholder { font-size: 0.923rem; font-weight: 400; color: var(--muted-fg); font-style: italic; }
+.right-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 12px; }
+.tags-link-btn { width: 100%; }
+
+.loading-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted-fg); }
+.loading-state p { font-size: 1rem; color: var(--muted-fg); }
+.error-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted-fg); padding: 24px; }
+.error-state p { font-size: 1rem; color: var(--destr); text-align: center; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(5px);
+  z-index: 2000; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .2s; }
+.overlay.show { opacity: 1; pointer-events: all; }
+.modal { width: 380px; background: var(--card); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2); padding: 24px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+  transform: translateY(8px); transition: transform .2s; }
+.overlay.show .modal { transform: translateY(0); }
+.modal-title { font-size: 1.154rem; font-weight: 600; letter-spacing: -.2px; margin-bottom: 6px; }
+.m-sub { font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.5; }
+.m-row { display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 0; border-bottom: 1px solid var(--border); }
+.m-lbl { font-size: 1rem; color: var(--muted-fg); }
+.m-lbl-with-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 44px); }
+.sw { width: 30px; height: 17px; border-radius: 99px; background: var(--secondary);
+  position: relative; cursor: pointer; flex-shrink: 0; transition: background .15s;
+  border: 1px solid var(--border); }
+.sw.on { background: var(--accent); border-color: var(--accent); }
+.sw::after { content: ''; position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--muted-fg); top: 2px; left: 2px; transition: all .15s; }
+.sw.on::after { left: 15px; background: var(--accent-fg); }
+.sw.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.fmt-pick { display: flex; gap: 4px; }
+.import-proj-search-wrap { position: relative; margin-bottom: 10px; }
+.import-s-ico {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--muted-fg); pointer-events: none;
+}
+.import-proj-search-in {
+  width: 100%; height: 30px; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0 10px 0 30px; font-size: 0.923rem; background: var(--muted);
+  color: var(--fg); outline: none; font-family: var(--font-body);
+  transition: border-color 0.15s;
+}
+.import-proj-search-in:focus { border-color: var(--accent); }
+.import-proj-search-in::placeholder { color: var(--muted-fg); }
+.import-proj-scroll { max-height: 220px; overflow-y: auto; margin-bottom: 4px; scrollbar-width: thin; }
+.import-section-lbl {
+  font-size: 0.769rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted-fg); padding: 2px 2px 6px;
+}
+.import-section-list { margin-bottom: 2px; }
+.archive-toggle-btn { width: 100%; gap: 8px; font-size: 0.846rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--font-body); }
+.archive-toggle-btn svg { transition: transform 0.2s; flex-shrink: 0; }
+.archive-toggle-btn.collapsed svg { transform: rotate(-90deg); }
+.archive-badge {
+  margin-left: auto; font-size: 0.769rem; background: var(--secondary);
+  padding: 1px 6px; border-radius: 10px; color: var(--muted-fg);
+  font-family: var(--font-mono);
+}
+.import-proj-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px;
+  border-radius: var(--radius); cursor: pointer; font-size: 0.923rem; color: var(--fg); transition: background 0.1s; }
+.import-proj-item:hover { background: var(--muted); }
+.import-proj-item.sel { background: var(--accent-dim); color: var(--accent); }
+.import-proj-item.sel .import-proj-name { color: var(--accent); }
+.import-proj-tagline { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; width: 100%;
+  font-size: 0.769rem; line-height: 1.35; }
+.import-proj-none { color: var(--muted-fg); font-style: italic; }
+.import-proj-mini { display: inline-flex; align-items: center; gap: 4px; }
+.import-proj-mini-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.import-proj-mini-name { color: var(--muted-fg); }
+.import-tag-list { max-height: 240px; overflow-y: auto; scrollbar-width: thin; }
+.import-tag-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: var(--radius);
+  cursor: pointer; transition: background 0.1s; }
+.import-tag-row:hover { background: var(--muted); }
+.import-tag-row.dup { opacity: 0.4; }
+.import-tag-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.import-tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.import-tag-name { font-size: 0.923rem; color: var(--fg); }
+.import-tag-dup { font-size: 0.769rem; color: var(--muted-fg); font-style: italic; margin-left: auto; }
+.import-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+.import-empty { font-size: 0.923rem; color: var(--muted-fg); font-style: italic; padding: 16px 0; text-align: center; }
+.fmt-hint { font-size: 0.846rem; color: var(--muted-fg); text-align: right; margin-top: -6px; margin-bottom: 4px; }
+.pii-export-time { color: var(--muted-fg); font-weight: 400; }
+.m-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* â•â•â• PARTICIPANT DETAILS â•â•â• */
+.part-select {
+  width: 100%; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 34px 8px 12px; font-size: 1rem; color: var(--fg);
+  font-family: 'Space Grotesk', sans-serif; outline: none; cursor: pointer;
+  transition: border-color .15s; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23606078' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.part-select:focus { border-color: var(--accent); }
+.part-seg-info {
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; margin-top: 10px;
+}
+.part-seg-info-row { margin-bottom: 10px; }
+.part-seg-info-row:last-child { margin-bottom: 0; }
+.part-info-lbl {
+  font-size: 0.692rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 3px;
+}
+.part-info-val { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.5; white-space: pre-wrap; }
+.part-notes-label {
+  font-size: 0.769rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 6px; margin-top: 16px;
+  display: block;
+}
+.part-notes {
+  width: 100%; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px; font-size: 1rem; color: var(--muted-fg);
+  font-family: 'Space Grotesk', sans-serif; resize: vertical; min-height: 80px;
+  outline: none; line-height: 1.5; transition: border-color .15s;
+}
+.part-notes:focus { border-color: var(--accent); color: var(--fg); }
+.part-notes::placeholder { color: var(--muted-fg); font-style: italic; }
+.part-pill-assigned { color: var(--accent); border-color: var(--accent-bd) !important; }
+
+/* â•â•â• TOAST â•â•â• */
+/* Toast and inline save status live in css/save-status.css */
+</style>
+<script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
+</head>
+<body>
+
+<div class="sel-popup" id="selPopup">
+  <div class="popup-hd">Apply code or add comment</div>
+  <div class="popup-search">
+    <button type="button" class="tag-color-swatch" id="tagColorSwatch" onclick="openColorModal(this)" title="Choose code color"></button>
+    <input type="text" id="tagSearchIn" />
+  </div>
+  <div class="popup-tags" id="popupTagList"></div>
+  <div class="popup-footer" id="popupFooterTag">
+    <button type="button" class="add-cmt-btn" onclick="showCommentInput()">
+      <svg viewBox="0 0 12 12" fill="none" width="12" height="12"><path d="M1.5 1.5h9v7H7l-2.5 2.5V8.5H1.5V1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      Add comment
+    </button>
+  </div>
+  <div class="popup-footer" id="popupFooterCmt" style="display:none">
+    <textarea id="cmtTextarea" class="cmt-textarea" rows="3"></textarea>
+    <div class="cmt-actions">
+      <button type="button" class="add-cmt-btn cmt-action-btn" onclick="cancelComment()">Cancel</button>
+      <button type="button" class="add-cmt-btn cmt-action-btn is-primary" onclick="submitComment()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Participant Details Modal -->
+<div class="overlay" id="participantOverlay" onclick="if(event.target===this)closeParticipantModal()">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Participant details</div>
+    <div style="margin-bottom:14px">
+      <div class="part-info-lbl" style="margin-bottom:6px">Segment</div>
+      <select class="part-select" id="partSegSelect">
+        <option value="">— Unassigned —</option>
+      </select>
+    </div>
+    <div id="partSegInfo" style="display:none">
+      <div class="part-seg-info">
+        <div class="part-seg-info-row" id="partSegDescRow">
+          <div class="part-info-lbl">Recruitment criteria</div>
+          <div class="part-info-val" id="partSegDesc"></div>
+        </div>
+        <div class="part-seg-info-row" id="partSegScreenerRow">
+          <div class="part-info-lbl">Screener questions</div>
+          <div class="part-info-val" id="partSegScreener"></div>
+        </div>
+      </div>
+    </div>
+    <label class="part-notes-label" for="partNotes">Additional details</label>
+    <textarea class="part-notes" id="partNotes" rows="4"></textarea>
+    <div class="m-actions">
+      <button class="m-cancel" onclick="closeParticipantModal()">Cancel</button>
+      <button class="m-export-btn" onclick="saveParticipantDetails()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tag Color Picker Popover (positioned near swatch) -->
+<div class="color-picker-popover" id="colorPickerPopover" onclick="event.stopPropagation()">
+  <div class="color-grid" id="colorGrid"></div>
+</div>
+
+<!-- Speaker name + color popover -->
+<div id="speakerPopover" class="spk-popover" onclick="event.stopPropagation()">
+  <input id="speakerPopoverInput" class="spk-popover-input" type="text" />
+  <div class="spk-color-row" id="speakerColorRow"></div>
+</div>
+
+<!-- Tag chip edit popover (color + Remove tag) -->
+<div class="tag-chip-popover" id="tagChipPopover" onclick="event.stopPropagation()">
+  <input type="text" id="tagChipNameInput" class="tag-chip-name-input" placeholder="Code name" />
+  <div class="tag-chip-popover-colors" id="tagChipColorGrid"></div>
+  <button type="button" class="tag-chip-remove-btn" id="tagChipRemoveBtn">Remove code</button>
+</div>
+
+<div class="overlay" id="exportOverlay" onclick="if(event.target===this)closeExport()">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Export this recording</div>
+    <div class="m-sub">Choose what to include in the export.</div>
+    <div class="m-row"><span class="m-lbl">Include comments</span><div class="sw on" id="expComments" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include codes</span><div class="sw on" id="expTags" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include project details</span><div class="sw on" id="expProjectDetails" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include participant details</span><div class="sw on" id="expParticipant" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl m-lbl-with-hint">Include LLM prompt<button type="button" class="hint-tip" aria-label="What Include LLM prompt does" title="When this is on, your saved instruction is added at the very beginning of exported files. Paste the export into an LLM (ChatGPT, Claude, etc.) and the model already knows your goal—synthesis across interviews, a one-recording summary, pulling themes, or a custom task—so you do not have to retype instructions each time.">?</button></span><div class="sw on" id="expPrompt" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row" id="expPiiRow">
+      <span class="m-lbl" id="expPiiLbl">Anonymize PII <span class="pii-export-time" id="expPiiTimeEstimate">(~2 min)</span></span>
+      <div class="sw" id="expPii" onclick="if(!this.classList.contains('disabled'))this.classList.toggle('on')"></div>
+    </div>
+    <div class="m-row" style="border-bottom:none">
+      <span class="m-lbl">Format</span>
+      <div class="fmt-pick" id="expFmt">
+        <button class="fmt-btn on" onclick="pickFmt(this)" data-fmt="markdown" data-hint="Best for further synthesis with AI">Markdown</button>
+        <button class="fmt-btn" onclick="pickFmt(this)" data-fmt="odt" data-hint="Best for sharing and editing in Google Docs">ODT</button>
+      </div>
+    </div>
+    <div class="fmt-hint" id="fmtHint">Best for further synthesis with AI</div>
+    <div class="m-actions">
+      <button class="m-cancel" onclick="closeExport()">Cancel</button>
+      <button class="m-export-btn" id="exportBtn" onclick="doExport()">Export</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="findReplaceOverlay" onclick="if(event.target===this)closeFindReplace()">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Find &amp; replace</div>
+    <div class="m-sub">Mass-fix recurring transcription errors across this recording. Existing codes &amp; comments stay anchored to the same words.</div>
+    <div class="fr-field">
+      <label class="fr-label" for="frFind">Find</label>
+      <input type="text" id="frFind" class="fr-input" placeholder="e.g. kubernetis" autocomplete="off"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();doFindReplace();}" />
+    </div>
+    <div class="fr-field">
+      <label class="fr-label" for="frReplace">Replace with</label>
+      <input type="text" id="frReplace" class="fr-input" placeholder="e.g. Kubernetes" autocomplete="off"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();doFindReplace();}" />
+    </div>
+    <div class="m-row"><span class="m-lbl">Match case</span><div class="sw" id="frMatchCase" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row" style="border-bottom:none"><span class="m-lbl">Whole word only</span><div class="sw" id="frWholeWord" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-actions">
+      <button class="m-cancel" onclick="closeFindReplace()">Cancel</button>
+      <button class="m-export-btn" id="frApplyBtn" onclick="doFindReplace()">Replace all</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="importTagsOverlay" onclick="if(event.target===this)closeImportTags()">
+  <div class="modal" style="width:440px">
+    <div class="modal-title" id="importModalTitle">Import codes from other project</div>
+    <div class="m-sub" id="importModalSub">Select another project to import codes from.</div>
+    <div id="importStep1">
+      <div class="import-proj-search-wrap">
+        <svg class="import-s-ico" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+          <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="importProjSearch" class="import-proj-search-in" placeholder="Search by name…" autocomplete="off" oninput="renderImportProjectPicker()" />
+      </div>
+      <div class="import-proj-scroll" id="importProjBody"></div>
+    </div>
+    <div id="importStep2" style="display:none">
+      <div class="import-tag-list" id="importTagList"></div>
+    </div>
+    <div class="import-actions" id="importActions">
+      <button class="import-back-btn" onclick="closeImportTags()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <header class="top-bar">
+    <a class="tb-logo" href="/" title="Go to projects">
+      <img src="{{ url_for('static', filename='icons/pine.png') }}" alt="PINE icon" class="tb-logo-icon" />
+      <span class="tb-name">PINE</span>
+    </a>
+    <div class="tb-sep"></div>
+    <a class="back-btn" href="/?project={{ project_id }}" id="backBtn">
+      <svg viewBox="0 0 13 13" fill="none" width="13" height="13"><path d="M8 2.5L4 6.5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Back to Project
+    </a>
+    <div class="tb-sep"></div>
+    <div class="tb-rec-name-wrap">
+      <span class="tb-rec-name" id="topbarTitle">Loading…</span>
+      <button class="tb-rec-edit" id="topbarRenameBtn" onclick="beginRenameRecordingTitle()" title="Rename recording">
+        <svg viewBox="0 0 13 13" fill="none"><path d="M9.5 1.5l2 2-7.5 7.5-2.5.5.5-2.5 7.5-7.5z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <span class="save-status" id="pageSaveStatus" role="status" aria-live="polite"></span>
+    <div class="topbar-right">
+      <div class="proj-pill" id="projPill" onclick="toggleProjDetails(event)" style="position:relative">
+        <svg viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 4.5h5M3.5 7h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Project details
+        <div class="proj-tooltip" id="projTooltip">
+          <div id="ttProjectDetails">
+            <div class="tooltip-row"><div class="tooltip-lbl">No project details</div><div class="tooltip-val">—</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="proj-pill" id="partPill" onclick="openParticipantModal()">
+        <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 11c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span id="partPillLabel">Participant details</span>
+      </div>
+      <button class="export-btn" onclick="openFindReplace()" title="Find &amp; replace text across this transcript — fix recurring transcription errors">
+        <svg viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 11 11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Fix text
+      </button>
+      <button class="export-btn" onclick="openExport()">
+        <svg viewBox="0 0 12 12" fill="none"><path d="M6 1v6.5M3.5 5 6 7.5 8.5 5M2 10h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Export
+      </button>
+    </div>
+  </header>
+
+  <div class="body" id="mainBody">
+    <div class="loading-state" id="loadingState">
+      <p>Loading recording…</p>
+    </div>
+    <div class="error-state" id="errorState" style="display:none">
+      <p id="errorMessage"></p>
+      <a href="/" class="back-btn">Back to Projects</a>
+    </div>
+    <div id="contentArea" style="display:none;flex:1;flex-direction:row;overflow:hidden">
+      <div class="left" style="display:flex;flex:1;flex-direction:column;overflow:hidden;min-width:0">
+        <div class="video-area">
+          <div class="video-stage" id="videoStage" onclick="event.preventDefault(); togglePlay()">
+            <div class="video-placeholder" id="mediaPlaceholder">No media</div>
+            <video id="mediaVideo" style="display:none" crossorigin="anonymous" preload="auto"></video>
+            <div id="audioOnlyWrap" style="display:none" class="audio-only-state">
+              <span class="audio-label" id="audioLabel">Audio only</span>
+            </div>
+          </div>
+          <div class="timeline-bar">
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">
+              <svg id="playIco" viewBox="0 0 10 12"><path d="M1 1l8 5-8 5V1z"/></svg>
+            </button>
+            <span class="tl-time" id="curTime">0:00</span>
+            <div class="tl-track" id="tlTrack" onclick="seekTimeline(event)">
+              <div class="tl-fill" id="tlFill"><div class="tl-thumb"></div></div>
+            </div>
+            <span class="tl-time end" id="totalTime">0:00</span>
+            <div class="vol-wrap">
+              <input type="range" id="volSlider" min="0" max="100" value="100" title="Volume" oninput="setVolume(this.value/100)" onclick="event.stopPropagation()"/>
+            </div>
+            <select class="speed-select" id="speedSelect" onchange="setSpeed(this.value)" title="Playback speed">
+              <option value="0.8">0.8&times;</option>
+              <option value="1" selected>1&times;</option>
+              <option value="1.1">1.1&times;</option>
+              <option value="1.25">1.25&times;</option>
+              <option value="1.5">1.5&times;</option>
+              <option value="2">2&times;</option>
+              <option value="3">3&times;</option>
+            </select>
+            <button class="fullscreen-btn" id="fullscreenBtn" onclick="toggleFullscreen()" title="Full screen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="resize-handle" id="resizeHandle"><div class="resize-grip"></div></div>
+        <div class="transcript-panel" id="txPanel" onpointerup="onTextSelect(event)" onmouseup="onTextSelect(event)" onclick="onTranscriptClick(event)"></div>
+      </div>
+      <div class="right">
+        <div class="rtab-bar">
+          <button class="rtab on" onclick="switchTab(this,'tagsPane')"><svg viewBox="0 0 13 13" fill="none" aria-hidden="true" width="13" height="13"><path d="M1.5 7L6.5 2l4.2.3.3 4.2-5 5a1 1 0 01-1.4 0l-3.1-3.1a1 1 0 010-1.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="9" cy="4" r=".8" fill="currentColor"/></svg> Codes</button>
+          <button class="rtab" onclick="switchTab(this,'cmtPane')">Comments</button>
+        </div>
+        <div class="rtab-content" id="tagsPane">
+          <div class="sec-lbl">Project codes</div>
+          <div class="chip-row" id="tagChips"></div>
+          <div class="new-tag-form" id="newTagForm" style="display:none">
+            <button type="button" class="tag-color-swatch" id="newTagColorSwatch" onclick="openColorModal(this,'newTag')" title="Choose code color"></button>
+            <input type="text" id="newTagInput" maxlength="64" />
+          </div>
+          <div class="sec-lbl" style="margin-top:12px">Coded in this recording</div>
+          <div id="taggedQuotes"></div>
+        </div>
+        <div class="rtab-content" id="cmtPane" style="display:none">
+          <div class="sec-lbl">Comments</div>
+          <div id="commentsList"></div>
+        </div>
+        <div class="right-footer">
+          <a href="/project/{{ project_id }}/tags?recording={{ recording_id }}" class="tags-link-btn">
+            <svg viewBox="0 0 13 13" fill="none" aria-hidden="true" width="13" height="13"><path d="M1.5 7L6.5 2l4.2.3.3 4.2-5 5a1 1 0 01-1.4 0l-3.1-3.1a1 1 0 010-1.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="9" cy="4" r=".8" fill="currentColor"/></svg>
+            Work with codes
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROJECT_ID = {{ project_id }};
+const RECORDING_ID = {{ recording_id }};
+const FILE_FORMAT = '{{ file_format }}';
+const API = '/api/projects';
+
+let data = null;
+let mediaEl = null;
+let duration = 0;
+let isVideo = false;
+let lastPlayingIdx = -1;
+let suppressScrollUntil = 0;
+
+// toast() and showSaveStatus() come from js/save-status.js
+
+function fmtTime(secs) {
+  if (!secs || isNaN(secs)) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function fmtTimeLong(secs) {
+  if (!secs || isNaN(secs)) return '0:00';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+const _SPK_CLASSES = ['p1', 'p2', 'p3', 'p4', 'mod'];
+let _speakerClassMap = {};
+function speakerClass(speaker) {
+  if (!speaker) return 'p1';
+  const s = (speaker + '').toLowerCase();
+  if (s.includes('moderator')) return 'mod';
+  if (s.includes('participant 1') || s.includes('p1')) return 'p1';
+  if (s.includes('participant 2') || s.includes('p2')) return 'p2';
+  if (s.includes('participant 3') || s.includes('p3')) return 'p3';
+  if (s.includes('participant 4') || s.includes('p4')) return 'p4';
+  if (!_speakerClassMap[speaker]) {
+    _speakerClassMap[speaker] = _SPK_CLASSES[Object.keys(_speakerClassMap).length % _SPK_CLASSES.length];
+  }
+  return _speakerClassMap[speaker];
+}
+
+async function loadData() {
+  try {
+    if (!window.appSettings || Object.keys(window.appSettings).length === 0) {
+      const sRes = await fetch('/api/settings');
+      window.appSettings = await sRes.json().catch(() => ({}));
+    }
+    const res = await fetch(API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID);
+    data = await res.json();
+    if (data.error) throw new Error(data.error || 'Failed to load');
+    if (data.recording.transcription_status !== 'transcribed') {
+      if (data.recording.transcription_status === 'awaiting_language') {
+        throw new Error('Transcription is paused until you choose the spoken language. Open the project from the main screen and confirm the language in the dialog.');
+      }
+      throw new Error('Recording must be transcribed before opening. Status: ' + (data.recording.transcription_status || 'pending'));
+    }
+    render();
+  } catch (e) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('contentArea').style.display = 'none';
+    document.getElementById('errorState').style.display = 'flex';
+    document.getElementById('errorMessage').textContent = e.message || 'Failed to load recording';
+  }
+}
+
+function initMedia() {
+  const videoFormats = ['mp4', 'mkv', 'webm'];
+  isVideo = videoFormats.includes(FILE_FORMAT);
+  const mediaUrl = API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID + '/media';
+
+  if (isVideo) {
+    mediaEl = document.getElementById('mediaVideo');
+    mediaEl.src = mediaUrl;
+    mediaEl.controls = false;
+  } else {
+    mediaEl = document.createElement('audio');
+    mediaEl.crossOrigin = 'anonymous';
+    mediaEl.src = mediaUrl;
+    document.getElementById('videoStage').appendChild(mediaEl);
+  }
+
+  mediaEl.addEventListener('loadedmetadata', () => {
+    duration = mediaEl.duration || duration;
+    document.getElementById('totalTime').textContent = fmtTimeLong(duration);
+  });
+  mediaEl.addEventListener('timeupdate', onTimeUpdate);
+  mediaEl.addEventListener('play', () => document.getElementById('playBtn').classList.remove('paused'));
+  mediaEl.addEventListener('pause', () => document.getElementById('playBtn').classList.add('paused'));
+  mediaEl.addEventListener('ended', () => document.getElementById('playBtn').classList.add('paused'));
+
+  // Show the player immediately — don't wait for transcript fetch
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('contentArea').style.display = 'flex';
+  document.getElementById('mainBody').style.display = 'flex';
+  document.getElementById('mainBody').style.flexDirection = 'column';
+  document.getElementById('mainBody').style.flex = '1';
+  document.getElementById('mainBody').style.overflow = 'hidden';
+  if (isVideo) {
+    document.getElementById('mediaPlaceholder').style.display = 'none';
+    document.getElementById('audioOnlyWrap').style.display = 'none';
+    document.getElementById('mediaVideo').style.display = 'block';
+  } else {
+    document.getElementById('mediaPlaceholder').style.display = 'none';
+    document.getElementById('mediaVideo').style.display = 'none';
+    document.getElementById('audioOnlyWrap').style.display = 'flex';
+  }
+  document.querySelector('.video-area').classList.toggle('audio-only', !isVideo);
+  document.getElementById('fullscreenBtn').style.display = isVideo ? '' : 'none';
+}
+
+function render() {
+  const rec = data.recording;
+  const proj = data.project;
+  const tx = data.transcript || { segments: [] };
+  duration = rec.duration_seconds || (tx.duration_seconds || 0) || 1;
+
+  const displayName = (rec.original_name || 'Recording').replace(/\.[^.]+$/, '');
+  const topbarEl = document.getElementById('topbarTitle');
+  topbarEl.textContent = displayName;
+  topbarEl.dataset.originalName = rec.original_name || 'Recording';
+
+  if (!isVideo) {
+    document.getElementById('audioLabel').textContent = (rec.original_name || 'Audio').replace(/\.[^.]+$/, '');
+  }
+
+  document.getElementById('totalTime').textContent = fmtTimeLong(duration);
+
+  const ann = data.annotations || {};
+  const tags = data.tags || [];
+
+  // Apply stored speaker label renames
+  const speakerLabels = ann.speaker_labels || {};
+  if (Object.keys(speakerLabels).length) {
+    (tx.segments || []).forEach(seg => {
+      if (seg.speaker && speakerLabels[seg.speaker]) {
+        seg.speaker = speakerLabels[seg.speaker];
+      }
+    });
+  }
+  // Apply stored speaker color choices
+  const speakerColors = ann.speaker_colors || {};
+  Object.entries(speakerColors).forEach(([name, cls]) => { _speakerClassMap[name] = cls; });
+
+  renderTranscript(tx.segments || [], ann.tag_spans || [], ann.comments || []);
+  renderTagsPane(tags, ann.tag_spans || [], tx.segments || []);
+  renderCommentsPane(ann.comments || [], tx.segments || []);
+  renderProjectDetailsTooltip(proj);
+
+  // Adapt UI for single (non-project) transcriptions
+  if (proj.is_system) {
+    document.getElementById('backBtn').href = '/';
+    document.getElementById('backBtn').querySelector('svg').nextSibling.textContent = ' Back';
+    document.getElementById('projPill').style.display = 'none';
+  }
+
+  updatePartPill();
+  updateColorSwatches();
+}
+
+function renderProjectDetailsTooltip(proj) {
+  const mount = document.getElementById('ttProjectDetails');
+  if (!mount) return;
+  const rows = buildProjectDetailsRows(proj || {});
+  if (!rows.length) {
+    mount.innerHTML = '<div class="tooltip-row"><div class="tooltip-lbl">No project details</div><div class="tooltip-val">—</div></div>';
+    return;
+  }
+  mount.innerHTML = rows.map(row => (
+    '<div class="tooltip-row"><div class="tooltip-lbl">' + esc(row.label) + '</div><div class="tooltip-val">' + row.valueHtml + '</div></div>'
+  )).join('');
+}
+
+function buildProjectDetailsRows(proj) {
+  const rows = [];
+  const excludedTitles = new Set(['description', 'stakeholders', 'methodology', 'interview guide']);
+
+  const pushText = (label, raw) => {
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (!value) return;
+    rows.push({ label, valueHtml: esc(value).replace(/\n/g, '<br>') });
+  };
+  const pushList = (label, raw, numbered) => {
+    if (!Array.isArray(raw)) return;
+    const items = raw.map(v => String(v || '').trim()).filter(Boolean);
+    if (!items.length) return;
+    const valueHtml = items.map((item, idx) => (
+      numbered ? (idx + 1) + '. ' + esc(item) : esc(item)
+    )).join('<br>');
+    rows.push({ label, valueHtml });
+  };
+
+  // Include all text-heavy project fields except explicitly excluded ones.
+  pushText('Research objective', proj.objective);
+  pushList('Research questions', proj.research_questions, true);
+  pushList('Hypotheses', proj.hypotheses, false);
+  pushText('Summary', proj.summary);
+  pushText('Key findings', proj.key_findings);
+  pushText('Recommendations', proj.recommendations);
+  pushText('Results and recommendations', proj.results_recommendations);
+  pushText('Further steps', proj.further_steps);
+
+  const customBlocks = Array.isArray(proj.custom_sections) ? proj.custom_sections : [];
+  const countedTitles = {};
+  const customRows = [];
+  for (const block of customBlocks) {
+    const content = typeof block?.content === 'string' ? block.content.trim() : '';
+    if (!content) continue;
+    const title = (typeof block?.title === 'string' ? block.title.trim() : '') || 'Other';
+    if (excludedTitles.has(title.toLowerCase())) continue;
+    countedTitles[title] = (countedTitles[title] || 0) + 1;
+    customRows.push({ title, content });
+  }
+
+  const seenTitles = {};
+  for (const row of customRows) {
+    seenTitles[row.title] = (seenTitles[row.title] || 0) + 1;
+    const suffix = countedTitles[row.title] > 1 ? ' ' + seenTitles[row.title] : '';
+    rows.push({
+      label: row.title + suffix,
+      valueHtml: esc(row.content).replace(/\n/g, '<br>'),
+    });
+  }
+
+  return rows;
+}
+
+function renderTranscript(segments, tagSpans, comments) {
+  selectionHighlightMarks = [];
+  clearPendingSelectionCssHighlight();
+  _speakerClassMap = {};
+  const panel = document.getElementById('txPanel');
+  const tagMap = {}; (data.tags || []).forEach(t => tagMap[t.id] = t);
+
+  // Merge consecutive segments from the same speaker into one block per speaker turn
+  const merged = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const prev = merged[merged.length - 1];
+    if (prev && (prev.speaker || '').trim() === (seg.speaker || '').trim()) {
+      prev.text = (prev.text || '').trim() + ' ' + (seg.text || '').trim();
+      prev.end = seg.end;
+      prev.indices.push(i);
+    } else {
+      merged.push({
+        start: seg.start,
+        end: seg.end,
+        text: seg.text || '',
+        speaker: seg.speaker || '',
+        indices: [i],
+      });
+    }
+  }
+
+  panel.innerHTML = merged.map((m, i) => {
+    const cls = speakerClass(m.speaker);
+    const ts = fmtTime(m.start);
+    let text = (m.text || '').trim();
+    const indices = m.indices || [];
+    const firstIdx = indices[0];
+    const segTags = tagSpans.filter(t => {
+      const endSeg = t.end_segment_idx ?? t.segment_idx;
+      return indices.some(idx => idx >= t.segment_idx && idx <= endSeg);
+    });
+    const segComments = comments.filter(c => {
+      const endSeg = c.end_segment_idx ?? c.segment_idx;
+      return indices.some(idx => idx >= c.segment_idx && idx <= endSeg);
+    });
+    const offsetByIdx = {};
+    let off = 0;
+    indices.forEach(idx => {
+      offsetByIdx[idx] = off;
+      off += (segments[idx]?.text || '').trim().length + 1;
+    });
+    const mergedWords = [];
+    indices.forEach(idx => {
+      const seg = segments[idx];
+      const offset = offsetByIdx[idx] || 0;
+      const segText = (seg?.text || '').trim();
+      if (seg?.words && seg.words.length) {
+        let pos = 0;
+        for (const w of seg.words) {
+          const word = (w.word || '').trim();
+          if (!word) continue;
+          let idxInSeg = segText.indexOf(word, pos);
+          // MLX / other STT: token spacing may not substring-match; avoid duplicate-render glitches.
+          if (idxInSeg < 0) idxInSeg = pos;
+          const cStart = offset + idxInSeg;
+          const cEnd = cStart + word.length;
+          mergedWords.push({ word, start: parseFloat(w.start) || 0, charStart: cStart, charEnd: cEnd });
+          pos = idxInSeg + word.length;
+          while (pos < segText.length && /[\s\u00A0]/.test(segText[pos])) pos++;
+        }
+      }
+    });
+    function wrapWords(chStart, chEnd) {
+      const overlapping = mergedWords.filter(w => w.charStart < chEnd && w.charEnd > chStart).sort((a, b) => a.charStart - b.charStart);
+      if (!overlapping.length) return esc(text.slice(chStart, chEnd));
+      let out = '';
+      let p = chStart;
+      for (const w of overlapping) {
+        const wStart = Math.max(w.charStart, chStart);
+        const wEnd = Math.min(w.charEnd, chEnd);
+        if (wStart > p) out += esc(text.slice(p, wStart));
+        if (w.charStart >= chStart && w.charEnd <= chEnd) {
+          out += `<span class="word" data-start="${w.start}">${esc(w.word)}</span>`;
+        } else {
+          out += esc(text.slice(wStart, wEnd));
+        }
+        p = wEnd;
+      }
+      if (p < chEnd) out += esc(text.slice(p, chEnd));
+      return out;
+    }
+    const allSpans = [
+      ...segTags.map(t => ({ ...t, type: 'tag' })),
+      ...segComments.map(c => ({ ...c, type: 'comment' }))
+    ];
+    allSpans.sort((a, b) => {
+      function sortKey(s) {
+        // Cross-block span in end/middle block: starts at 0
+        if (s.end_segment_idx != null && !indices.includes(s.segment_idx)) return 0;
+        return (s.merged_start != null) ? s.merged_start : (offsetByIdx[s.segment_idx] || 0) + (s.start_char || 0);
+      }
+      return sortKey(a) - sortKey(b);
+    });
+    let html = '';
+    let pos = 0;
+    allSpans.forEach((s) => {
+      let start, end;
+      if ((s.type === 'tag' || s.type === 'comment') && s.end_segment_idx != null) {
+        const startInBlock = indices.includes(s.segment_idx);
+        const endInBlock = indices.includes(s.end_segment_idx);
+        const endCap = s.end_merged_end ?? s.end_seg_end_char;
+        if (startInBlock && endInBlock) {
+          start = s.merged_start;
+          end = (endCap != null ? endCap : text.length);
+        } else if (startInBlock) {
+          start = s.merged_start;
+          end = text.length;
+        } else if (endInBlock) {
+          start = 0;
+          end = (endCap != null ? endCap : text.length);
+        } else {
+          start = 0;
+          end = text.length;
+        }
+      } else if (s.merged_start != null && s.merged_end != null) {
+        start = s.merged_start;
+        end = s.merged_end;
+      } else {
+        const offset = offsetByIdx[s.segment_idx] || 0;
+        start = offset + (s.start_char || 0);
+        end = offset + (s.end_char || 0);
+      }
+      if (end <= pos) return;
+      const clippedStart = Math.max(start, pos);
+      if (clippedStart > pos) html += wrapWords(pos, clippedStart);
+      if (s.type === 'tag') {
+        const tag = tagMap[s.tag_id] || {};
+        const col = tagColor(tag.color);
+        html += `<span class="tagged" style="background:${col}22;border-color:${col}" data-span="${JSON.stringify(s).replace(/"/g, '&quot;')}">${wrapWords(clippedStart, end)}</span>`;
+      } else {
+        const preview = esc((s.text || '').slice(0, 30));
+        const endSegForDot = s.end_segment_idx != null ? s.end_segment_idx : s.segment_idx;
+        const showCmtDot = indices.includes(endSegForDot);
+        const dotHtml = showCmtDot
+          ? ` <span class="cmt-dot" title="${esc(s.text || '')}" onclick="event.stopPropagation();highlightComment('${s.id || ''}')"><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 1.5h9v7H7l-2.5 2.5V8.5H1.5V1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>${preview}</span>`
+          : '';
+        html += `<span class="comment-anchor" data-comment-id="${esc(s.id || '')}">${wrapWords(clippedStart, end)}${dotHtml}</span>`;
+      }
+      pos = end;
+    });
+    if (pos < text.length) html += wrapWords(pos, text.length);
+
+    const textHtml = html || esc(text);
+    return `<div class="utt ${cls}" data-idx="${firstIdx}" data-indices="${indices.join(',')}" data-start="${m.start}">
+      <span class="utt-ts">${ts}</span>
+      <div class="utt-inner">
+        <span class="utt-spk" onclick="openSpeakerEdit(this)" title="Double-click to rename">${esc(m.speaker || 'Speaker')}</span>
+        <div class="utt-text">${textHtml || '\u00A0'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshTranscript() {
+  const tx = data?.transcript || { segments: [] };
+  const ann = data?.annotations || {};
+  renderTranscript(tx.segments || [], ann.tag_spans || [], ann.comments || []);
+}
+
+function renderTagsPane(tags, tagSpans, segments) {
+  const chipsEl = document.getElementById('tagChips');
+  const quotesEl = document.getElementById('taggedQuotes');
+  const tagMap = {}; tags.forEach(t => tagMap[t.id] = t);
+  chipsEl.innerHTML = tags.map(t => {
+    const n = tagSpans.filter(s => s.tag_id === t.id).length;
+    const col = tagColor(t.color);
+    return `<span class="chip chip-clickable" style="background:${col}22;color:${col};border-color:${col}" data-tag-id="${esc(t.id)}" data-tag-name="${esc(t.name)}" title="${esc(t.description || '')}" onclick="openTagChipPopover(this, event)"><div class="dot" style="background:${col}"></div>${esc(t.name)} <span class="n">${n}</span></span>`;
+  }).join('')
+    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" onclick="showNewTagForm()">+ New code</span>`
+    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" title="Copy codes from another project" onclick="openImportTagsModal()">&rarr; Import from other project</span>`;
+  const quotes = [];
+  tagSpans.forEach(sp => {
+    const seg = segments[sp.segment_idx];
+    if (!seg) return;
+    const tag = tagMap[sp.tag_id];
+    const text = anchorTextFromAnnotationSpan(sp, segments)
+      || sp.anchor_text
+      || (seg.text || '').slice(sp.start_char, sp.end_char);
+    quotes.push({ text, tag, start: seg.start, span: sp });
+  });
+  quotesEl.innerHTML = quotes.map(q => {
+    const sp = q.span;
+    const spanData = `data-span-id="${esc(sp.id || '')}" data-seg="${sp.segment_idx}" data-tag-id="${esc(sp.tag_id)}" data-start="${sp.start_char}" data-end="${sp.end_char}"`;
+    return `<div class="q-card" ${spanData}><div class="q-card-content" onclick="seekTo(${q.start})"><div class="q-text">${esc(q.text)}</div><div class="q-meta"><span><span class="q-tag-dot" style="background:${tagColor(q.tag?.color)}"></span>${esc(q.tag?.name || '')}</span><span>${fmtTime(q.start)}</span></div></div><button type="button" class="q-card-remove" onclick="event.stopPropagation();removeTagSpan(this)" title="Remove this code from selection">&times;</button></div>`;
+  }).join('') || '<div class="right-placeholder">No coded quotes yet. Highlight text to apply a code.</div>';
+}
+
+const TAG_PALETTE = [
+  '#f04f4f', '#34c97a', '#f5a623', '#5da8e0', '#a0a0b8', '#e91e63',
+  '#9c27b0', '#00bcd4', '#8bc34a', '#ff5722', '#607d8b', '#795548'
+];
+let selectedTagColor = '#a0a0b8';
+let _colorPickerCloseHandler = null;
+
+function tagColor(c) {
+  // Strict hex validation — never let an arbitrary string reach a style attr.
+  if (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
+  const map = { pain: '#f04f4f', ins: '#34c97a', del: '#f5a623', conf: '#5da8e0', fu: '#a0a0b8' };
+  return map[c] || '#a0a0b8';
+}
+
+// Collision-resistant id (Date.now() alone collides within the same ms).
+function uid() {
+  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+// Build a unique tag id from a name. Two different names that share the same
+// 24-char slug prefix would otherwise collide into one tag.
+function uniqueTagId(name, tags) {
+  const base = 'tag_' + name.toLowerCase().replace(/\s/g, '_').replace(/[^\w]/g, '_').slice(0, 24);
+  const taken = new Set((tags || []).map(t => t.id));
+  let id = base, n = 2;
+  while (taken.has(id)) id = base + '_' + (n++);
+  return id;
+}
+function findTagByName(name, tags) {
+  const n = (name || '').trim().toLowerCase();
+  return (tags || []).find(t => (t.name || '').trim().toLowerCase() === n) || null;
+}
+
+function updateColorSwatches() {
+  const swatch = document.getElementById('tagColorSwatch');
+  const newSwatch = document.getElementById('newTagColorSwatch');
+  if (swatch) { swatch.style.background = selectedTagColor; }
+  if (newSwatch) { newSwatch.style.background = selectedTagColor; }
+}
+
+function openColorModal(swatchEl, context) {
+  const popover = document.getElementById('colorPickerPopover');
+  const grid = document.getElementById('colorGrid');
+  grid.innerHTML = TAG_PALETTE.map(hex =>
+    `<button type="button" class="color-swatch ${hex === selectedTagColor ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="pickColor('${hex}','${context || ''}')"></button>`
+  ).join('');
+  const rect = swatchEl.getBoundingClientRect();
+  popover.style.left = rect.left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+  popover.style.right = 'auto';
+  popover.style.bottom = 'auto';
+  if (rect.bottom + 80 > window.innerHeight - 10) {
+    popover.style.top = (rect.top - 4) + 'px';
+    popover.style.transform = 'translateY(-100%)';
+  } else {
+    popover.style.transform = 'none';
+  }
+  popover.classList.add('show');
+  _colorPickerCloseHandler = (e) => {
+    if (!popover.contains(e.target) && !swatchEl.contains(e.target)) {
+      closeColorModal();
+    }
+  };
+  setTimeout(() => document.addEventListener('click', _colorPickerCloseHandler), 0);
+}
+
+function closeColorModal() {
+  if (_colorPickerCloseHandler) {
+    document.removeEventListener('click', _colorPickerCloseHandler);
+    _colorPickerCloseHandler = null;
+  }
+  document.getElementById('colorPickerPopover').classList.remove('show');
+}
+
+function pickColor(hex, context) {
+  selectedTagColor = hex;
+  updateColorSwatches();
+  closeColorModal();
+  if (context === 'newTag') {
+    const input = document.getElementById('newTagInput');
+    if (input) setTimeout(() => input.focus(), 50);
+  }
+  renderPopupTags(document.getElementById('tagSearchIn')?.value || '');
+}
+
+function renderCommentsPane(comments, segments) {
+  const el = document.getElementById('commentsList');
+  el.innerHTML = comments.map(c => {
+    const anchor = anchorTextFromAnnotationSpan(c, segments)
+      || c.anchor_text
+      || (() => {
+        const seg = segments[c.segment_idx];
+        return seg ? (seg.text || '').slice(c.start_char, c.end_char) : '';
+      })();
+    const cid = c.id || '';
+    return `<div class="cmt-card" id="cmt-${cid}" data-comment-id="${esc(cid)}" onmouseenter="highlightCommentSpan('${esc(cid)}', true)" onmouseleave="highlightCommentSpan('${esc(cid)}', false)"><div class="cmt-card-content"><div class="cmt-anchor">"${esc(anchor)}"</div><div class="cmt-body">${esc(c.text || '')}</div><div class="cmt-meta">${c.created_at || '—'}</div></div><button type="button" class="cmt-card-remove" onclick="event.stopPropagation();removeComment(this)" title="Remove this comment">&times;</button></div>`;
+  }).join('') || '<div class="right-placeholder">No comments yet. Highlight text and click Add comment.</div>';
+}
+
+function removeComment(btnEl) {
+  const card = btnEl.closest('.cmt-card');
+  if (!card) return;
+  const commentId = card.dataset.commentId;
+  if (!commentId) return;
+  const ann = data.annotations || {};
+  ann.comments = (ann.comments || []).filter(c => (c.id || '') !== commentId);
+  saveAnnotations(ann);
+  renderTranscript(data.transcript?.segments || [], ann.tag_spans || [], ann.comments || []);
+  renderCommentsPane(ann.comments || [], data.transcript?.segments || []);
+  toast('Comment removed');
+}
+
+function highlightCommentSpan(commentId, on) {
+  document.querySelectorAll(`.comment-anchor[data-comment-id="${commentId}"]`).forEach((el) => {
+    el.classList.toggle('cmt-hover-highlight', on);
+  });
+}
+
+function highlightComment(id) {
+  switchTab(document.querySelectorAll('.rtab')[1], 'cmtPane');
+  const c = document.getElementById('cmt-' + id);
+  if (c) c.scrollIntoView({ behavior: 'smooth' });
+}
+
+let savedRange = null;
+let savedSelectionText = '';
+let pendingSelectionInfo = null;
+let selectionHighlightMarks = [];
+let ignoreNextTranscriptClose = false;
+let popupClosedByClickOutside = false;
+
+const PENDING_TAG_SELECTION_HIGHLIGHT_NAME = 'pinePendingTagSel';
+
+function clearPendingSelectionCssHighlight() {
+  try {
+    if (window.CSS && CSS.highlights) {
+      CSS.highlights.delete(PENDING_TAG_SELECTION_HIGHLIGHT_NAME);
+    }
+  } catch (_) {}
+}
+
+function removeSelectionHighlight() {
+  clearPendingSelectionCssHighlight();
+  selectionHighlightMarks.forEach(el => { if (el && el.parentNode) el.parentNode.removeChild(el); });
+  selectionHighlightMarks = [];
+  try { window.getSelection().removeAllRanges(); } catch (_) {}
+}
+
+/** Intersection of a DOM Range with the contents of a single node (e.g. .utt-text). */
+function intersectRangeWithNodeContents(range, node) {
+  if (!range || range.collapsed || !node) return null;
+  const bounds = document.createRange();
+  bounds.selectNodeContents(node);
+  if (range.compareBoundaryPoints(Range.END_TO_START, bounds) <= 0) return null;
+  if (range.compareBoundaryPoints(Range.START_TO_END, bounds) >= 0) return null;
+  const r = document.createRange();
+  if (range.compareBoundaryPoints(Range.START_TO_START, bounds) < 0) {
+    r.setStart(bounds.startContainer, bounds.startOffset);
+  } else {
+    r.setStart(range.startContainer, range.startOffset);
+  }
+  if (range.compareBoundaryPoints(Range.END_TO_END, bounds) > 0) {
+    r.setEnd(bounds.endContainer, bounds.endOffset);
+  } else {
+    r.setEnd(range.endContainer, range.endOffset);
+  }
+  if (r.collapsed) return null;
+  return r;
+}
+
+function rangeIntersectsTextNode(range, textNode) {
+  if (!range || range.collapsed || textNode.nodeType !== Node.TEXT_NODE || !textNode.length) return false;
+  const nr = document.createRange();
+  nr.selectNodeContents(textNode);
+  if (range.compareBoundaryPoints(Range.END_TO_START, nr) <= 0) return false;
+  if (range.compareBoundaryPoints(Range.START_TO_END, nr) >= 0) return false;
+  return true;
+}
+
+function wrapTextSliceInMark(textNode, start, end) {
+  if (!textNode || !textNode.parentNode || start >= end) return null;
+  const parent = textNode.parentNode;
+  const doc = textNode.ownerDocument;
+  const full = textNode.nodeValue || '';
+  const before = full.slice(0, start);
+  const mid = full.slice(start, end);
+  const after = full.slice(end);
+  if (!mid) return null;
+  const mark = doc.createElement('mark');
+  mark.className = 'pending-selection-highlight';
+  const ref = textNode;
+  if (before) parent.insertBefore(doc.createTextNode(before), ref);
+  parent.insertBefore(mark, ref);
+  mark.appendChild(doc.createTextNode(mid));
+  if (after) parent.insertBefore(doc.createTextNode(after), ref);
+  parent.removeChild(ref);
+  return mark;
+}
+
+/** DOM fallback when CSS Custom Highlight API is unavailable; splits text nodes so nested spans do not break wrapping. */
+function wrapRangeInMarksViaTextNodes(range) {
+  const marks = [];
+  if (!range || range.collapsed) return marks;
+  let root = range.commonAncestorContainer;
+  if (root.nodeType !== Node.ELEMENT_NODE) root = root.parentElement;
+  const uttText = root && root.closest ? root.closest('.utt-text') : null;
+  if (!uttText) return marks;
+  const specs = [];
+  const walker = uttText.ownerDocument.createTreeWalker(uttText, NodeFilter.SHOW_TEXT, null);
+  let tn;
+  while ((tn = walker.nextNode())) {
+    if (!rangeIntersectsTextNode(range, tn)) continue;
+    let s = 0;
+    let e = tn.length;
+    if (tn === range.startContainer) s = range.startOffset;
+    if (tn === range.endContainer) e = range.endOffset;
+    if (s < e) specs.push({ tn, s, e });
+  }
+  for (let i = specs.length - 1; i >= 0; i--) {
+    const { tn, s, e } = specs[i];
+    if (!tn.parentNode) continue;
+    const m = wrapTextSliceInMark(tn, s, e);
+    if (m) marks.push(m);
+  }
+  return marks;
+}
+
+/**
+ * Cross-utterance pending selection: always insert <mark> via text-node splits.
+ * We do not rely on CSS Custom Highlight API as the only path — many WebViews expose
+ * CSS.highlights but do not paint ::highlight, which left users with no visible selection.
+ */
+function applySelectionHighlightVisual() {
+  clearPendingSelectionCssHighlight();
+}
+
+function closeSelectionPopup(byClickOutside) {
+  const pop = document.getElementById('selPopup');
+  if (pop && pop.classList.contains('show')) {
+    pop.classList.remove('show');
+    removeSelectionHighlight();
+    pendingSelectionInfo = null;
+    savedSelectionText = '';
+    const sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
+    if (byClickOutside) popupClosedByClickOutside = true;
+  }
+}
+
+function activeFieldHasTextSelection() {
+  const ae = document.activeElement;
+  if (!ae || (ae.tagName !== 'INPUT' && ae.tagName !== 'TEXTAREA')) return false;
+  try {
+    const a = ae.selectionStart;
+    const b = ae.selectionEnd;
+    return typeof a === 'number' && typeof b === 'number' && b > a;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Popover steals focus — Ctrl/Cmd+C still copies the saved quote unless the user copies from an input/textarea. */
+function copyPendingSelectionOnCopyEvent(e) {
+  const pop = document.getElementById('selPopup');
+  if (!pop || !pop.classList.contains('show')) return false;
+  const text = savedSelectionText || '';
+  if (text.length < 2) return false;
+  if (activeFieldHasTextSelection()) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  e.clipboardData.setData('text/plain', text);
+  return true;
+}
+
+function onTextSelect(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (e.type === 'mouseup' && typeof PointerEvent !== 'undefined') return;
+  if (e.target.closest('.utt-spk')) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.toString().trim().length < 2) {
+    setTimeout(() => { if (window.getSelection().isCollapsed) document.getElementById('selPopup').classList.remove('show'); }, 120);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  savedRange = range.cloneRange();
+  savedSelectionText = sel.toString().trim();
+  removeSelectionHighlight();
+  pendingSelectionInfo = getSelectionSegmentInfo();
+  const rect = range.getBoundingClientRect();
+  applySelectionHighlightVisual();
+  const pop = document.getElementById('selPopup');
+  let left = rect.left, top = rect.bottom + 6;
+  if (left + 270 > window.innerWidth - 10) left = window.innerWidth - 280;
+  if (top + 400 > window.innerHeight - 10) top = rect.top - 406;
+  pop.style.left = Math.max(8, left) + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
+  pop.classList.add('show');
+  ignoreNextTranscriptClose = true;
+  const tagSearchEl = document.getElementById('tagSearchIn');
+  tagSearchEl.value = '';
+  tagSearchEl.oninput = () => filterPopupTags(tagSearchEl.value);
+  tagSearchEl.onkeydown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSelectionPopup(false);
+      return;
+    }
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    commitTagSearch();
+  };
+  updateColorSwatches();
+  renderPopupTags('');
+  setTimeout(() => {
+    tagSearchEl.focus();
+    if (savedRange) {
+      try { const s = window.getSelection(); s.removeAllRanges(); s.addRange(savedRange.cloneRange()); } catch (_) {}
+    }
+  }, 0);
+}
+
+function renderPopupTags(filter) {
+  const tags = data.tags || [];
+  const list = document.getElementById('popupTagList');
+  list.innerHTML = tags.filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase())).map(t =>
+    `<div class="ptag-row" onclick="applyTag('${t.id}')"><div class="ptag-dot" style="background:${tagColor(t.color)}"></div>${esc(t.name)}</div>`
+  ).join('');
+  if (filter.length > 1 && !tags.some(t => t.name.toLowerCase() === filter.toLowerCase())) {
+    list.innerHTML += `<div class="ptag-row" onclick="createAndApplyTag('${esc(filter)}')"><div class="ptag-dot" style="background:${selectedTagColor}"></div>Create "${esc(filter)}"</div>`;
+  }
+}
+
+function filterPopupTags(v) { renderPopupTags(v); }
+
+function commitTagSearch() {
+  const pop = document.getElementById('selPopup');
+  if (!pop || !pop.classList.contains('show')) return;
+  const tagFooter = document.getElementById('popupFooterTag');
+  if (tagFooter && tagFooter.style.display === 'none') return;
+  const filter = (document.getElementById('tagSearchIn').value || '').trim();
+  if (!filter) return;
+  const tags = data.tags || [];
+  const lower = filter.toLowerCase();
+  const exact = tags.find(t => (t.name || '').toLowerCase() === lower);
+  if (exact) {
+    applyTag(exact.id);
+    return;
+  }
+  const filtered = tags.filter(t => (t.name || '').toLowerCase().includes(lower));
+  if (filtered.length === 1) {
+    applyTag(filtered[0].id);
+    return;
+  }
+  if (filter.length > 1) {
+    void createAndApplyTag(filter);
+  }
+}
+
+/** Merged speaker turns (same rules as renderTranscript) for transcript-only anchor text. */
+function mergedSpeakerBlocksForAnchor(segments) {
+  const merged = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const prev = merged[merged.length - 1];
+    if (prev && (prev.speaker || '').trim() === (seg.speaker || '').trim()) {
+      prev.text = ((prev.text || '').trim() + ' ' + (seg.text || '').trim()).trim();
+      prev.indices.push(i);
+    } else {
+      merged.push({
+        speaker: seg.speaker || '',
+        indices: [i],
+        text: (seg.text || '').trim(),
+      });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Quote text from segment data only (no timestamps / speaker labels from DOM).
+ * span: segment_idx, start_char, end_char, merged_start?, merged_end?, end_segment_idx?, end_merged_end?
+ */
+function anchorTextFromAnnotationSpan(span, segments) {
+  if (!segments?.length || span.segment_idx == null) return '';
+  const blocks = mergedSpeakerBlocksForAnchor(segments);
+  const findBlock = (idx) => blocks.find(b => b.indices.includes(idx));
+  const startBlock = findBlock(span.segment_idx);
+  if (!startBlock) return '';
+  const mt = startBlock.text;
+
+  if (span.end_segment_idx != null) {
+    const endBlock = findBlock(span.end_segment_idx);
+    if (!endBlock) return '';
+    const endOff = span.end_merged_end ?? span.end_seg_end_char;
+    if (startBlock === endBlock) {
+      const ms = span.merged_start ?? 0;
+      const me = endOff ?? span.merged_end ?? mt.length;
+      return mt.slice(Math.max(0, ms), Math.min(mt.length, me));
+    }
+    const ms = span.merged_start ?? 0;
+    const meFirst = span.merged_end ?? mt.length;
+    const first = mt.slice(Math.max(0, ms), Math.min(mt.length, meFirst));
+    const et = endBlock.text;
+    const ec = endOff ?? 0;
+    const second = et.slice(0, Math.min(et.length, ec));
+    // Include whole speaker blocks BETWEEN start and end, otherwise a selection
+    // spanning 3+ blocks silently drops the middle ones.
+    const si = blocks.indexOf(startBlock);
+    const ei = blocks.indexOf(endBlock);
+    const middle = (si >= 0 && ei > si + 1) ? blocks.slice(si + 1, ei).map(b => b.text) : [];
+    return [first, ...middle, second].join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  if (span.merged_start != null && span.merged_end != null) {
+    return mt.slice(
+      Math.max(0, span.merged_start),
+      Math.min(mt.length, span.merged_end)
+    );
+  }
+
+  const seg = segments[span.segment_idx];
+  if (!seg) return '';
+  const st = (seg.text || '').trim();
+  const sc = span.start_char ?? 0;
+  const ec = span.end_char ?? st.length;
+  return st.slice(Math.max(0, sc), Math.min(st.length, ec));
+}
+
+function getSelectionSegmentInfo() {
+  if (!savedRange) return null;
+  const selected = (savedSelectionText || savedRange.toString() || '').trim();
+  if (!selected) return null;
+  const node = savedRange.startContainer;
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const utt = el?.closest?.('.utt');
+  if (!utt) return null;
+  const idx = parseInt(utt.dataset.idx, 10);
+  const textEl = utt.querySelector('.utt-text');
+  if (!textEl) return null;
+  if (!textEl.contains(savedRange.startContainer)) return null;
+  const text = (textEl.textContent || '').trim();
+  const endInSameUtt = textEl.contains(savedRange.endContainer);
+  let startPos, endPos;
+  try {
+    const r1 = document.createRange();
+    r1.setStart(textEl, 0);
+    r1.setEnd(savedRange.startContainer, savedRange.startOffset);
+    startPos = r1.toString().length;
+    if (endInSameUtt) {
+      const r2 = document.createRange();
+      r2.setStart(textEl, 0);
+      r2.setEnd(savedRange.endContainer, savedRange.endOffset);
+      endPos = r2.toString().length;
+    } else {
+      // Selection spans across utterance blocks — clip highlight to end of this block
+      endPos = text.length;
+    }
+  } catch (_) { return null; }
+  // For cross-utt selections, also try to capture end in downstream blocks
+  let endSegmentIdx = null;
+  let endSegStartChar = null;
+  let endSegEndChar = null;
+  if (!endInSameUtt) {
+    const endNode = savedRange.endContainer;
+    const endEl = endNode.nodeType === Node.TEXT_NODE ? endNode.parentElement : endNode;
+    const endUtt = endEl?.closest?.('.utt');
+    if (endUtt && endUtt !== utt) {
+      const endTextEl = endUtt.querySelector('.utt-text');
+      if (endTextEl && endTextEl.contains(savedRange.endContainer)) {
+        try {
+          const r3 = document.createRange();
+          r3.setStart(endTextEl, 0);
+          r3.setEnd(savedRange.endContainer, savedRange.endOffset);
+          const endCharInBlock = r3.toString().length;
+          const endIndicesStr = endUtt.dataset.indices;
+          const endIndices = endIndicesStr ? endIndicesStr.split(',').map(Number).filter(n => !isNaN(n)) : [];
+          if (endIndices.length) {
+            endSegmentIdx = endIndices[0];
+            endSegStartChar = 0;
+            endSegEndChar = endCharInBlock;
+          }
+        } catch (_) {}
+      }
+    }
+  }
+  const startChar = Math.min(startPos, endPos);
+  const endChar = Math.min(text.length, Math.max(startPos, endPos));
+  if (startChar >= endChar) return null;
+  const indicesStr = utt.dataset.indices;
+  const indices = indicesStr ? indicesStr.split(',').map(Number).filter(n => !isNaN(n)) : [idx];
+  if (!indices.length) return null;
+  const segments = data.transcript?.segments || [];
+  let offset = 0;
+  let segmentIdx = indices[0];
+  let segStartChar = startChar;
+  let segEndChar = endChar;
+  for (const i of indices) {
+    const segText = (segments[i]?.text || '').trim();
+    const nextOffset = offset + segText.length + 1;
+    if (startChar < nextOffset) {
+      segmentIdx = i;
+      segStartChar = Math.max(0, startChar - offset);
+      segEndChar = Math.min(segText.length, endChar - offset);
+      break;
+    }
+    offset = nextOffset;
+  }
+  const result = {
+    segment_idx: segmentIdx,
+    start_char: segStartChar,
+    end_char: segEndChar,
+    merged_start: startChar,
+    merged_end: endChar,
+  };
+  if (endSegmentIdx != null) {
+    result.end_segment_idx = endSegmentIdx;
+    result.end_seg_start_char = endSegStartChar;
+    result.end_seg_end_char = endSegEndChar;
+  }
+  result.anchor_text = anchorTextFromAnnotationSpan(result, segments);
+  return result;
+}
+
+function applyTag(tagId) {
+  const info = pendingSelectionInfo || getSelectionSegmentInfo();
+  if (!info) { document.getElementById('selPopup').classList.remove('show'); removeSelectionHighlight(); pendingSelectionInfo = null; return; }
+  const ann = data.annotations || {};
+  ann.tag_spans = ann.tag_spans || [];
+  const span = {
+    id: uid(),
+    segment_idx: info.segment_idx,
+    start_char: info.start_char,
+    end_char: info.end_char,
+    merged_start: info.merged_start,
+    merged_end: info.merged_end,
+    tag_id: tagId,
+    anchor_text: info.anchor_text
+  };
+  if (info.end_segment_idx != null) {
+    span.end_segment_idx = info.end_segment_idx;
+    span.end_merged_end = info.end_seg_end_char;
+  }
+  ann.tag_spans.push(span);
+  saveAnnotations(ann);
+  removeSelectionHighlight();
+  pendingSelectionInfo = null;
+  document.getElementById('selPopup').classList.remove('show');
+  renderTranscript(data.transcript?.segments || [], ann.tag_spans, ann.comments || []);
+  renderTagsPane(data.tags || [], ann.tag_spans, data.transcript?.segments || []);
+}
+
+function removeTagSpan(btnEl) {
+  const card = btnEl.closest('.q-card');
+  if (!card) return;
+  const spanId = card.dataset.spanId;
+  const segmentIdx = parseInt(card.dataset.seg, 10);
+  const tagId = card.dataset.tagId;
+  const startChar = parseInt(card.dataset.start, 10);
+  const endChar = parseInt(card.dataset.end, 10);
+  if (isNaN(segmentIdx) || !tagId) return;
+  const ann = data.annotations || {};
+  ann.tag_spans = (ann.tag_spans || []).filter(sp => {
+    // Prefer the stable span id; fall back to the position tuple for legacy
+    // spans created before ids existed (so they remain removable).
+    if (spanId && sp.id) return sp.id !== spanId;
+    return !(sp.segment_idx === segmentIdx && sp.tag_id === tagId && sp.start_char === startChar && sp.end_char === endChar);
+  });
+  saveAnnotations(ann);
+  renderTranscript(data.transcript?.segments || [], ann.tag_spans, ann.comments || []);
+  renderTagsPane(data.tags || [], ann.tag_spans, data.transcript?.segments || []);
+  toast('Code removed from selection');
+}
+
+let _editingTagId = null;
+let _tagChipPopoverCloseHandler = null;
+
+function openTagChipPopover(chipEl, e) {
+  e.stopPropagation();
+  const tagId = chipEl?.dataset?.tagId;
+  const tagName = chipEl?.dataset?.tagName || tagId;
+  if (!tagId) return;
+  _editingTagId = tagId;
+  const tag = (data.tags || []).find(t => t.id === tagId);
+  const currentCol = tag ? tagColor(tag.color) : '#a0a0b8';
+  const popover = document.getElementById('tagChipPopover');
+  const grid = document.getElementById('tagChipPopover').querySelector('.tag-chip-popover-colors');
+  grid.innerHTML = TAG_PALETTE.map(hex =>
+    `<button type="button" class="color-swatch ${hex === currentCol ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="updateTagColor('${hex}')"></button>`
+  ).join('');
+  const rect = chipEl.getBoundingClientRect();
+  popover.style.left = rect.left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+  popover.style.right = 'auto';
+  popover.style.bottom = 'auto';
+  if (rect.bottom + 120 > window.innerHeight - 10) {
+    popover.style.top = (rect.top - 4) + 'px';
+    popover.style.transform = 'translateY(-100%)';
+  } else {
+    popover.style.transform = 'none';
+  }
+  popover.classList.add('show');
+  const popRect = popover.getBoundingClientRect();
+  if (popRect.right > window.innerWidth - 8) {
+    popover.style.left = Math.max(8, window.innerWidth - popRect.width - 8) + 'px';
+  }
+  const nameInput = document.getElementById('tagChipNameInput');
+  nameInput.value = tag ? tag.name : tagName;
+  nameInput._origName = nameInput.value;
+  nameInput.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); nameInput.blur(); } };
+  nameInput.onblur = () => updateTagName();
+  document.getElementById('tagChipRemoveBtn').onclick = () => removeTagFromProjectById(tagId, tagName);
+  _tagChipPopoverCloseHandler = (ev) => {
+    if (!popover.contains(ev.target) && !chipEl.contains(ev.target)) closeTagChipPopover();
+  };
+  setTimeout(() => document.addEventListener('mousedown', _tagChipPopoverCloseHandler), 0);
+}
+
+function closeTagChipPopover() {
+  if (_tagChipPopoverCloseHandler) {
+    document.removeEventListener('mousedown', _tagChipPopoverCloseHandler);
+    _tagChipPopoverCloseHandler = null;
+  }
+  const popover = document.getElementById('tagChipPopover');
+  if (popover) popover.classList.remove('show');
+  _editingTagId = null;
+}
+
+async function updateTagName() {
+  const nameInput = document.getElementById('tagChipNameInput');
+  const newName = (nameInput?.value || '').trim();
+  if (!_editingTagId || !newName || newName === nameInput._origName) return;
+  const tags = (data.tags || []).map(t => t.id === _editingTagId ? { ...t, name: newName } : t);
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags }) });
+    if (!res.ok) throw new Error('Server error');
+    data.tags = tags;
+    nameInput._origName = newName;
+    renderTagsPane(data.tags || [], data.annotations?.tag_spans || [], data.transcript?.segments || []);
+    renderTranscript(data.transcript?.segments || [], data.annotations?.tag_spans || [], data.annotations?.comments || []);
+    renderPopupTags(document.getElementById('tagSearchIn')?.value || '');
+    // Rename is an autosave on blur, so it reports in place rather than as a toast.
+    showPageSaved('saved');
+  } catch (e) {
+    showPageSaved('error');
+    toast('Couldn’t rename code: ' + e.message, true);
+  }
+}
+
+async function updateTagColor(hex) {
+  if (!_editingTagId) return;
+  const tags = (data.tags || []).map(t => t.id === _editingTagId ? { ...t, color: hex } : t);
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags }) });
+    if (!res.ok) throw new Error('Server error');
+    data.tags = tags;
+    renderTagsPane(data.tags || [], data.annotations?.tag_spans || [], data.transcript?.segments || []);
+    renderTranscript(data.transcript?.segments || [], data.annotations?.tag_spans || [], data.annotations?.comments || []);
+    renderPopupTags(document.getElementById('tagSearchIn')?.value || '');
+    closeTagChipPopover();
+    toast('Code color updated');
+  } catch (e) {
+    toast('Failed to update color: ' + e.message, true);
+  }
+}
+
+async function removeTagFromProjectById(tagId, tagName) {
+  if (!confirm('Remove code "' + (tagName || tagId) + '" from project? This will remove all usages in this recording.')) return;
+  closeTagChipPopover();
+  const ann = data.annotations || {};
+  ann.tag_spans = (ann.tag_spans || []).filter(sp => sp.tag_id !== tagId);
+  const tags = (data.tags || []).filter(t => t.id !== tagId);
+  try {
+    await fetch(API + '/' + PROJECT_ID + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags }) });
+    data.tags = tags;
+    saveAnnotations(ann);
+    renderTranscript(data.transcript?.segments || [], ann.tag_spans, ann.comments || []);
+    renderTagsPane(data.tags || [], ann.tag_spans, data.transcript?.segments || []);
+    toast('Code removed');
+  } catch (e) {
+    toast('Failed to remove code: ' + e.message, true);
+  }
+}
+
+async function removeTagFromProject(btnEl) {
+  const tagId = btnEl?.dataset?.tagId;
+  const tagName = btnEl?.dataset?.tagName || tagId;
+  if (!tagId) return;
+  await removeTagFromProjectById(tagId, tagName);
+}
+
+async function createAndApplyTag(name) {
+  const tags = data.tags || [];
+  const existing = findTagByName(name, tags);
+  if (existing) { applyTag(existing.id); return; }
+  const id = uniqueTagId(name, tags);
+  tags.push({ id, name, color: selectedTagColor, description: '', group_id: null });
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags }) });
+    if (!res.ok) throw new Error('Server error');
+    data.tags = tags;
+  } catch (e) { toast('Failed to create code: ' + e.message, true); return; }
+  applyTag(id);
+}
+
+let pendingCommentInfo = null;
+
+function showCommentInput() {
+  pendingCommentInfo = pendingSelectionInfo || getSelectionSegmentInfo();
+  if (!pendingCommentInfo) return;
+  document.getElementById('popupFooterTag').style.display = 'none';
+  document.getElementById('popupFooterCmt').style.display = 'block';
+  const ta = document.getElementById('cmtTextarea');
+  ta.value = '';
+  ta.onkeydown = function(e) {
+    if (e.key === 'Enter') {
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        submitComment();
+      }
+    }
+  };
+  setTimeout(() => ta.focus(), 50);
+}
+
+function cancelComment() {
+  pendingCommentInfo = null;
+  document.getElementById('popupFooterCmt').style.display = 'none';
+  document.getElementById('popupFooterTag').style.display = 'block';
+  const tagSearchEl = document.getElementById('tagSearchIn');
+  if (tagSearchEl) setTimeout(() => tagSearchEl.focus(), 0);
+}
+
+function submitComment() {
+  const text = document.getElementById('cmtTextarea').value.trim();
+  if (!text || !pendingCommentInfo) { cancelComment(); return; }
+  pendingSelectionInfo = null;
+  const ann = data.annotations || {};
+  ann.comments = ann.comments || [];
+  const anchorText = pendingCommentInfo.anchor_text || '';
+  ann.comments.push({ ...pendingCommentInfo, anchor_text: anchorText, text, id: 'c' + uid(), created_at: new Date().toLocaleString() });
+  saveAnnotations(ann);
+  pendingCommentInfo = null;
+  removeSelectionHighlight();
+  document.getElementById('selPopup').classList.remove('show');
+  document.getElementById('popupFooterCmt').style.display = 'none';
+  document.getElementById('popupFooterTag').style.display = 'block';
+  renderTranscript(data.transcript?.segments || [], ann.tag_spans || [], ann.comments);
+  renderCommentsPane(ann.comments, data.transcript?.segments || []);
+  switchTab(document.querySelectorAll('.rtab')[1], 'cmtPane');
+}
+
+function showNewTagForm() {
+  const form = document.getElementById('newTagForm');
+  const input = document.getElementById('newTagInput');
+  form.style.display = 'flex';
+  input.value = '';
+  input.focus();
+}
+
+function hideNewTagForm() {
+  document.getElementById('newTagForm').style.display = 'none';
+  document.getElementById('newTagInput').value = '';
+}
+
+async function saveNewTag() {
+  const input = document.getElementById('newTagInput');
+  const name = (input.value || '').trim();
+  if (!name) return;
+  hideNewTagForm();
+  await createTagOnly(name);
+}
+
+async function createTagOnly(name) {
+  const tags = data.tags || [];
+  if (findTagByName(name, tags)) {
+    toast('Code already exists');
+    return;
+  }
+  const id = uniqueTagId(name, tags);
+  tags.push({ id, name, color: selectedTagColor, description: '', group_id: null });
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags }) });
+    if (!res.ok) throw new Error('Server error');
+    data.tags = tags;
+    renderTagsPane(data.tags || [], data.annotations?.tag_spans || [], data.transcript?.segments || []);
+    toast('Code created');
+  } catch (e) {
+    toast('Failed to create code: ' + e.message, true);
+  }
+}
+
+/* ── Import tags from another project ── */
+let _importSourceTags = [];
+let _importProjectsCache = { active: [], archived: [] };
+let _importArchiveOpen = false;
+
+function importProjTagsHtml(tags) {
+  if (!tags || !tags.length) {
+    return '<span class="import-proj-none">No codes</span>';
+  }
+  return tags.map(t =>
+    `<span class="import-proj-mini"><span class="import-proj-mini-dot" style="background:${tagColor(t.color)}"></span><span class="import-proj-mini-name">${esc(t.name)}</span></span>`
+  ).join('');
+}
+
+async function enrichImportProjectTags(arr) {
+  return Promise.all(arr.map(async (p) => {
+    if (Array.isArray(p.tags)) return p;
+    try {
+      const tr = await fetch(API + '/' + p.id + '/tags', { cache: 'no-store' });
+      if (!tr.ok) return { ...p, tags: [] };
+      const tags = await tr.json();
+      return { ...p, tags: Array.isArray(tags) ? tags : [] };
+    } catch {
+      return { ...p, tags: [] };
+    }
+  }));
+}
+
+function importProjItemHtml(p) {
+  return `<div class="import-proj-item" onclick='selectImportProject(${p.id}, this, ${JSON.stringify(p.name)})'>
+    <span class="import-proj-name">${esc(p.name)}</span>
+    <div class="import-proj-tagline">${importProjTagsHtml(p.tags || [])}</div>
+  </div>`;
+}
+
+function toggleImportArchive() {
+  _importArchiveOpen = !_importArchiveOpen;
+  const sec = document.getElementById('importArchiveSection');
+  const btn = document.getElementById('importArchiveToggle');
+  if (sec) sec.style.display = _importArchiveOpen ? 'block' : 'none';
+  if (btn) btn.classList.toggle('collapsed', !_importArchiveOpen);
+}
+
+function renderImportProjectPicker() {
+  const body = document.getElementById('importProjBody');
+  if (!body) return;
+  const q = (document.getElementById('importProjSearch')?.value || '').trim().toLowerCase();
+  const match = (p) => !q || (p.name || '').toLowerCase().includes(q);
+  const act = _importProjectsCache.active.filter(match);
+  const arch = _importProjectsCache.archived.filter(match);
+
+  if (!act.length && !arch.length) {
+    body.innerHTML = '<div class="import-empty">No matching projects.</div>';
+    return;
+  }
+
+  let html = '';
+  if (act.length) {
+    html += '<div class="import-section-lbl">Active</div>';
+    html += '<div class="import-section-list">' + act.map(importProjItemHtml).join('') + '</div>';
+  }
+  if (arch.length) {
+    const collapsedCls = _importArchiveOpen ? '' : ' collapsed';
+    const archiveBtnTop = act.length ? '' : ' style="border-top:none"';
+    html += `<button type="button" class="archive-toggle-btn import-archive-toggle${collapsedCls}" id="importArchiveToggle" onclick="toggleImportArchive()"${archiveBtnTop}>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Archive
+      <span class="archive-badge">${arch.length}</span>
+    </button>`;
+    html += `<div class="import-section-list import-archive-section" id="importArchiveSection" style="display:${_importArchiveOpen ? 'block' : 'none'}">` +
+      arch.map(importProjItemHtml).join('') + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+async function openImportTagsModal() {
+  const overlay = document.getElementById('importTagsOverlay');
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importModalTitle').textContent = 'Import codes from other project';
+  document.getElementById('importModalSub').textContent = 'Select another project to import codes from.';
+  document.getElementById('importActions').innerHTML = '<button class="import-back-btn" onclick="closeImportTags()">Cancel</button>';
+  const searchEl = document.getElementById('importProjSearch');
+  if (searchEl) searchEl.value = '';
+  _importArchiveOpen = false;
+  const body = document.getElementById('importProjBody');
+  body.innerHTML = '<div class="import-empty">Loading…</div>';
+  overlay.classList.add('show');
+  try {
+    const res = await fetch(API + '?include_tags=1', { cache: 'no-store' });
+    const json = await res.json();
+    let active = [];
+    let archived = [];
+    if (Array.isArray(json)) {
+      active = json.filter(p => p.id !== PROJECT_ID);
+    } else {
+      active = (json.active || []).filter(p => p.id !== PROJECT_ID);
+      archived = (json.archived || []).filter(p => p.id !== PROJECT_ID);
+    }
+    active = await enrichImportProjectTags(active);
+    archived = await enrichImportProjectTags(archived);
+    _importProjectsCache = { active, archived };
+    if (!active.length && !archived.length) {
+      body.innerHTML = '<div class="import-empty">No other projects found.</div>';
+      return;
+    }
+    renderImportProjectPicker();
+  } catch (e) {
+    body.innerHTML = '<div class="import-empty">Failed to load projects.</div>';
+  }
+}
+
+async function selectImportProject(pid, el, projName) {
+  document.querySelectorAll('.import-proj-item').forEach(i => i.classList.remove('sel'));
+  el.classList.add('sel');
+  try {
+    const res = await fetch(API + '/' + pid + '/tags');
+    _importSourceTags = await res.json();
+    if (!_importSourceTags.length) {
+      toast('That project has no codes');
+      return;
+    }
+    showImportStep2(projName);
+  } catch (e) {
+    toast('Failed to load codes', true);
+  }
+}
+
+function showImportStep2(projName) {
+  document.getElementById('importStep1').style.display = 'none';
+  document.getElementById('importStep2').style.display = '';
+  document.getElementById('importModalTitle').textContent = 'Pick tags to import';
+  document.getElementById('importModalSub').textContent = 'From: ' + projName;
+  const existing = (data.tags || []).map(t => t.name.toLowerCase());
+  const listEl = document.getElementById('importTagList');
+  listEl.innerHTML = _importSourceTags.map((t, i) => {
+    const isDup = existing.includes(t.name.toLowerCase());
+    const col = tagColor(t.color);
+    return `<label class="import-tag-row${isDup ? ' dup' : ''}">
+      <input type="checkbox" class="import-tag-check" data-idx="${i}" ${isDup ? 'disabled' : 'checked'}>
+      <span class="import-tag-dot" style="background:${col}"></span>
+      <span class="import-tag-name">${esc(t.name)}</span>
+      ${isDup ? '<span class="import-tag-dup">already exists</span>' : ''}
+    </label>`;
+  }).join('');
+  const anyNew = _importSourceTags.some(t => !existing.includes(t.name.toLowerCase()));
+  document.getElementById('importActions').innerHTML =
+    '<button class="import-back-btn" onclick="importTagsGoBack()">Back</button>' +
+    `<button class="import-confirm-btn" onclick="confirmImportTags()" ${anyNew ? '' : 'disabled'}>Import selected</button>`;
+}
+
+function importTagsGoBack() {
+  document.getElementById('importStep1').style.display = '';
+  document.getElementById('importStep2').style.display = 'none';
+  document.getElementById('importModalTitle').textContent = 'Import codes from other project';
+  document.getElementById('importModalSub').textContent = 'Select another project to import codes from.';
+  document.getElementById('importActions').innerHTML = '<button class="import-back-btn" onclick="closeImportTags()">Cancel</button>';
+}
+
+async function confirmImportTags() {
+  const checks = document.querySelectorAll('.import-tag-check:checked:not(:disabled)');
+  if (!checks.length) { toast('No codes selected'); return; }
+  const tags = data.tags || [];
+  const existingNames = tags.map(t => t.name.toLowerCase());
+  let added = 0;
+  checks.forEach(cb => {
+    const src = _importSourceTags[parseInt(cb.dataset.idx)];
+    if (!src || existingNames.includes(src.name.toLowerCase())) return;
+    const id = 'tag_' + src.name.toLowerCase().replace(/\s/g, '_').replace(/[^\w]/g, '_').slice(0, 24);
+    const uniqueId = tags.find(t => t.id === id) ? id + '_' + Date.now() : id;
+    tags.push({ id: uniqueId, name: src.name, color: src.color });
+    existingNames.push(src.name.toLowerCase());
+    added++;
+  });
+  if (!added) { toast('No new codes to import'); closeImportTags(); return; }
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/tags', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags })
+    });
+    if (!res.ok) throw new Error('Server error');
+    data.tags = tags;
+    renderTagsPane(data.tags, data.annotations?.tag_spans || [], data.transcript?.segments || []);
+    toast(added + ' tag' + (added > 1 ? 's' : '') + ' imported');
+    closeImportTags();
+  } catch (e) {
+    toast('Failed to import codes: ' + e.message, true);
+  }
+}
+
+function closeImportTags() {
+  document.getElementById('importTagsOverlay').classList.remove('show');
+  _importSourceTags = [];
+}
+
+let _spkPopoverCloseHandler = null;
+let _spkPopoverTarget = null;
+let _spkPopoverSelectedCls = null;
+
+function openSpeakerEdit(el) {
+  event.stopPropagation();
+  closeSpeakerPopover();
+  const speaker = el.textContent.trim();
+  _spkPopoverTarget = el;
+  _spkPopoverSelectedCls = speakerClass(speaker);
+
+  const input = document.getElementById('speakerPopoverInput');
+  input.value = speaker;
+
+  const row = document.getElementById('speakerColorRow');
+  // Swatches paint from the same --<cls>-lbl token the transcript rows use,
+  // so they follow the theme. They previously hardcoded the dark-theme hexes
+  // and so disagreed with the rendered rows in light theme.
+  row.innerHTML = _SPK_CLASSES.map(cls =>
+    `<button type="button" class="spk-color-swatch${cls === _spkPopoverSelectedCls ? ' selected' : ''}" style="background:var(--${cls}-lbl)" data-cls="${cls}" onclick="commitSpeakerEdit('${cls}')"></button>`
+  ).join('');
+
+  const popover = document.getElementById('speakerPopover');
+  const rect = el.getBoundingClientRect();
+  popover.style.left = rect.left + 'px';
+  popover.style.top = (rect.bottom + 4) + 'px';
+  popover.style.transform = 'none';
+  if (rect.bottom + 100 > window.innerHeight - 10) {
+    popover.style.top = rect.top + 'px';
+    popover.style.transform = 'translateY(-100%)';
+  }
+  popover.classList.add('show');
+
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+
+  input.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); commitSpeakerEdit(_spkPopoverSelectedCls); }
+    if (e.key === 'Escape') { e.preventDefault(); closeSpeakerPopover(); }
+  };
+
+  _spkPopoverCloseHandler = () => closeSpeakerPopover();
+  setTimeout(() => document.addEventListener('click', _spkPopoverCloseHandler), 0);
+}
+
+function closeSpeakerPopover() {
+  if (_spkPopoverCloseHandler) {
+    document.removeEventListener('click', _spkPopoverCloseHandler);
+    _spkPopoverCloseHandler = null;
+  }
+  document.getElementById('speakerPopover').classList.remove('show');
+  _spkPopoverTarget = null;
+}
+
+function commitSpeakerEdit(cls) {
+  if (!_spkPopoverTarget) return;
+  const el = _spkPopoverTarget;
+  const oldName = el.textContent.trim();
+  const newName = document.getElementById('speakerPopoverInput').value.trim() || oldName;
+
+  closeSpeakerPopover();
+
+  // Update DOM: rename .utt-spk labels + recolor .utt blocks for this speaker
+  document.querySelectorAll('.utt').forEach(utt => {
+    const spk = utt.querySelector('.utt-spk');
+    if (spk && spk.textContent.trim() === oldName) {
+      spk.textContent = newName;
+      _SPK_CLASSES.forEach(c => utt.classList.remove(c));
+      utt.classList.add(cls);
+    }
+  });
+
+  // Update in-memory segment data
+  (data.transcript?.segments || []).forEach(seg => {
+    if (seg.speaker === oldName) seg.speaker = newName;
+  });
+
+  // Update _speakerClassMap
+  _speakerClassMap[newName] = cls;
+  if (newName !== oldName) delete _speakerClassMap[oldName];
+
+  // Save to annotations
+  const ann = data.annotations || {};
+  ann.speaker_labels = ann.speaker_labels || {};
+  ann.speaker_colors = ann.speaker_colors || {};
+  if (newName !== oldName) {
+    ann.speaker_labels[oldName] = newName;
+    Object.keys(ann.speaker_labels).forEach(k => {
+      if (k !== oldName && ann.speaker_labels[k] === oldName) ann.speaker_labels[k] = newName;
+    });
+    delete ann.speaker_colors[oldName];
+  }
+  ann.speaker_colors[newName] = cls;
+  saveAnnotations(ann);
+}
+
+async function saveAnnotations(ann) {
+  data.annotations = ann;
+  try {
+    const res = await fetch(API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID + '/annotations', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ann),
+    });
+    if (!res.ok) throw new Error('Server error');
+    showPageSaved('saved');
+  } catch (e) {
+    showPageSaved('error', () => saveAnnotations(ann));
+    toast('Couldn’t save annotations: ' + e.message, true);
+  }
+}
+
+function scrollUttIntoView(utt) {
+  const panel = document.getElementById('txPanel');
+  if (!panel || !utt) return;
+  const targetTop = utt.offsetTop;
+  const targetHeight = utt.offsetHeight;
+  const panelHeight = panel.clientHeight;
+  const scrollTop = targetTop - (panelHeight / 2) + (targetHeight / 2);
+  panel.scrollTop = Math.max(0, scrollTop);
+}
+
+function onTimeUpdate() {
+  const t = mediaEl.currentTime;
+  document.getElementById('curTime').textContent = fmtTime(t);
+  const pct = duration > 0 ? (t / duration) * 100 : 0;
+  document.getElementById('tlFill').style.width = pct + '%';
+
+  const utts = document.querySelectorAll('.utt');
+  let playingIdx = -1;
+  utts.forEach((u, i) => {
+    const start = parseFloat(u.dataset.start);
+    const end = u.dataset.end ? parseFloat(u.dataset.end) : (u.nextElementSibling ? parseFloat(u.nextElementSibling.dataset.start) : duration);
+    const isPlaying = t >= start && t < end;
+    u.classList.toggle('playing', isPlaying);
+    if (isPlaying) playingIdx = i;
+  });
+
+  if (playingIdx >= 0 && playingIdx !== lastPlayingIdx) {
+    lastPlayingIdx = playingIdx;
+    if (Date.now() >= suppressScrollUntil) scrollUttIntoView(utts[playingIdx]);
+  } else if (playingIdx < 0) lastPlayingIdx = -1;
+}
+
+function togglePlay() {
+  if (!mediaEl) return;
+  if (mediaEl.paused) {
+    mediaEl.play();
+    document.getElementById('playIco').innerHTML = '<rect x="1" y="1" width="3" height="10"/><rect x="6" y="1" width="3" height="10"/>';
+    document.getElementById('playBtn').classList.remove('paused');
+  } else {
+    mediaEl.pause();
+    document.getElementById('playIco').innerHTML = '<path d="M1 1l8 5-8 5V1z"/>';
+    document.getElementById('playBtn').classList.add('paused');
+  }
+}
+
+function seekTimeline(e) {
+  if (!mediaEl || !duration) return;
+  const r = document.getElementById('tlTrack').getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  mediaEl.currentTime = pct * duration;
+}
+
+function setVolume(v) {
+  if (mediaEl) mediaEl.volume = Math.max(0, Math.min(1, v));
+}
+
+function setSpeed(v) {
+  const rate = parseFloat(v);
+  if (mediaEl) mediaEl.playbackRate = rate;
+}
+
+function toggleFullscreen() {
+  const videoEl = document.getElementById('mediaVideo');
+  const stageEl = document.getElementById('videoStage');
+  const target = videoEl && videoEl.style.display !== 'none' ? videoEl : stageEl;
+  if (!target) return;
+  if (!document.fullscreenElement) {
+    target.requestFullscreen?.() || target.webkitRequestFullscreen?.() || target.msRequestFullscreen?.();
+  } else {
+    document.exitFullscreen?.() || document.webkitExitFullscreen?.() || document.msExitFullscreen?.();
+  }
+}
+
+function onTranscriptClick(e) {
+  const pop = document.getElementById('selPopup');
+  if (pop && pop.classList.contains('show')) {
+    if (ignoreNextTranscriptClose) {
+      ignoreNextTranscriptClose = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    closeSelectionPopup(false);
+    return;
+  }
+  if (popupClosedByClickOutside) {
+    popupClosedByClickOutside = false;
+    return;
+  }
+  const utt = e.target.closest('.utt');
+  if (!utt || e.target.closest('.cmt-dot') || e.target.closest('.utt-spk')) return;
+  if (window.getSelection().toString().length > 0) return;
+  const wordSpan = e.target.closest('.word');
+  if (!wordSpan || wordSpan.dataset.start == null || wordSpan.dataset.start === '') return;
+  const secs = parseFloat(wordSpan.dataset.start);
+  if (Number.isNaN(secs)) return;
+  seekTo(secs);
+}
+
+function seekTo(secs, opts) {
+  if (!mediaEl) return;
+  mediaEl.currentTime = secs;
+  mediaEl.play();
+  document.getElementById('playIco').innerHTML = '<rect x="1" y="1" width="3" height="10"/><rect x="6" y="1" width="3" height="10"/>';
+  document.getElementById('playBtn').classList.remove('paused');
+
+  if (opts?.skipScroll) suppressScrollUntil = Date.now() + 200;
+  const utts = document.querySelectorAll('.utt');
+  let target = utts[0];
+  for (const u of utts) {
+    if (parseFloat(u.dataset.start) <= secs) target = u;
+    else break;
+  }
+  if (target && !opts?.skipScroll) scrollUttIntoView(target);
+}
+
+function esc(s) {
+  // Attribute-safe: also escapes quotes so values placed in HTML attributes
+  // (e.g. data-tag-name="...") cannot break out and inject markup/handlers.
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function beginRenameRecordingTitle() {
+  const wrap = document.querySelector('.tb-rec-name-wrap');
+  const span = document.getElementById('topbarTitle');
+  const btn = document.getElementById('topbarRenameBtn');
+  const origName = span.dataset.originalName || '';
+  const lastDot = origName.lastIndexOf('.');
+  const ext = lastDot > 0 ? origName.slice(lastDot) : '';
+  const displayName = ext ? origName.slice(0, lastDot) : origName;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tb-rec-name-edit';
+  input.value = displayName;
+  wrap.replaceChild(input, span);
+  btn.style.display = 'none';
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async () => {
+    if (done) return;
+    done = true;
+    input.onblur = null;
+    const newDisplay = input.value.trim() || displayName;
+    const newOrigName = newDisplay + ext;
+    if (input.parentNode === wrap) wrap.removeChild(input);
+    wrap.insertBefore(span, btn);
+    btn.style.display = '';
+    span.textContent = newDisplay;
+    span.dataset.originalName = newOrigName;
+
+    if (newOrigName === origName) return;
+    try {
+      const res = await fetch(API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ original_name: newOrigName }),
+      });
+      if (!res.ok) throw new Error('Server error');
+      data.recording.original_name = newOrigName;
+      if (!isVideo) document.getElementById('audioLabel').textContent = newDisplay;
+      toast('Recording renamed');
+    } catch (e) {
+      span.dataset.originalName = origName;
+      span.textContent = displayName;
+      toast('Failed to rename: ' + e.message, true);
+    }
+  };
+
+  input.onblur = () => finish();
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') {
+      wrap.removeChild(input);
+      wrap.insertBefore(span, btn);
+      btn.style.display = '';
+      span.textContent = displayName;
+      span.dataset.originalName = origName;
+      input.onblur = null;
+    }
+  };
+}
+
+function toggleProjDetails(e) { e.stopPropagation(); document.getElementById('projPill').classList.toggle('open'); }
+
+function switchTab(btn, paneId) {
+  document.querySelectorAll('.rtab').forEach(t => t.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('.rtab-content').forEach(p => p.style.display = 'none');
+  document.getElementById(paneId).style.display = 'block';
+}
+
+let exportFormat = 'markdown';
+
+async function openExport() {
+  document.getElementById('exportOverlay').classList.add('show');
+  const piiSw = document.getElementById('expPii');
+  const piiRow = document.getElementById('expPiiRow');
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    const defaultFmt = (data.export_default_format || 'md').toLowerCase();
+    const fmtForModal = defaultFmt === 'odt' ? 'odt' : 'markdown';
+    exportFormat = fmtForModal;
+    document.querySelectorAll('#exportOverlay .fmt-btn').forEach(b => {
+      b.classList.toggle('on', b.dataset.fmt === fmtForModal);
+    });
+    const fmtHint = document.getElementById('fmtHint');
+    if (fmtHint) {
+      const sel = document.querySelector('#exportOverlay .fmt-btn.on');
+      if (sel?.dataset.hint) fmtHint.textContent = sel.dataset.hint;
+    }
+    document.getElementById('expProjectDetails').classList.toggle('on', data.export_default_project_details !== 'false');
+    document.getElementById('expComments').classList.toggle('on', data.export_default_comments !== 'false');
+    document.getElementById('expTags').classList.toggle('on', data.export_default_tags !== 'false');
+    document.getElementById('expParticipant').classList.toggle('on', data.export_default_participant_details !== 'false');
+    document.getElementById('expPrompt').classList.toggle('on', data.export_default_include_prompt !== 'false');
+    const piiModel = (data.models || []).find(m => m.id === 'gliner-pii');
+    const piiAvailable = piiModel && (piiModel.status === 'downloaded' || piiModel.status === 'ready');
+    piiSw.classList.toggle('disabled', !piiAvailable);
+    if (!piiAvailable) piiSw.classList.remove('on');
+    else piiSw.classList.toggle('on', data.export_default_remove_pii === 'true');
+    const hint = piiRow.querySelector('.pii-hint');
+    if (hint) hint.remove();
+    const timeEst = document.getElementById('expPiiTimeEstimate');
+    if (timeEst) timeEst.style.display = piiAvailable ? '' : 'none';
+    if (!piiAvailable) {
+      const h = document.createElement('span');
+      h.className = 'pii-hint';
+      h.style.cssText = 'font-size:0.8rem;color:var(--muted-fg);margin-left:8px';
+      h.textContent = '(not installed)';
+      document.getElementById('expPiiLbl')?.appendChild(h);
+    }
+  } catch (_) {
+    piiSw.classList.add('disabled');
+    piiSw.classList.remove('on');
+    const te = document.getElementById('expPiiTimeEstimate');
+    if (te) te.style.display = 'none';
+  }
+}
+function closeExport() { document.getElementById('exportOverlay').classList.remove('show'); }
+
+// ── Find & replace across the transcript ──
+function openFindReplace() {
+  document.getElementById('frFind').value = '';
+  document.getElementById('frReplace').value = '';
+  document.getElementById('frMatchCase').classList.remove('on');
+  document.getElementById('frWholeWord').classList.remove('on');
+  document.getElementById('findReplaceOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('frFind').focus(), 30);
+}
+function closeFindReplace() { document.getElementById('findReplaceOverlay').classList.remove('show'); }
+async function doFindReplace() {
+  const find = document.getElementById('frFind').value;
+  if (!find) { toast('Enter text to find', true); return; }
+  const replace = document.getElementById('frReplace').value;
+  const match_case = document.getElementById('frMatchCase').classList.contains('on');
+  const whole_word = document.getElementById('frWholeWord').classList.contains('on');
+  const btn = document.getElementById('frApplyBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/${PROJECT_ID}/recordings/${RECORDING_ID}/transcript/replace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ find, replace, match_case, whole_word }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Replace failed');
+    }
+    const out = await res.json();
+    if (out.count > 0) {
+      data.transcript = out.transcript;
+      data.annotations = out.annotations;
+      const ann = data.annotations || {};
+      renderTranscript(data.transcript?.segments || [], ann.tag_spans || [], ann.comments || []);
+      renderTagsPane(data.tags || [], ann.tag_spans || [], data.transcript?.segments || []);
+      renderCommentsPane(ann.comments || [], data.transcript?.segments || []);
+      toast(`Replaced ${out.count} occurrence${out.count === 1 ? '' : 's'}`);
+      closeFindReplace();
+    } else {
+      toast('No matches found', true);
+    }
+  } catch (e) {
+    toast(e.message || 'Replace failed', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+function pickFmt(btn) {
+  exportFormat = btn.dataset.fmt || 'markdown';
+  btn.closest('.fmt-pick').querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const hint = document.getElementById('fmtHint');
+  if (hint && btn.dataset.hint) hint.textContent = btn.dataset.hint;
+}
+
+async function doExport() {
+  const params = new URLSearchParams();
+  params.set('format', exportFormat);
+  params.set('include_comments', document.getElementById('expComments').classList.contains('on'));
+  params.set('include_tags', document.getElementById('expTags').classList.contains('on'));
+  params.set('include_participant_details', document.getElementById('expParticipant').classList.contains('on'));
+  params.set('include_project_details', document.getElementById('expProjectDetails').classList.contains('on'));
+  params.set('remove_pii', document.getElementById('expPii').classList.contains('on'));
+  params.set('include_prompt', document.getElementById('expPrompt').classList.contains('on'));
+  params.set('use_recording_screen_prompt', 'true');
+  const btn = document.getElementById('exportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+  try {
+    const resp = await fetch(API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID + '/export?' + params);
+    if (!resp.ok) {
+      let msg = 'Export failed';
+      try { const j = await resp.json(); if (j.error) msg = j.error; } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="([^"]+)"/);
+    const filename = match ? decodeURIComponent(match[1]) : 'export';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    closeExport();
+  } catch (e) {
+    toast(e.message || 'Export failed', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Export'; }
+  }
+}
+
+// ── Participant Details ──
+let _projectSegments = [];
+
+async function openParticipantModal() {
+  try {
+    _projectSegments = await fetch(API + '/' + PROJECT_ID + '/segments').then(r => r.json());
+  } catch (_) { _projectSegments = []; }
+  renderParticipantModal();
+  document.getElementById('participantOverlay').classList.add('show');
+}
+
+function closeParticipantModal() {
+  document.getElementById('participantOverlay').classList.remove('show');
+}
+
+function renderParticipantModal() {
+  const rec = data?.recording;
+  const segments = _projectSegments;
+
+  // Populate dropdown
+  const select = document.getElementById('partSegSelect');
+  select.innerHTML = '<option value="">— Unassigned —</option>' +
+    segments.map(s => `<option value="${s.id}" ${rec?.segment_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+
+  // Segment change listener
+  select.onchange = () => updateSegmentInfoPanel(select.value ? parseInt(select.value) : null);
+
+  // Show segment info for current selection
+  updateSegmentInfoPanel(rec?.segment_id || null);
+
+  // Notes
+  document.getElementById('partNotes').value = rec?.participant_notes || '';
+}
+
+function updateSegmentInfoPanel(segId) {
+  const infoEl = document.getElementById('partSegInfo');
+  if (!segId) { infoEl.style.display = 'none'; return; }
+
+  const seg = _projectSegments.find(s => s.id === parseInt(segId));
+  if (!seg) { infoEl.style.display = 'none'; return; }
+
+  const hasDesc = !!(seg.description && seg.description.trim());
+  const hasScreener = !!(seg.screener_questions && seg.screener_questions.trim());
+
+  if (!hasDesc && !hasScreener) { infoEl.style.display = 'none'; return; }
+
+  infoEl.style.display = 'block';
+  const descRow = document.getElementById('partSegDescRow');
+  const screenerRow = document.getElementById('partSegScreenerRow');
+  descRow.style.display = hasDesc ? 'block' : 'none';
+  screenerRow.style.display = hasScreener ? 'block' : 'none';
+  if (hasDesc) document.getElementById('partSegDesc').textContent = seg.description;
+  if (hasScreener) document.getElementById('partSegScreener').textContent = seg.screener_questions;
+}
+
+async function saveParticipantDetails() {
+  const rec = data?.recording;
+  if (!rec) return;
+
+  const select = document.getElementById('partSegSelect');
+  const notes = document.getElementById('partNotes').value;
+  const segId = select.value ? parseInt(select.value) : null;
+
+  try {
+    const result = await fetch(API + '/' + PROJECT_ID + '/recordings/' + RECORDING_ID, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ segment_id: segId, participant_notes: notes }),
+    }).then(r => r.json());
+
+    if (result.error) throw new Error(result.error);
+
+    data.recording.segment_id = result.segment_id;
+    data.recording.participant_notes = result.participant_notes;
+    data.recording.segment = result.segment || null;
+
+    updatePartPill();
+    closeParticipantModal();
+    toast('Participant details saved');
+  } catch (e) { toast('Failed to save: ' + e.message, true); }
+}
+
+function updatePartPill() {
+  const rec = data?.recording;
+  const pill = document.getElementById('partPill');
+  const label = document.getElementById('partPillLabel');
+  if (!pill || !label) return;
+  const seg = rec?.segment;
+  if (seg && seg.name) {
+    label.textContent = seg.name;
+    pill.classList.add('part-pill-assigned');
+  } else {
+    label.textContent = 'Participant details';
+    pill.classList.remove('part-pill-assigned');
+  }
+}
+
+// Seek to ?t= param after media loads (jump-from Tags view)
+const _tParam = parseFloat(new URLSearchParams(window.location.search).get('t'));
+if (_tParam > 0) {
+  document.addEventListener('canplay', function _onCanPlay() {
+    document.removeEventListener('canplay', _onCanPlay, true);
+    seekTo(_tParam);
+  }, true);
+}
+
+initMedia();
+loadData();
+
+// ── Video resize handle ──
+(function() {
+  const handle = document.getElementById('resizeHandle');
+  const videoArea = document.querySelector('.video-area');
+  const stage = document.getElementById('videoStage');
+  if (!handle || !videoArea || !stage) return;
+  const minHeight = 80;
+  const storageKey = 'recording_media_stage_height_project_' + PROJECT_ID;
+  function maxHeight() {
+    return window.innerHeight * 0.7;
+  }
+  function clampHeight(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.max(minHeight, Math.min(maxHeight(), Math.round(numeric)));
+  }
+  function applyHeight(value) {
+    const clamped = clampHeight(value);
+    if (clamped == null) return null;
+    stage.style.height = clamped + 'px';
+    return clamped;
+  }
+  function saveHeight(value) {
+    const clamped = clampHeight(value);
+    if (clamped == null) return;
+    try { localStorage.setItem(storageKey, String(clamped)); } catch (_) {}
+  }
+  // Reuse saved media area size for all recordings in this project.
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved != null) applyHeight(saved);
+  } catch (_) {}
+  let startY, startH;
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = stage.offsetHeight;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  function onMove(e) {
+    const delta = e.clientY - startY;
+    applyHeight(startH + delta);
+  }
+  function onUp() {
+    saveHeight(stage.offsetHeight);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  window.addEventListener('resize', function() {
+    if (!stage.style.height) return;
+    applyHeight(stage.offsetHeight);
+  });
+})();
+
+// ── New tag field: Enter saves, Escape cancels (always bound; not only when opening via + New tag) ──
+(function bindNewTagInputKeys() {
+  const input = document.getElementById('newTagInput');
+  if (!input) return;
+  input.addEventListener('keydown', function(e) {
+    const form = document.getElementById('newTagForm');
+    if (!form || form.style.display === 'none') return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideNewTagForm();
+      return;
+    }
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    saveNewTag();
+  });
+})();
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    const newTagForm = document.getElementById('newTagForm');
+    if (newTagForm && newTagForm.style.display !== 'none') {
+      hideNewTagForm();
+      e.preventDefault();
+      return;
+    }
+    const pop = document.getElementById('selPopup');
+    if (pop && pop.classList.contains('show')) {
+      closeSelectionPopup(false);
+      e.preventDefault();
+      return;
+    }
+  }
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (document.activeElement && document.activeElement.isContentEditable) return;
+  if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault();
+    togglePlay();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (mediaEl) seekTo(Math.max(0, mediaEl.currentTime - 5));
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    if (mediaEl) seekTo(Math.min(mediaEl.duration || 0, mediaEl.currentTime + 5));
+  }
+});
+
+document.addEventListener('mousedown', function(e) {
+  const pop = document.getElementById('selPopup');
+  const colorPop = document.getElementById('colorPickerPopover');
+  const clickedColorPicker = colorPop && colorPop.contains(e.target);
+  if (pop && pop.classList.contains('show') && !pop.contains(e.target) && !clickedColorPicker) {
+    closeSelectionPopup(true);
+  }
+});
+
+document.addEventListener('copy', copyPendingSelectionOnCopyEvent, true);
+
+</script>
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+</body>
+</html>

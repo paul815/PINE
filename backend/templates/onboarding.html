@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PINE — Setup</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/pine.png') }}" />
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
+<style>html{font-size:{{ init_font_size }}px !important;}</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script>
+var _fontStacks = {
+  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  inter: "'Inter',sans-serif",
+  'source-sans-3': "'Source Sans 3',sans-serif",
+  'open-sans': "'Open Sans',sans-serif",
+  roboto: "'Roboto',sans-serif",
+};
+function _applyTheme(t) {
+  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+}
+_applyTheme('{{ init_theme }}');
+document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
+document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks.inter);
+if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
+fetch('/api/settings').then(r => r.json()).then(s => {
+  const t = s.theme || 'system';
+  _applyTheme(t);
+  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
+  const ff = s.font_family || 'inter';
+  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks.inter);
+}).catch(() => { _applyTheme('system'); });
+</script>
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<style>
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens: light (default) ── */
+:root {
+  --bg:         hsl(220, 20%, 97%);
+  --fg:         hsl(220, 25%, 10%);
+  --card:       hsl(0, 0%, 100%);
+  --muted:      hsl(220, 15%, 94%);
+  --muted-fg:   hsl(220, 10%, 46%);
+  --accent:     hsl(152, 60%, 42%);
+  --accent-fg:  #fff;
+  --accent-dim: hsla(152, 60%, 42%, 0.10);
+  --accent-bd:  hsla(152, 60%, 42%, 0.25);
+  --border:     hsl(220, 15%, 88%);
+  --secondary:  hsl(220, 15%, 92%);
+  --destr:      hsl(0, 72%, 51%);
+  --destr-dim:  hsla(0, 72%, 51%, 0.10);
+  --destr-bd:   hsla(0, 72%, 51%, 0.25);
+  --warn:       hsl(38, 90%, 55%);
+  --warn-dim:   hsla(38, 90%, 55%, 0.10);
+  --warn-bd:    hsla(38, 90%, 55%, 0.25);
+  --sunken:     hsl(220, 20%, 95%);
+  --radius:     6px;
+  --font-body:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+}
+
+/* ── Design tokens: dark ── */
+[data-theme="dark"] {
+  --bg:         hsl(220, 20%, 7%);
+  --fg:         hsl(220, 15%, 93%);
+  --card:       hsl(220, 16%, 11%);
+  --muted:      hsl(220, 14%, 14%);
+  --muted-fg:   hsl(220, 10%, 54%);
+  --accent:     hsl(152, 55%, 45%);
+  --accent-dim: hsla(152, 55%, 45%, 0.12);
+  --accent-bd:  hsla(152, 55%, 45%, 0.28);
+  --border:     hsl(220, 16%, 17%);
+  --secondary:  hsl(220, 14%, 16%);
+  --destr:      hsl(0, 62%, 60%);
+  --destr-dim:  hsla(0, 62%, 60%, 0.12);
+  --destr-bd:   hsla(0, 62%, 60%, 0.28);
+  --warn:       hsl(38, 85%, 60%);
+  --warn-dim:   hsla(38, 85%, 60%, 0.10);
+  --warn-bd:    hsla(38, 85%, 60%, 0.25);
+  --sunken:     hsl(220, 18%, 9%);
+}
+
+html, body {
+  height: 100%; font-family: var(--font-body);
+  background: var(--bg); color: var(--fg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+body { font-size: inherit; }
+
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 420px; flex-shrink: 0;
+  background: var(--card); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 28px 0;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 20px 28px; border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.logo-mark {
+  width: 60px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.logo-mark img { width: 100%; height: 100%; object-fit: contain; }
+.logo-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.08em; color: var(--fg); }
+.logo-tagline { font-size: 0.846rem; color: var(--muted-fg); margin-top: 3px; line-height: 1.35; max-width: 200px; }
+.logo-version { font-size: 0.846rem; font-family: var(--font-mono); color: var(--muted-fg); margin-top: 4px; }
+
+/* ── Step navigation ── */
+.steps { flex: 1; padding: 0 10px; display: flex; flex-direction: column; gap: 1px; }
+
+.step-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius); cursor: default;
+  transition: background 0.15s; position: relative;
+}
+.step-item.active { background: var(--accent-dim); }
+.step-item:not(:last-child)::after {
+  content: '';
+  position: absolute; left: 19px; top: calc(100% - 1px);
+  width: 1px; height: calc(100% - 8px);
+  background: var(--border); z-index: 0;
+}
+
+.step-dot {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+  border: 1.5px solid var(--border); color: var(--muted-fg); background: var(--card);
+  transition: all 0.2s; z-index: 1; position: relative;
+}
+.step-item.active .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step-item.done .step-dot { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); }
+.step-item.done .step-dot::before { content: '\2713'; font-size: 9px; }
+.step-item.done .step-num { display: none; }
+
+.step-text { flex: 1; min-width: 0; }
+.step-name { font-size: 0.923rem; font-weight: 500; color: var(--muted-fg); transition: color 0.15s; white-space: nowrap; }
+.step-sub { font-size: 0.846rem; color: var(--muted-fg); display: none; }
+.step-item.active .step-name { color: var(--fg); }
+.step-item.active .step-sub { display: block; color: var(--accent); }
+.step-item.done .step-name { color: var(--muted-fg); }
+
+.sidebar-footer {
+  margin: 0 10px; padding: 16px 10px 0;
+  border-top: 1px solid var(--border);
+}
+.sidebar-footer p { font-size: 0.846rem; color: var(--muted-fg); line-height: 1.6; }
+
+.sidebar-theme {
+  margin: 0 10px; padding: 14px 10px 0;
+  border-top: 1px solid var(--border);
+}
+.sidebar-theme-lbl {
+  font-size: 0.846rem; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted-fg); margin-bottom: 8px;
+}
+.sidebar-theme-group { display: flex; gap: 4px; }
+.sidebar-theme-btn { flex: 1; text-align: center; }
+
+/* ── Main area ── */
+.main {
+  flex: 1; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 52px 48px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  background: var(--sunken);
+}
+.main::-webkit-scrollbar { width: 4px; }
+.main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.panel {
+  width: 100%; max-width: 580px;
+  animation: fadeUp 0.28s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Panel header ── */
+.panel-eye {
+  font-size: 0.846rem; font-weight: 500; letter-spacing: 0.10em;
+  text-transform: uppercase; font-family: var(--font-mono);
+  color: var(--accent); margin-bottom: 8px;
+}
+.panel-title {
+  font-size: 1.538rem; font-weight: 700; letter-spacing: -0.4px;
+  color: var(--fg); margin-bottom: 6px;
+}
+.panel-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.65; margin-bottom: 28px; }
+
+/* ── Option cards ── */
+.opt-grid { display: grid; gap: 10px; margin-bottom: 28px; }
+.opt-card {
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 16px 18px;
+  cursor: pointer; transition: all 0.15s; position: relative;
+}
+.opt-card:hover { border-color: var(--accent-bd); background: var(--muted); }
+.opt-card.sel { border-color: var(--accent); background: var(--accent-dim); }
+.opt-check {
+  position: absolute; top: 14px; right: 14px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); display: none; align-items: center; justify-content: center;
+}
+.opt-card.sel .opt-check { display: flex; }
+.opt-check svg { width: 9px; height: 9px; color: white; }
+.opt-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.opt-title { font-size: 0.923rem; font-weight: 600; color: var(--fg); }
+.badge {
+  font-size: 0.846rem; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; font-family: var(--font-mono);
+  padding: 2px 6px; border-radius: 3px; border: 1px solid;
+}
+.badge-blue  { background: var(--accent-dim);  color: var(--accent);  border-color: var(--accent-bd); }
+.badge-green { background: var(--accent-dim);  color: var(--accent);  border-color: var(--accent-bd); }
+.badge-amber { background: var(--warn-dim);    color: var(--warn);    border-color: var(--warn-bd); }
+.badge-dim   { background: var(--secondary);   color: var(--muted-fg); border-color: var(--border); }
+.opt-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.5; margin-bottom: 10px; }
+.opt-meta { display: flex; gap: 14px; flex-wrap: wrap; }
+.meta-kv {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono);
+}
+.meta-kv svg { width: 11px; height: 11px; opacity: 0.5; }
+
+/* ── Notice boxes ── */
+.notice {
+  display: flex; gap: 9px; border-radius: 8px;
+  padding: 11px 13px; margin-bottom: 16px;
+  font-size: 0.923rem; line-height: 1.55;
+}
+.notice svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+.notice.warn { background: var(--warn-dim);    color: var(--warn);    border: 1px solid var(--warn-bd); }
+.notice.info { background: var(--accent-dim);  color: var(--accent-on-dim);  border: 1px solid var(--accent-bd-solid); }
+.notice.ok   { background: var(--accent-dim);  color: var(--accent-on-dim);  border: 1px solid var(--accent-bd-solid); }
+.notice.err  { background: var(--destr-dim);   color: var(--destr);   border: 1px solid var(--destr-bd); }
+
+/* ── Module list ── */
+.module-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.mod-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 13px 15px;
+  cursor: pointer; transition: all 0.15s;
+}
+.mod-item:hover:not(.locked) { border-color: var(--accent-bd); }
+.mod-item.checked { border-color: var(--accent-bd); background: var(--accent-dim); }
+.mod-item.locked { cursor: default; }
+.chk {
+  width: 17px; height: 17px; border-radius: 4px;
+  border: 1.5px solid var(--border); background: var(--muted);
+  flex-shrink: 0; margin-top: 2px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.mod-item.checked .chk,
+.mod-item.locked  .chk { background: var(--accent); border-color: var(--accent); }
+.chk svg { width: 9px; height: 9px; }
+.mod-info { flex: 1; min-width: 0; }
+.mod-name {
+  font-size: 1rem; font-weight: 500; color: var(--fg);
+  margin-bottom: 2px; display: flex; align-items: center; gap: 7px;
+}
+.mod-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.4; }
+.total-row {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+  font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 28px; padding-top: 8px;
+  font-family: var(--font-mono);
+}
+.total-val { font-weight: 600; color: var(--fg); font-size: 1rem; }
+
+/* ── Storage fields ── */
+.field-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+.field-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  padding: 12px 14px;
+}
+.field-lbl { font-size: 1rem; font-weight: 500; color: var(--fg); margin-bottom: 2px; }
+.field-sub { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.45; margin-bottom: 8px; }
+.path-row { display: flex; gap: 8px; }
+.path-in {
+  flex: 1; background: var(--muted); border: 1.5px solid var(--border);
+  border-radius: var(--radius); padding: 8px 11px;
+  font-family: var(--font-mono); font-size: 0.923rem; color: var(--muted-fg);
+  outline: none; transition: border-color 0.15s;
+}
+.path-in:focus { border-color: var(--accent-bd); color: var(--fg); }
+.btn-sm { white-space: nowrap; }
+.disk-status {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono);
+  margin-top: 6px;
+}
+.disk-bar { flex: 1; max-width: 80px; height: 3px; background: var(--secondary); border-radius: 99px; overflow: hidden; }
+.disk-fill { height: 100%; border-radius: 99px; background: var(--accent); }
+
+/* ── HuggingFace steps ── */
+.hf-steps { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.hf-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 12px 14px;
+}
+.hf-step.done-step { border-color: var(--accent-bd); background: var(--accent-dim); }
+.hf-n {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  background: var(--secondary); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; color: var(--muted-fg);
+  font-family: var(--font-mono);
+}
+.hf-step.done-step .hf-n { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); }
+.hf-body { flex: 1; }
+.hf-title { font-size: 1rem; font-weight: 500; color: var(--fg); margin-bottom: 2px; }
+.hf-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.45; }
+.hf-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.923rem; color: var(--accent); margin-top: 5px;
+  text-decoration: none; transition: opacity 0.15s;
+}
+.hf-link:hover { opacity: 0.75; }
+.hf-link svg { width: 11px; height: 11px; }
+.token-row { display: flex; gap: 8px; margin-top: 4px; }
+.token-in {
+  flex: 1; background: var(--muted); border: 1.5px solid var(--border);
+  border-radius: var(--radius); padding: 8px 11px;
+  font-family: var(--font-mono); font-size: 0.923rem; color: var(--fg);
+  outline: none; transition: border-color 0.15s; letter-spacing: 0.05em;
+}
+.token-in:focus { border-color: var(--accent-bd); }
+.token-in.valid { border-color: var(--accent-bd); }
+.token-in.invalid { border-color: var(--destr-bd); }
+.btn-validate { white-space: nowrap; }
+
+/* ── Download items ── */
+.dl-list { display: flex; flex-direction: column; gap: 10px; }
+.dl-item {
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 13px 15px;
+}
+.dl-item.dl-done { border-color: var(--accent-bd); }
+.dl-item.dl-active { border-color: var(--accent-bd); }
+.dl-item.dl-wait { opacity: 0.5; }
+.dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dl-name { font-size: 1rem; font-weight: 500; color: var(--fg); display: flex; align-items: center; gap: 8px; }
+.dl-status {
+  font-size: 0.846rem; font-family: var(--font-mono);
+  color: var(--muted-fg); white-space: nowrap;
+}
+.dl-status.done { color: var(--accent); }
+.dl-status.active { color: var(--accent); }
+.dl-bar-wrap { height: 4px; background: var(--secondary); border-radius: 99px; overflow: hidden; }
+.dl-bar { height: 100%; border-radius: 99px; transition: width 0.4s ease; background: var(--accent); }
+.dl-item.dl-done .dl-bar { background: var(--accent); width: 100% !important; }
+.dl-speed { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); margin-top: 5px; }
+
+
+/* ── Buttons ── */
+.btn-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.btn-row.right { justify-content: flex-end; }
+.btn { white-space: nowrap; }
+.btn-top-gap { margin-top: 8px; }
+.btn-launch {
+  width: 100%; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.btn-launch::after {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+.btn svg { width: 13px; height: 13px; }
+
+.setup-size-meta,
+.token-status,
+.install-log {
+  font-size: 0.846rem;
+  color: var(--muted-fg);
+  font-family: var(--font-mono);
+}
+
+.setup-size-meta {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.token-status {
+  margin-top: 6px;
+  min-height: 16px;
+}
+
+.notify-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  font-size: 1rem;
+  color: var(--muted-fg);
+}
+
+.notify-checkbox input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.syscheck-inline-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.846rem;
+}
+
+.syscheck-inline-note,
+.syscheck-inline-muted,
+.pkg-desc {
+  color: var(--muted-fg);
+  font-size: 0.846rem;
+}
+
+.syscheck-inline-body,
+.syscheck-optin {
+  font-size: 0.923rem;
+}
+
+.syscheck-optin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.pkg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 1rem;
+  font-family: var(--font-mono);
+}
+
+.pkg-desc {
+  flex: 1;
+  min-width: 140px;
+}
+
+.install-log {
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  display: none;
+}
+
+/* ── System check ── */
+.syscheck-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+.syscheck-item {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 2px); padding: 11px 14px;
+}
+.syscheck-item.ok   { border-color: var(--accent-bd); }
+.syscheck-item.warn { border-color: var(--warn-bd); }
+.syscheck-item.err  { border-color: var(--destr-bd); }
+.syscheck-icon { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.syscheck-item.ok   .syscheck-icon { background: var(--accent-dim); color: var(--accent); }
+.syscheck-item.warn .syscheck-icon { background: var(--warn-dim);   color: var(--warn); }
+.syscheck-item.err  .syscheck-icon { background: var(--destr-dim);  color: var(--destr); }
+.syscheck-icon svg { width: 11px; height: 11px; }
+.syscheck-body { flex: 1; }
+.syscheck-name { font-size: 1rem; font-weight: 500; color: var(--fg); }
+.syscheck-detail { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.syscheck-explanation { font-size: 0.846rem; color: var(--muted-fg); margin-top: 4px; line-height: 1.4; }
+
+/* ── Loading spinner ── */
+.loading-spinner {
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px; color: var(--muted-fg);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes installPulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+.spin { animation: spin 0.8s linear infinite; }
+
+/* ── Feature tour (download step) ── */
+.feat-section { margin-top: 16px; }
+.feat-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 14px;
+}
+.feat-card {
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 14px;
+}
+.feat-title {
+  font-size: 1rem; font-weight: 600; color: var(--fg);
+  margin-bottom: 5px; letter-spacing: -0.1px; text-align: center;
+}
+.feat-desc { font-size: 0.846rem; color: var(--muted-fg); line-height: 1.55; }
+.feat-tagline {
+  display: flex; align-items: center; justify-content: center;
+  gap: 5px; font-size: 0.846rem; color: var(--muted-fg); text-align: center;
+}
+.feat-tagline svg { width: 11px; height: 11px; flex-shrink: 0; color: var(--muted-fg); }
+.feat-privacy {
+  grid-column: 1 / -1;
+  text-align: center; font-size: 0.923rem; color: var(--fg); line-height: 1.5;
+  padding: 12px 14px; background: var(--card); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+}
+.feat-privacy strong { font-weight: 700; color: inherit; }
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+</head>
+<body>
+<div id="socketBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;
+     padding:6px 16px;background:var(--warn-dim,#fef3cd);color:var(--warn,#856404);
+     border-bottom:1px solid var(--warn-bd,#ffc107);font-size:0.923rem;text-align:center;
+     align-items:center;justify-content:center;gap:6px;">
+  Connection lost. Reconnecting&hellip;
+</div>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <img src="{{ url_for('static', filename='icons/pine.png') }}" alt="PINE icon" />
+      </div>
+      <div>
+        <div class="logo-name">PINE</div>
+        <div class="logo-tagline">Private Interview &amp; Notes Environment</div>
+        <div class="logo-version">v1.0.0 &middot; setup</div>
+      </div>
+    </div>
+
+    <div class="steps" id="stepNav">
+      <div class="step-item" data-step="0">
+        <div class="step-dot"><span class="step-num">1</span></div>
+        <div class="step-text">
+          <div class="step-name">System check</div>
+          <div class="step-sub">Python, disk, memory</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="1">
+        <div class="step-dot"><span class="step-num">2</span></div>
+        <div class="step-text">
+          <div class="step-name">Modules</div>
+          <div class="step-sub">Optional features</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="2">
+        <div class="step-dot"><span class="step-num">3</span></div>
+        <div class="step-text">
+          <div class="step-name">Storage</div>
+          <div class="step-sub">Paths &amp; disk space</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="3">
+        <div class="step-dot"><span class="step-num">4</span></div>
+        <div class="step-text">
+          <div class="step-name">HuggingFace</div>
+          <div class="step-sub">Token for diarization</div>
+        </div>
+      </div>
+      <div class="step-item" data-step="4">
+        <div class="step-dot"><span class="step-num">5</span></div>
+        <div class="step-text">
+          <div class="step-name">Download</div>
+          <div class="step-sub">Model files</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-theme" id="obThemeGroup">
+      <div class="sidebar-theme-lbl">Theme</div>
+      <div class="sidebar-theme-group">
+        <button class="sidebar-theme-btn" data-t="system" onclick="obSetTheme('system',this)">System</button>
+        <button class="sidebar-theme-btn" data-t="light"  onclick="obSetTheme('light',this)">Light</button>
+        <button class="sidebar-theme-btn" data-t="dark"   onclick="obSetTheme('dark',this)">Dark</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <main class="main" id="mainArea">
+
+    <!-- STEP 0: System check (dynamic) -->
+    <div class="panel" id="step-0" style="display:none">
+      <div class="panel-eye">Step 1 of 5</div>
+      <div class="panel-title">System requirements</div>
+      <div class="panel-desc">Checking your environment before we start. These are required for PINE to run correctly.</div>
+      <div class="syscheck-list" id="syscheckList">
+        <div class="loading-spinner">Checking system&hellip;</div>
+      </div>
+      <div id="syscheckNotice"></div>
+      <div class="btn-row right">
+        <button class="btn btn-primary" id="syscheckContinueBtn" onclick="goStep(1)" disabled>
+          Continue
+          <svg viewBox="0 0 13 13" fill="none"><path d="M5 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 1: Modules -->
+    <div class="panel" id="step-1" style="display:none">
+      <div class="panel-eye">Step 2 of 5</div>
+      <div class="panel-title">Choose modules</div>
+      <div class="panel-desc">Transcription and speaker diarization are always included. Add optional modules based on what you need.</div>
+      <div class="notice ok" style="margin-bottom:20px">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M11 4.5H8.5V3a2 2 0 00-4 0v1.5H3a1 1 0 00-1 1V11a1 1 0 001 1h8a1 1 0 001-1V5.5a1 1 0 00-1-1zM6 3a.5.5 0 011 0v1.5H6V3z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        <span>All models run fully offline after download. Nothing from your interviews ever leaves your computer.</span>
+      </div>
+      <div class="module-list">
+        <div class="mod-item locked checked">
+          <div class="chk"><svg viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 4-4" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="mod-info">
+            <div class="mod-name">Transcription + Speaker diarization <span class="badge badge-dim">Required</span></div>
+            <div class="mod-desc" id="baseModDesc"></div>
+          </div>
+          <div class="setup-size-meta" id="baseSizeLabel">~4 GB</div>
+        </div>
+        <div class="mod-item" id="mod-pii" onclick="toggleMod(this,'pii',500)">
+          <div class="chk"><svg viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 4-4" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="mod-info">
+            <div class="mod-name">PII removal</div>
+            <div class="mod-desc">GLiNER v2 multilingual &mdash; removes names, addresses, emails before export</div>
+          </div>
+          <div class="setup-size-meta">~500 MB</div>
+        </div>
+      </div>
+      <div class="total-row">
+        Total download:
+        <span class="total-val" id="totalSize">~4.1 GB</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(0)">
+          <svg viewBox="0 0 13 13" fill="none"><path d="M8 2.5L3.5 6.5 8 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Back
+        </button>
+        <button class="btn btn-primary" onclick="saveModulesAndContinue()">
+          Continue
+          <svg viewBox="0 0 13 13" fill="none"><path d="M5 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Storage -->
+    <div class="panel" id="step-2" style="display:none">
+      <div class="panel-eye">Step 3 of 5</div>
+      <div class="panel-title">Storage locations</div>
+      <div class="panel-desc">Choose where to save models and your research projects. Both can be changed later in Settings.</div>
+      <div class="field-stack">
+        <div class="field-card">
+          <div class="field-lbl">Models folder</div>
+          <div class="field-sub" id="modelsSizeSub">Where downloaded model files are stored</div>
+          <div class="path-row">
+            <input class="path-in" type="text" id="modelsPath" />
+            <button class="btn btn-ghost btn-sm" type="button" onclick="browseFolder('modelsPath')">Browse…</button>
+          </div>
+          <div class="disk-status" id="modelsDisk"></div>
+        </div>
+        <div class="field-card">
+          <div class="field-lbl">Projects folder</div>
+          <div class="field-sub">Where your interview projects, transcripts, and notes are saved</div>
+          <div class="path-row">
+            <input class="path-in" type="text" id="projectsPath" />
+            <button class="btn btn-ghost btn-sm" type="button" onclick="browseFolder('projectsPath')">Browse…</button>
+          </div>
+        </div>
+      </div>
+      <div class="notice info">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 6v4M7 4.5v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>Projects are stored as plain folders with SQLite databases &mdash; you can back them up, move them, or open them with any SQLite viewer.</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(1)">
+          <svg viewBox="0 0 13 13" fill="none"><path d="M8 2.5L3.5 6.5 8 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Back
+        </button>
+        <button class="btn btn-primary" onclick="saveStorageAndContinue()">
+          Continue
+          <svg viewBox="0 0 13 13" fill="none"><path d="M5 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 3: HuggingFace -->
+    <div class="panel" id="step-3" style="display:none">
+      <div class="panel-eye">Step 4 of 5</div>
+      <div class="panel-title">HuggingFace token</div>
+      <div class="panel-desc">The speaker diarization model (pyannote) requires a free HuggingFace account and a one-time license acceptance.</div>
+      <div class="hf-steps">
+        <div class="hf-step">
+          <div class="hf-n">1</div>
+          <div class="hf-body">
+            <div class="hf-title">Create a free HuggingFace account</div>
+            <div class="hf-desc">Already have one? Skip to step 2.</div>
+            <a class="hf-link" href="https://huggingface.co/join" target="_blank" rel="noopener">
+              Open huggingface.co
+              <svg viewBox="0 0 11 11" fill="none"><path d="M4 1.5h5.5v5.5M9.5 1.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="hf-step">
+          <div class="hf-n">2</div>
+          <div class="hf-body">
+            <div class="hf-title">Accept the pyannote/speaker-diarization-community-1 license</div>
+            <a class="hf-link" href="https://huggingface.co/pyannote/speaker-diarization-community-1" target="_blank" rel="noopener">
+              pyannote/speaker-diarization-community-1
+              <svg viewBox="0 0 11 11" fill="none"><path d="M4 1.5h5.5v5.5M9.5 1.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="hf-step">
+          <div class="hf-n">3</div>
+          <div class="hf-body">
+            <div class="hf-title">Accept the pyannote/segmentation-3.0 license</div>
+            <a class="hf-link" href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener">
+              pyannote/segmentation-3.0
+              <svg viewBox="0 0 11 11" fill="none"><path d="M4 1.5h5.5v5.5M9.5 1.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="hf-step" id="hf-step-token">
+          <div class="hf-n">4</div>
+          <div class="hf-body">
+            <div class="hf-title">Generate a read-only access token and paste it here</div>
+            <div class="hf-desc">Settings &rarr; Access Tokens &rarr; New token (type: Read). Stored locally only.</div>
+            <div class="token-row" style="margin-top:8px">
+              <input class="token-in" type="password" id="tokenInput" placeholder="hf_xxxxxxxxxxxxxxxxxxxx" oninput="onTokenInput()" />
+              <button class="btn-validate" onclick="validateToken()">Verify</button>
+            </div>
+            <div id="tokenStatus" class="token-status"></div>
+          </div>
+        </div>
+      </div>
+      <div class="notice info">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 6v4M7 4.5v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>The token is stored locally and only used to download the pyannote model. It is never sent anywhere else.</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(2)">
+          <svg viewBox="0 0 13 13" fill="none"><path d="M8 2.5L3.5 6.5 8 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Back
+        </button>
+        <button class="btn btn-primary" id="hfContinueBtn" onclick="goStep(4)" disabled>
+          Start download
+          <svg viewBox="0 0 13 13" fill="none"><path d="M5 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 4: Download -->
+    <div class="panel" id="step-4" style="display:none">
+      <div class="panel-eye">Step 5 of 5</div>
+      <div class="panel-title">Setting up PINE</div>
+      <div class="panel-desc">This only happens once. PINE will install required packages and download model files.</div>
+
+      <div class="notice info" style="margin-bottom:12px">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 6v4M7 4.5v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>Installation will take around <strong>10 minutes</strong></span>
+      </div>
+      <label class="notify-checkbox">
+        <input type="checkbox" id="notifyOnComplete" checked />
+        <span>Play sound when installation completes (in system player)</span>
+      </label>
+
+      <!-- Install phase -->
+      <div id="installPhase">
+        <div class="dl-item dl-active" id="installCard">
+          <div class="dl-head">
+            <div class="dl-name">Installing packages and models</div>
+            <div class="dl-status active" id="installStatus">Checking&hellip;</div>
+          </div>
+          <div id="pkgList" style="margin:10px 0 6px;display:flex;flex-direction:column;gap:4px"></div>
+          <div class="dl-bar-wrap"><div class="dl-bar" id="installBar" style="width:30%;animation:installPulse 1.5s ease-in-out infinite"></div></div>
+          <pre id="installLog" class="install-log"></pre>
+        </div>
+      </div>
+
+      <div id="dlNotice" style="margin-top:24px"></div>
+      <div class="btn-row" id="dlBtnRow" style="display:none">
+        <button class="btn btn-primary btn-launch" id="launchPineBtn" onclick="beginOnboardingHandoff()">
+          Launch PINE
+          <svg viewBox="0 0 13 13" fill="none"><path d="M5 2.5l4.5 4-4.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Feature tour -->
+      <div class="feat-section">
+        <div class="feat-grid">
+
+          <div class="feat-card">
+            <div class="feat-title">Your research hub</div>
+            <div class="feat-desc">Set up a project per study. Add participant details, keep session notes, track who was interviewed. Archive when the study wraps.</div>
+          </div>
+
+          <div class="feat-card">
+            <div class="feat-title">Transcription | Coding</div>
+            <div class="feat-desc">Drag and drop any audio or video file. Speakers are labeled automatically. Highlight quotes, code topics, add timed comments right in the transcript.</div>
+          </div>
+
+          <div class="feat-card">
+            <div class="feat-title">Take your work further</div>
+            <div class="feat-desc">Export recordings with all your codes and comments included — as Markdown or a formatted document. Strip sensitive info in one click before sharing.</div>
+          </div>
+
+          <div class="feat-privacy">
+            <strong>Fully private. No telemetry, no cloud uploads. Everything stays on your device.</strong>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<script>
+const API = '/api/onboarding';
+let currentStep = 0;
+const modSizes = { pii: 500 };
+const baseMB = 4000;
+let checkedMods = new Set();
+let downloadModelIds = [];
+let socket = null;
+let _onboardingHandoffStarted = false;
+
+/* ============ Helpers ============ */
+function formatBytes(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(0) + ' MB';
+  return (bytes / 1e3).toFixed(0) + ' KB';
+}
+
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+async function apiPost(path, body) {
+  return api(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+let SUPERVISOR_API = 'http://pine.localhost:{{ supervisor_port }}';
+let SUPERVISOR_TOKEN = '{{ supervisor_token }}';
+const ONBOARDING_LEASE_KEY = 'pine_tab_lease_id';
+const HANDOFF_BACKEND_READY_TIMEOUT_MS = 150000;
+const ONBOARDING_LEASE_ID = (() => {
+  try {
+    let existing = sessionStorage.getItem(ONBOARDING_LEASE_KEY) || '';
+    if (!existing) {
+      existing = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+      sessionStorage.setItem(ONBOARDING_LEASE_KEY, existing);
+    }
+    return existing;
+  } catch (_) {
+    return 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+})();
+let _onboardingLeaseWorker = null;
+
+async function postSupervisor(path, body, keepalive = false) {
+  await fetch(SUPERVISOR_API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
+    body: JSON.stringify(body),
+    keepalive,
+  });
+}
+
+function sendOnboardingLeaseHeartbeat() {
+  postSupervisor('/lease/heartbeat', { lease_id: ONBOARDING_LEASE_ID }).catch(() => {});
+}
+
+function startOnboardingLeaseHeartbeat() {
+  sendOnboardingLeaseHeartbeat();
+  // Use a Web Worker so the heartbeat timer is never throttled by Chrome
+  // when the tab is in the background (e.g. during the long install step).
+  if (_onboardingLeaseWorker) _onboardingLeaseWorker.terminate();
+  try {
+    const blob = new Blob(
+      ['setInterval(() => postMessage("hb"), 5000);'],
+      { type: 'application/javascript' }
+    );
+    _onboardingLeaseWorker = new Worker(URL.createObjectURL(blob));
+    _onboardingLeaseWorker.onmessage = () => sendOnboardingLeaseHeartbeat();
+  } catch (_) {
+    // Worker not supported — fall back to setInterval
+    _onboardingLeaseWorker = { _timer: setInterval(sendOnboardingLeaseHeartbeat, 5000) };
+    _onboardingLeaseWorker.terminate = () => clearInterval(_onboardingLeaseWorker._timer);
+  }
+}
+
+function releaseOnboardingLease() {
+  if (_onboardingLeaseWorker) { try { _onboardingLeaseWorker.terminate(); } catch (_) {} _onboardingLeaseWorker = null; }
+  try { postSupervisor('/lease/release', { lease_id: ONBOARDING_LEASE_ID }, true); } catch (_) {}
+}
+
+async function getSupervisorStatus() {
+  const res = await fetch(SUPERVISOR_API + '/status', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Supervisor status is unavailable.');
+  return res.json();
+}
+
+function setLaunchButtonState(label, disabled) {
+  const btn = document.getElementById('launchPineBtn');
+  if (!btn) return;
+  if (!btn.dataset.defaultHtml) btn.dataset.defaultHtml = btn.innerHTML;
+  btn.disabled = !!disabled;
+  if (disabled) {
+    btn.innerHTML = `
+      <span class="spin" aria-hidden="true" style="display:inline-flex;align-items:center">
+        <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+          <circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.6" opacity="0.28"></circle>
+          <path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+        </svg>
+      </span>
+      <span>${label}</span>`;
+    return;
+  }
+  btn.innerHTML = btn.dataset.defaultHtml || label;
+}
+
+function hideOnboardingSocketBanner() {
+  const banner = document.getElementById('socketBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+async function waitForSupervisedBackend(timeoutMs = HANDOFF_BACKEND_READY_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const st = await getSupervisorStatus();
+      if (st.supervisor_running && st.backend_ready) return st;
+    } catch (_) {}
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error('PINE is still starting in the background. Please wait a bit and retry Launch PINE.');
+}
+
+async function beginOnboardingHandoff() {
+  if (_onboardingHandoffStarted) return;
+  _onboardingHandoffStarted = true;
+  hideOnboardingSocketBanner();
+  setLaunchButtonState('Starting PINE…', true);
+  document.getElementById('dlNotice').innerHTML = `
+    <div class="notice">
+      <span>Finalizing first launch and handing control to the background helper…</span>
+    </div>`;
+
+  setLaunchButtonState('Starting PINE...', true);
+  document.getElementById('dlNotice').innerHTML = `
+    <div class="notice">
+      <span>Finalizing first launch and waiting for PINE to become ready...</span>
+    </div>`;
+  try {
+    const prep = await apiPost('/handoff/prepare', {});
+    if (!prep.ok) throw new Error(prep.error || 'Could not start the background helper.');
+
+    if (prep.supervisor_port) SUPERVISOR_API = 'http://pine.localhost:' + prep.supervisor_port;
+    if (prep.supervisor_token) SUPERVISOR_TOKEN = prep.supervisor_token;
+    const restartRes = await fetch(SUPERVISOR_API + '/restart', { method: 'POST', headers: { 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN } });
+    if (!restartRes.ok) throw new Error('Supervisor restart request failed.');
+
+    await waitForSupervisedBackend();
+    releaseOnboardingLease();
+    try { socket?.disconnect(); } catch (_) {}
+    window.location.replace(prep.main_url || '/');
+  } catch (err) {
+    _onboardingHandoffStarted = false;
+    hideOnboardingSocketBanner();
+    setLaunchButtonState('Launch PINE', false);
+    document.getElementById('dlNotice').innerHTML = `
+      <div class="notice err">
+        <span>${(err && err.message) || 'Could not finish the first-launch handoff.'} You can retry with Launch PINE.</span>
+      </div>`;
+  }
+}
+
+/* ============ Navigation ============ */
+function goStep(n) {
+  document.getElementById('step-' + currentStep).style.display = 'none';
+  currentStep = n;
+  const panel = document.getElementById('step-' + n);
+  panel.style.display = 'block';
+  panel.style.animation = 'none';
+  requestAnimationFrame(() => { panel.style.animation = ''; });
+  updateSidebar();
+
+  if (n === 0) loadSystemCheck();
+  if (n === 1) onModulesStepShow();
+  if (n === 2) loadDefaults();
+  if (n === 4) startDownload();
+}
+
+function updateSidebar() {
+  document.querySelectorAll('.step-item').forEach(el => {
+    const idx = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done');
+    if (idx < currentStep) el.classList.add('done');
+    else if (idx === currentStep) el.classList.add('active');
+  });
+}
+
+/* ============ Step 0: System check ============ */
+async function loadSystemCheck() {
+  const container = document.getElementById('syscheckList');
+  container.innerHTML = '<div class="loading-spinner">Checking system&hellip;</div>';
+  // Detect platform (Mac uses mlx-whisper)
+  try { const st = await api('/status'); isMac = !!st.is_mac; } catch(_){}
+  const data = await api('/system-check');
+  const iconOk = '<svg viewBox="0 0 11 11" fill="none"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const iconWarn = '<svg viewBox="0 0 11 11" fill="none"><path d="M5.5 3v3M5.5 8v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const iconErr = '<svg viewBox="0 0 11 11" fill="none"><path d="M3 3l5 5M8 3l-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+
+  let html = '';
+  let hasWarn = false;
+  data.checks.forEach(c => {
+    const icon = c.status === 'ok' ? iconOk : c.status === 'warn' ? iconWarn : iconErr;
+    if (c.status === 'warn') hasWarn = true;
+    const versionPart = c.version ? ' ' + c.version : '';
+    const linkPart = c.download_url
+      ? `<a href="${c.download_url}" target="_blank" rel="noopener" class="syscheck-inline-link">${c.link_label || 'Download'} ↗</a>`
+      : '';
+    const notePart = c.link_note
+      ? `<span class="syscheck-inline-note"> · ${c.link_note}</span>`
+      : '';
+    const explanationPart = c.explanation
+      ? `<div class="syscheck-explanation">${c.explanation}</div>`
+      : '';
+    html += `<div class="syscheck-item ${c.status}">
+      <div class="syscheck-icon">${icon}</div>
+      <div class="syscheck-body">
+        <div class="syscheck-name">${c.name}${versionPart}</div>
+        <div class="syscheck-detail">${c.detail}${linkPart ? ' · ' + linkPart : ''}${notePart}</div>
+        ${explanationPart}
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+
+  const noticeEl = document.getElementById('syscheckNotice');
+  noticeEl.innerHTML = '';
+  const gpuCheck = data.checks.find(c => c.name.includes('CUDA') || c.name.includes('GPU'));
+  let needsCpuOptIn = false;
+
+  if (!isMac && gpuCheck && gpuCheck.has_nvidia_gpu && gpuCheck.has_cuda === false && gpuCheck.status === 'err') {
+    // Windows/Linux: NVIDIA GPU present but CUDA Toolkit not installed
+    noticeEl.innerHTML += `<div class="notice err" style="margin-bottom:16px">
+      <svg viewBox="0 0 14 14" fill="none"><path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <div style="flex:1">
+        <strong>CUDA Toolkit required</strong>
+        <p style="margin:4px 0 0">${gpuCheck.gpu_name || 'NVIDIA GPU'} detected, but CUDA is not available. PINE needs CUDA to use your GPU for transcription.</p>
+        <p style="margin:6px 0 0"><a href="${gpuCheck.download_url || 'https://developer.nvidia.com/cuda-downloads'}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">${gpuCheck.link_label || 'Download CUDA Toolkit'} ↗</a></p>
+        <p class="syscheck-inline-muted" style="margin:6px 0 0">After installing CUDA, restart your computer, then click Re-check.</p>
+        <button class="btn btn-ghost btn-top-gap" onclick="loadSystemCheck()">Re-check GPU</button>
+      </div>
+    </div>`;
+  } else if (!isMac && gpuCheck && gpuCheck.has_nvidia_gpu && gpuCheck.has_cuda === false && gpuCheck.status === 'warn') {
+    // Windows/Linux: CUDA Toolkit installed but current PyTorch build doesn't match — torchruntime fixes this during setup
+    noticeEl.innerHTML += `<div class="notice warn" style="margin-bottom:16px">
+      <svg viewBox="0 0 14 14" fill="none"><path d="M7 1.5L1.5 12h11L7 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 5.5v3M7 10v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <div style="flex:1">
+        <strong>CUDA version mismatch — will be resolved automatically</strong>
+        <p style="margin:4px 0 0">${gpuCheck.gpu_name || 'NVIDIA GPU'} and CUDA Toolkit detected. The current PyTorch build is not compatible with your CUDA version, but the setup process will install the correct version automatically.</p>
+      </div>
+    </div>`;
+  } else if (!isMac && gpuCheck && gpuCheck.cpu_opt_in_required) {
+    // Windows/Linux: No NVIDIA GPU — require explicit opt-in
+    needsCpuOptIn = true;
+    noticeEl.innerHTML += `<div class="notice warn" style="margin-bottom:16px">
+      <svg viewBox="0 0 14 14" fill="none"><path d="M7 1.5L1.5 12h11L7 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 5.5v3M7 10v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <div style="flex:1">
+        <strong>No compatible GPU detected</strong>
+        <p style="margin:4px 0 0">PINE is designed for NVIDIA GPUs or Apple Silicon Macs.</p>
+        <p class="syscheck-inline-body" style="margin:6px 0 0">${gpuCheck.time_comparison}</p>
+        <label class="syscheck-optin">
+          <input type="checkbox" id="cpuOptIn" onchange="document.getElementById('syscheckContinueBtn').disabled = !this.checked">
+          Continue without GPU (transcription will be very slow)
+        </label>
+      </div>
+    </div>`;
+  }
+
+  // Low VRAM warning (separate from the above — applies when CUDA IS available)
+  const vramCheck = data.checks.find(c => c.name === 'VRAM');
+  if (vramCheck) {
+    noticeEl.innerHTML += `<div class="notice warn" style="margin-bottom:16px">
+      <svg viewBox="0 0 14 14" fill="none"><path d="M7 1.5L1.5 12h11L7 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 5.5v3M7 10v.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span>${vramCheck.detail}</span>
+    </div>`;
+  }
+
+  document.getElementById('syscheckContinueBtn').disabled = data.has_blockers || needsCpuOptIn;
+}
+
+/* ============ Step 1: Modules ============ */
+function toggleMod(el, key, sizeMB) {
+  if (el.classList.contains('locked')) return;
+  const isChecked = el.classList.toggle('checked');
+  if (isChecked) checkedMods.add(key); else checkedMods.delete(key);
+  updateTotal();
+}
+
+function updateTotal() {
+  const sttMB = 3000;
+  const diarMB = 1000;
+  let total = sttMB + diarMB;
+  checkedMods.forEach(k => { total += modSizes[k] || 0; });
+  document.getElementById('totalSize').textContent = '~' + (total / 1000).toFixed(1) + ' GB';
+  const baseEl = document.getElementById('baseSizeLabel');
+  if (baseEl) baseEl.textContent = '~' + ((sttMB + diarMB) / 1000).toFixed(1) + ' GB';
+}
+let isMac = false;  // set from /status API
+function onModulesStepShow() {
+  const modelName = 'large-v3';
+  const engine = isMac ? 'mlx-whisper' : 'WhisperX';
+  const desc = document.getElementById('baseModDesc');
+  if (desc) desc.textContent = `${engine} ${modelName} · pyannote 3.1 · Word-level timestamps, up to 6 speakers`;
+  updateTotal();
+}
+async function saveModulesAndContinue() {
+  const modules = Array.from(checkedMods);
+  const data = await apiPost('/modules', { modules });
+  downloadModelIds = data.model_ids || [];
+  goStep(2);
+}
+
+/* ============ Step 2: Storage ============ */
+async function browseFolder(inputId) {
+  const current = document.getElementById(inputId).value.trim();
+  const params = current ? `?initial=${encodeURIComponent(current)}` : '';
+  const data = await api('/browse-folder' + params);
+  if (data.path) document.getElementById(inputId).value = data.path;
+}
+async function loadDefaults() {
+  const data = await api('/defaults');
+  document.getElementById('modelsPath').value = data.models_path || '';
+  document.getElementById('projectsPath').value = data.projects_path || '';
+  if (data.disk_free_bytes) {
+    const freeGB = (data.disk_free_bytes / 1e9).toFixed(1);
+    const pct = data.disk_used_percent || 0;
+    document.getElementById('modelsDisk').innerHTML = `
+      ${freeGB} GB free
+      <div class="disk-bar"><div class="disk-fill" style="width:${pct}%"></div></div>
+      ${pct}% used`;
+  }
+}
+async function saveStorageAndContinue() {
+  const mp = document.getElementById('modelsPath').value.trim();
+  const pp = document.getElementById('projectsPath').value.trim();
+  if (!mp || !pp) { alert('Please specify both paths.'); return; }
+  const data = await apiPost('/storage', { models_path: mp, projects_path: pp });
+  if (data.error) { alert(data.error); return; }
+  goStep(3);
+}
+
+/* ============ Step 3: HF Token ============ */
+function onTokenInput() {
+  document.getElementById('tokenInput').classList.remove('valid', 'invalid');
+  document.getElementById('tokenStatus').textContent = '';
+  document.getElementById('hfContinueBtn').disabled = true;
+}
+async function validateToken() {
+  const val = document.getElementById('tokenInput').value.trim();
+  const status = document.getElementById('tokenStatus');
+  if (val.length < 8) { status.textContent = 'Token looks too short'; return; }
+  status.textContent = 'Verifying\u2026';
+  const data = await apiPost('/hf-token', { token: val });
+  const tokenInput = document.getElementById('tokenInput');
+  if (data.valid && data.gated_ok !== false) {
+    // Token authenticates and (when the backend can check) every gated pyannote
+    // repo is accessible. gated_ok===undefined keeps older backends working.
+    tokenInput.classList.remove('invalid');
+    tokenInput.classList.add('valid');
+    status.style.color = 'var(--accent)';
+    status.textContent = '\u2713 Token valid' + (data.username ? ' \u00b7 ' + data.username : '');
+    document.getElementById('hfContinueBtn').disabled = false;
+    document.getElementById('hf-step-token').classList.add('done-step');
+    document.getElementById('hf-step-token').querySelector('.hf-n').textContent = '\u2713';
+  } else if (data.valid && data.gated_ok === false) {
+    // Token works but a model license has not been accepted yet. Tell the user
+    // exactly which ones, so the failure does not surface during the download.
+    tokenInput.classList.remove('valid');
+    tokenInput.classList.add('invalid');
+    status.style.color = 'var(--destr)';
+    document.getElementById('hfContinueBtn').disabled = true;
+    const pending = (data.gated_repos || []).filter(function (r) { return r.accessible === false; });
+    const links = pending.map(function (r) {
+      return '<a href="' + r.url + '" target="_blank" rel="noopener">' + r.repo_id + '</a>';
+    }).join(', ');
+    status.innerHTML = (data.username ? '\u2713 Token works (' + data.username + '), but ' : 'Token works, but ')
+      + 'these model licenses still need to be accepted \u2014 open each, click "Agree and access", then press Verify again: ' + links;
+  } else {
+    tokenInput.classList.remove('valid');
+    tokenInput.classList.add('invalid');
+    status.style.color = 'var(--destr)';
+    document.getElementById('hfContinueBtn').disabled = true;
+    status.textContent = 'Invalid: ' + (data.error || 'unknown error');
+  }
+}
+
+/* ============ Step 4: Download ============ */
+async function startDownload() {
+  const statusData = await api('/download/status');
+  const modelMap = {};
+
+  statusData.models.forEach(m => { modelMap[m.id] = m; });
+
+  if (!downloadModelIds.length) {
+    const onbStatus = await api('/status');
+    const mods = onbStatus.modules || [];
+    const sttId = onbStatus.stt_model_id || (isMac ? 'mlx-whisper-large-v3' : 'whisperx-large-v3');
+    downloadModelIds = [sttId, 'pyannote-diarization', 'pyannote-segmentation', 'pyannote-wespeaker-voxceleb-resnet34-LM'];
+    if (mods.includes('pii')) downloadModelIds.push('gliner-pii');
+  }
+
+  socket = io();
+
+  const socketReady = new Promise(resolve => {
+    if (socket.connected) { resolve(); return; }
+    socket.on('connect', () => resolve());
+  });
+
+  /* ---- SocketIO resilience: detect disconnect / reconnect ---- */
+  let _wasConnected = false;
+  socket.on('connect', () => {
+    if (!_wasConnected) { _wasConnected = true; return; }
+    /* This is a RE-connection — hide banner, re-sync state */
+    console.info('[SocketIO] Reconnected, re-syncing download state…');
+    const banner = document.getElementById('socketBanner');
+    if (banner) banner.style.display = 'none';
+    fetch('/api/onboarding/download/status')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.models) return;
+        for (const m of data.models) {
+          if (modelMap[m.id]) modelMap[m.id] = Object.assign(modelMap[m.id], m);
+        }
+        const allDone = data.models.every(m => m.status === 'ready');
+        if (allDone && !document.querySelector('#installCard.dl-done')) {
+          socket.emit('download:all_complete', {});
+          const handler = socket.listeners('download:all_complete')[0];
+          if (handler) handler({});
+        }
+      })
+      .catch(err => console.error('[SocketIO] Re-sync failed:', err));
+  });
+  socket.on('disconnect', (reason) => {
+    console.warn('[SocketIO] Disconnected:', reason);
+    if (_onboardingHandoffStarted) {
+      hideOnboardingSocketBanner();
+      return;
+    }
+    const banner = document.getElementById('socketBanner');
+    if (banner) banner.style.display = 'flex';
+  });
+
+  function renderPkgList(packages) {
+    const el = document.getElementById('pkgList');
+    el.style.display = 'flex';
+    el.innerHTML = packages.map(p => {
+      const nameStyle = p.installed ? 'color:var(--muted-fg)' : 'color:var(--fg);font-weight:500';
+      return `<div class="pkg-row">
+        <span style="${nameStyle}">${p.name}</span>
+        <span class="pkg-desc">${p.description}</span>
+      </div>`;
+    }).join('');
+  }
+
+  socket.on('install:start', d => {
+    renderPkgList(d.packages);
+    document.getElementById('installStatus').textContent = 'Installing\u2026';
+    document.getElementById('installLog').style.display = 'block';
+    document.getElementById('installLog').textContent = '';
+  });
+  socket.on('install:log', d => {
+    const log = document.getElementById('installLog');
+    log.textContent += d.line + '\n';
+    log.scrollTop = log.scrollHeight;
+    const stat = document.getElementById('installStatus');
+    const m1 = d.line.match(/Collecting\s+(\S+)/);
+    const m2 = d.line.match(/Installing\s+(\S+)/);
+    if (m1) stat.textContent = 'Downloading: ' + m1[1];
+    else if (m2 && m2[1] !== 'collected') stat.textContent = 'Installing: ' + m2[1];
+    else if (d.line.includes('Installing collected packages')) stat.textContent = 'Installing packages\u2026';
+  });
+  socket.on('install:complete', d => {
+    const card = document.getElementById('installCard');
+    const stat = document.getElementById('installStatus');
+    const bar = document.getElementById('installBar');
+    card.classList.remove('dl-done');
+    card.classList.add('dl-active');
+    bar.style.width = '100%';
+    bar.style.animation = 'none';
+    if (d.packages) renderPkgList(d.packages);
+    stat.style.color = '';
+    stat.title = '';
+    if (d.skipped) {
+      stat.textContent = '\u2713 Packages ready';
+      document.getElementById('installLog').style.display = 'none';
+    } else {
+      stat.textContent = '\u2713 Packages installed';
+    }
+    stat.className = 'dl-status active';
+    setTimeout(() => {
+      stat.textContent = 'Downloading models\u2026';
+      bar.style.width = '0%';
+      document.getElementById('pkgList').style.display = 'none';
+      document.getElementById('installLog').style.display = 'none';
+    }, 600);
+  });
+  socket.on('install:error', d => {
+    const card = document.getElementById('installCard');
+    const stat = document.getElementById('installStatus');
+    const bar = document.getElementById('installBar');
+    card.style.borderColor = 'var(--destr)';
+    bar.style.animation = 'none';
+    bar.style.background = 'var(--destr)';
+    stat.textContent = 'Error';
+    stat.style.color = 'var(--destr)';
+    const log = document.getElementById('installLog');
+    log.style.display = 'block';
+    log.textContent += '\nERROR: ' + d.error + '\n';
+    log.style.color = 'var(--destr)';
+  });
+
+  socket.on('download:model_start', d => {
+    document.getElementById('installStatus').textContent = 'Downloading: ' + (d.name || d.model_id);
+  });
+  socket.on('download:progress', d => {
+    if (d.overall_total > 0) {
+      const oPct = Math.min((d.overall_downloaded / d.overall_total) * 100, 100);
+      document.getElementById('installBar').style.width = oPct.toFixed(1) + '%';
+    }
+  });
+  socket.on('download:model_complete', d => {
+    if (d.overall_total > 0) {
+      const oPct = Math.min((d.overall_downloaded / d.overall_total) * 100, 100);
+      document.getElementById('installBar').style.width = oPct.toFixed(1) + '%';
+    }
+  });
+  socket.on('download:error', d => {
+    if (modelMap[d.model_id]) modelMap[d.model_id].error_message = d.error || '';
+    const card = document.getElementById('installCard');
+    card.style.borderColor = 'var(--destr)';
+    const err = d.error || 'Download failed';
+    document.getElementById('installStatus').textContent = err.length > 90 ? err.slice(0, 87) + '\u2026' : err;
+    document.getElementById('installStatus').style.color = 'var(--destr)';
+    document.getElementById('installStatus').title = err;
+  });
+  socket.on('download:all_complete', d => {
+    const card = document.getElementById('installCard');
+    card.classList.remove('dl-active');
+    card.classList.add('dl-done');
+    document.getElementById('installStatus').textContent = 'Done';
+    document.getElementById('installStatus').style.color = '';
+    document.getElementById('installStatus').className = 'dl-status done';
+    document.getElementById('installBar').style.width = '100%';
+    document.getElementById('installStatus').title = '';
+    document.getElementById('dlNotice').innerHTML = `
+      <div class="notice ok">
+        <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 7l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>All set! Packages installed and models downloaded. PINE is ready to use.</span>
+      </div>`;
+    document.getElementById('dlBtnRow').style.display = 'flex';
+    setTimeout(() => {
+      document.getElementById('installStatus').textContent = 'Done';
+      for (const ch of card.children) {
+        if (!ch.classList.contains('dl-head')) ch.style.display = 'none';
+      }
+      card.querySelector('.dl-head').style.marginBottom = '0';
+    }, 1000);
+    if (document.getElementById('notifyOnComplete')?.checked) {
+      fetch('/api/onboarding/play-install-sound', { method: 'POST' }).catch(() => {});
+    }
+  });
+
+  await socketReady;
+  await apiPost('/download/start', {});
+}
+
+/* ============ Theme toggle ============ */
+var _obMql = null;
+function _onObSystemChange() { _applyTheme('system'); }
+
+function obSetTheme(theme, btn) {
+  _obTheme = theme;
+  document.querySelectorAll('#obThemeGroup .sidebar-theme-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  _applyTheme(theme);
+  if (_obMql) { _obMql.removeEventListener('change', _onObSystemChange); _obMql = null; }
+  if (theme === 'system') {
+    _obMql = window.matchMedia('(prefers-color-scheme: dark)');
+    _obMql.addEventListener('change', _onObSystemChange);
+  }
+  fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme })
+  });
+}
+
+fetch('/api/settings').then(r => r.json()).then(s => {
+  const t = s.theme || 'system';
+  _obTheme = t;
+  _applyTheme(t);
+  const btn = document.querySelector(`#obThemeGroup [data-t="${t}"]`);
+  if (btn) btn.classList.add('on');
+  if (t === 'system') {
+    _obMql = window.matchMedia('(prefers-color-scheme: dark)');
+    _obMql.addEventListener('change', _onObSystemChange);
+  }
+}).catch(() => {
+  const btn = document.querySelector('#obThemeGroup [data-t="system"]');
+  if (btn) btn.classList.add('on');
+  _obMql = window.matchMedia('(prefers-color-scheme: dark)');
+  _obMql.addEventListener('change', _onObSystemChange);
+});
+
+/* ============ Init ============ */
+updateTotal();
+startOnboardingLeaseHeartbeat();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') sendOnboardingLeaseHeartbeat();
+});
+window.addEventListener('pagehide', () => {
+  releaseOnboardingLease();
+});
+goStep(0);
+</script>
+</body>
+</html>

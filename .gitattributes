@@ -1,0 +1,15 @@
+# Normalize to LF in the repository, check out platform-native by default.
+* text=auto
+
+# Launchers are line-ending sensitive: a .command with CRLF fails on macOS
+# with "bad interpreter", a .bat with LF can misparse under cmd.exe.
+*.command text eol=lf
+*.sh      text eol=lf
+*.bat     text eol=crlf
+
+# Binary assets — never diff or convert.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.mp3  binary
+*.woff2 binary

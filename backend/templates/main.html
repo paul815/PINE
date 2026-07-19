@@ -1,0 +1,3783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PINE — Projects</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/pine.png') }}" />
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
+<style>html{font-size:{{ init_font_size }}px !important;}</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script>
+var _fontStacks = {
+  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  inter: "'Inter',sans-serif",
+  'source-sans-3': "'Source Sans 3',sans-serif",
+  'open-sans': "'Open Sans',sans-serif",
+  roboto: "'Roboto',sans-serif",
+};
+function _applyTheme(t) {
+  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+}
+_applyTheme('{{ init_theme }}');
+document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
+document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks['inter']);
+if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
+let _appSettings = {};
+fetch('/api/settings').then(r => r.json()).then(s => {
+  _appSettings = s;
+  const t = s.theme || 'system';
+  _applyTheme(t);
+  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
+  const ff = s.font_family || 'inter';
+  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks['inter']);
+}).catch(() => { _applyTheme('system'); });
+</script>
+<style>
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens: light (default) ── */
+:root {
+  --bg:         hsl(220, 20%, 97%);
+  --fg:         hsl(220, 25%, 10%);
+  --card:       hsl(0, 0%, 100%);
+  --muted:      hsl(220, 15%, 94%);
+  --muted-fg:   hsl(220, 10%, 46%);
+  --accent:     hsl(152, 60%, 42%);
+  --accent-fg:  #fff;
+  --accent-dim: hsla(152, 60%, 42%, 0.10);
+  --accent-bd:  hsla(152, 60%, 42%, 0.25);
+  --accent-on-dim:   hsl(152, 60%, 27%);
+  --accent-bd-solid: hsl(152, 60%, 27%);
+  --border:     hsl(220, 15%, 88%);
+  --secondary:  hsl(220, 15%, 92%);
+  --destr:      hsl(0, 72%, 51%);
+  --destr-dim:  hsla(0, 72%, 51%, 0.10);
+  --destr-bd:   hsla(0, 72%, 51%, 0.25);
+  --warn:       hsl(38, 90%, 55%);
+  --warn-dim:   hsla(38, 90%, 55%, 0.10);
+  --warn-bd:    hsla(38, 90%, 55%, 0.25);
+  --sunken:     hsl(220, 20%, 95%);
+  --radius:     6px;
+  --font-body:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+  /* Top bar height — right header title aligns to same horizontal rule as left column */
+  --top-bar-h: 20px;
+  --left-header-pad-y: 6px;
+  --left-header-gap: 6px;
+  --btn-lg-h: 38px;
+  --search-in-h: 28px;
+}
+
+/* ── Design tokens: dark ── */
+[data-theme="dark"] {
+  --bg:         hsl(220, 20%, 7%);
+  --fg:         hsl(220, 15%, 93%);
+  --card:       hsl(220, 16%, 11%);
+  --muted:      hsl(220, 14%, 14%);
+  --muted-fg:   hsl(220, 10%, 54%);
+  --accent:     hsl(152, 55%, 45%);
+  --accent-fg:  #fff;
+  --accent-dim: hsla(152, 55%, 45%, 0.12);
+  --accent-bd:  hsla(152, 55%, 45%, 0.28);
+  --accent-on-dim:   hsl(152, 55%, 45%);
+  --accent-bd-solid: hsla(152, 55%, 45%, 0.55);
+  --border:     hsl(220, 16%, 17%);
+  --secondary:  hsl(220, 14%, 16%);
+  --destr:      hsl(0, 62%, 60%);
+  --destr-dim:  hsla(0, 62%, 60%, 0.12);
+  --destr-bd:   hsla(0, 62%, 60%, 0.28);
+  --warn:       hsl(38, 85%, 60%);
+  --warn-dim:   hsla(38, 85%, 60%, 0.10);
+  --warn-bd:    hsla(38, 85%, 60%, 0.25);
+  --sunken:     hsl(220, 18%, 9%);
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  line-height: 1.5;
+}
+body { font-size: inherit; }
+
+/* ── App shell ── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Left column ── */
+.left-col {
+  width: 420px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--card); overflow: hidden;
+}
+
+/* ── Resize handle ── */
+.resize-handle {
+  width: 4px; flex-shrink: 0; cursor: col-resize;
+  background: var(--border); transition: background 0.15s;
+}
+.resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
+
+/* ── Right column ── */
+.right-col {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; background: var(--sunken);
+}
+
+/* ── Top bar ── */
+.top-bar {
+  height: 48px; display: flex; align-items: center;
+  padding: 0 16px; background: var(--card);
+  flex-shrink: 0; border-bottom: 1px solid var(--border);
+}
+.tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
+  padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
+.tb-logo:hover { background: var(--muted); }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
+.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; }
+.tb-sep.compact { margin: 0 6px; }
+.tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
+.py-link-status {
+  width: 22px; height: 22px; border: 1px solid transparent; border-radius: 999px;
+  background: transparent; color: #8f98aa; display: inline-flex; align-items: center;
+  justify-content: center; padding: 0; cursor: default;
+}
+.py-link-status::before {
+  content: ''; width: 11px; height: 11px; border-radius: 50%; background: currentColor;
+}
+.py-link-status.state-ok { color: #22C55E; }
+.py-link-status.state-checking { color: #8f98aa; }
+.py-link-status.state-warn { color: var(--warn); }
+.py-link-status.state-error { color: var(--destr); }
+.py-link-status.state-restarting { color: var(--warn); }
+.py-link-status.state-restarting::before { animation: pulseDot 1s ease-in-out infinite; }
+.py-link-status.status-clickable { cursor: pointer; }
+.py-link-status.status-clickable:hover { border-color: var(--destr-bd); background: var(--destr-dim); }
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.72); opacity: 0.7; }
+}
+
+/* ── Left header ── */
+.left-header {
+  padding: var(--left-header-pad-y) 12px;
+  display: flex; flex-direction: column; gap: var(--left-header-gap);
+  border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--card);
+}
+.left-header .btn-new { width: 100%; }
+
+/* search */
+.search-wrap { position: relative; }
+.s-ico {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--muted-fg); pointer-events: none;
+}
+.search-in {
+  width: 100%; height: var(--search-in-h); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0 28px 0 30px; font-size: 1rem; background: var(--muted);
+  color: var(--fg); outline: none; font-family: var(--font-body);
+  transition: border-color 0.15s;
+}
+.search-in:focus { border-color: var(--accent); }
+.search-in::placeholder { color: var(--muted-fg); }
+.search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none; }
+.search-clear.show { display: flex; }
+
+/* ── Project list ── */
+.project-list {
+  flex: 1; overflow-y: auto; background: var(--card);
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.project-list::-webkit-scrollbar { width: 4px; }
+.project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.list-section { padding-top: 4px; }
+
+.project-row {
+  width: 100%; display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; cursor: pointer;
+  border-left: 2px solid transparent; transition: background 0.15s;
+}
+.project-row:hover { background: var(--muted); }
+.project-row.active { border-left-color: var(--accent); background: var(--accent-dim); }
+.project-row.archived { opacity: 0.6; }
+.p-info { min-width: 0; flex: 1; }
+.p-name { font-size: 1.077rem; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-meta { font-size: 0.923rem; color: var(--muted-fg); margin-top: 2px; }
+
+.archive-toggle-btn {
+  width: 100%; gap: 8px;
+  font-size: 0.846rem; font-weight: 500; letter-spacing: 0.08em;
+  text-transform: uppercase; font-family: var(--font-body);
+}
+.archive-toggle-btn svg { transition: transform 0.2s; }
+.archive-toggle-btn.collapsed svg { transform: rotate(-90deg); }
+.archive-badge {
+  margin-left: auto; font-size: 0.769rem; background: var(--secondary);
+  padding: 1px 6px; border-radius: 10px; color: var(--muted-fg);
+  font-family: var(--font-mono);
+}
+.archive-month-group { padding-top: 2px; }
+.archive-month-heading {
+  padding: 8px 12px 4px;
+  font-size: 0.846rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-fg);
+  font-family: var(--font-body);
+}
+
+/* ── Left footer ── */
+.left-footer {
+  border-top: 1px solid var(--border); padding: 8px;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--card); flex-shrink: 0;
+}
+.left-footer .lf-btn { padding: 4px 8px; font-size: 0.923rem; }
+
+/* ── Empty state ── */
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px; color: var(--muted-fg); text-align: center; padding: 40px;
+}
+.empty-state > svg { width: 40px; height: 40px; opacity: 0.25; }
+.empty-state p { font-size: 1rem; color: var(--muted-fg); max-width: 220px; line-height: 1.6; }
+#emptyNewProjectBtn.btn-new {
+  width: auto; min-height: var(--btn-h-sm); padding: 0 14px;
+  background: transparent; color: var(--muted-fg);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+#emptyNewProjectBtn.btn-new:hover { background: var(--muted); color: var(--fg); }
+.btn-inline-compact {
+  margin-left: 10px;
+  min-height: auto;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+/* ── Single transcription ── */
+.single-tx-section { padding: 8px 12px; border-top: 1px solid var(--border); position: relative; }
+.single-tx-sidebar-btn {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; padding: 8px 10px;
+  background: none; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--muted-fg); font-size: 0.923rem; font-family: var(--font-body);
+  cursor: pointer; transition: all 0.15s;
+}
+.single-tx-sidebar-btn:hover { border-color: var(--accent-bd); color: var(--fg); }
+.single-tx-sidebar-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+.single-tx-list-hdr {
+  margin-top: 16px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.77rem; font-weight: 500; color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.single-tx-list { max-height: 260px; overflow-y: auto; margin-top: 4px; }
+.single-tx-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 6px; border-radius: var(--radius);
+  cursor: pointer; transition: background 0.15s;
+}
+.single-tx-item:hover { background: var(--muted); }
+.stx-name { flex: 1; font-size: 0.923rem; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stx-date { font-size: 0.77rem; color: var(--muted-fg); white-space: nowrap; }
+.stx-del {
+  background: none; border: none; color: var(--muted-fg);
+  cursor: pointer; padding: 2px; opacity: 0; transition: opacity 0.15s;
+  display: inline-flex; align-items: center;
+}
+.single-tx-item:hover .stx-del { opacity: 1; }
+.stx-del:hover { color: var(--destr); }
+.stx-dropzone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 28px 16px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.stx-dropzone:hover { border-color: var(--accent); }
+.stx-dropzone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+.stx-dropzone.uploading { opacity: 0.6; pointer-events: none; }
+.stx-dz-icon { width: 24px; height: 24px; color: var(--muted-fg); margin-bottom: 6px; }
+.stx-dz-title { font-size: 0.923rem; font-weight: 500; color: var(--fg); }
+.stx-dz-sub { font-size: 0.77rem; color: var(--muted-fg); margin-top: 2px; }
+.stx-popover {
+  display: none; position: fixed;
+  width: 420px; max-height: 480px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 16px; z-index: 9999;
+}
+.stx-popover.open { display: block; animation: stxFadeUp 0.15s ease both; }
+.stx-popover-title { font-size: 1rem; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
+.stx-popover-desc { font-size: 0.846rem; color: var(--muted-fg); margin-bottom: 12px; }
+
+.lang-confirm-overlay {
+  display: none; position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.45); align-items: center; justify-content: center;
+  padding: 24px;
+}
+.lang-confirm-overlay.open { display: flex; }
+.lang-confirm-modal {
+  width: 100%; max-width: 420px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2); padding: 20px;
+}
+.lang-confirm-modal h3 { font-size: 1.077rem; font-weight: 600; color: var(--fg); margin-bottom: 8px; }
+.lang-confirm-desc { font-size: 0.846rem; color: var(--muted-fg); margin-bottom: 14px; line-height: 1.45; }
+.lang-confirm-label { display: block; font-size: 0.77rem; color: var(--muted-fg); margin-bottom: 4px; }
+.lang-confirm-select, .lang-confirm-input {
+  width: 100%; padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--sunken); color: var(--fg);
+  font-size: 0.923rem; margin-bottom: 10px; font-family: var(--font-body);
+}
+.lang-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.lang-confirm-footnote {
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 0.77rem; line-height: 1.45; color: var(--muted-fg);
+}
+
+/* ── Project detail ── */
+.project-detail {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+@keyframes stxFadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* right header */
+.right-header {
+  background: var(--card);
+  padding: 0 24px 8px;
+  /* Top of project name aligns with first horizontal rule on the left (under top bar) */
+  padding-top: var(--top-bar-h);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; justify-content: flex-start;
+}
+.actions-wrap {
+  margin-top: 6px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.project-title-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px;
+  flex-shrink: 0;
+}
+/* Flex row so the save status sits beside the title instead of wrapping below it. */
+.project-name-block { flex: 1; min-width: 0; display: flex; align-items: baseline; }
+.project-name {
+  font-size: 1.5rem; font-weight: 700; color: var(--fg);
+  line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;   /* flex item: keep the ellipsis working when the name is long */
+  font-family: var(--font-body);
+  border-bottom: 2px solid transparent;
+  padding-bottom: 1px;
+}
+.project-name[contenteditable="true"] {
+  outline: none; border-bottom-color: var(--accent);
+}
+.project-meta {
+  display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end;
+  gap: 8px 12px;
+  flex-shrink: 0;
+  font-size: 0.923rem; color: var(--muted-fg);
+  text-align: right;
+  white-space: nowrap;
+}
+.project-meta span { display: flex; align-items: center; gap: 4px; }
+.project-meta svg { width: 11px; height: 11px; }
+.project-meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+
+.actions {
+  display: flex; align-items: flex-end; gap: 6px;
+  flex-shrink: 0;
+}
+.actions .btn-lg svg { width: 12px; height: 12px; }
+.actions .split-arrow { height: var(--btn-lg-h); width: 26px; }
+.actions .split-arrow svg { width: 10px; height: 10px; }
+
+/* archive + delete split button */
+.split-dropdown { position: relative; }
+.split-btn { display: flex; align-items: stretch; }
+.actions .split-btn { height: var(--btn-lg-h); }
+.actions .split-btn .btn-outline.btn-lg,
+.actions .split-btn .split-arrow { height: 100%; }
+.split-btn .btn-outline { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
+/* hover the main part → whole control gets a black outline (both halves) */
+.split-btn .btn-outline:hover:not(:disabled),
+.split-btn .btn-outline:hover:not(:disabled) + .split-arrow { border-color: #111827; }
+.split-arrow {
+  height: var(--btn-h-lg); width: 26px;
+  border: 1px solid var(--border); border-left: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--card); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--muted-fg);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+/* hover the arrow part → whole control highlighted red (both halves) */
+.split-arrow:hover { background: var(--destr-dim); border-color: var(--destr); color: var(--destr); }
+.split-btn:has(.split-arrow:hover) .btn-outline { border-color: var(--destr); }
+.split-arrow svg { width: 9px; height: 9px; }
+.split-dropdown-menu {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: 4px; min-width: 110px; display: none; z-index: 200;
+}
+.split-dropdown.open .split-dropdown-menu { display: block; }
+.drop-item {
+  width: 100%; height: 28px; border: none; background: none;
+  border-radius: calc(var(--radius) - 1px); padding: 0 10px;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.923rem; color: var(--fg); cursor: pointer;
+  font-family: var(--font-body); transition: background 0.1s; white-space: nowrap;
+}
+.drop-item:hover { background: var(--muted); }
+.drop-item.danger:hover { background: var(--destr-dim); color: var(--destr); }
+.drop-item svg { width: 12px; height: 12px; }
+
+/* ── Right body ── */
+.right-body {
+  flex: 1; overflow-y: auto; padding: 24px;
+  background: var(--sunken); display: flex; flex-direction: column; gap: 20px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.right-body::-webkit-scrollbar { width: 6px; }
+.right-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Field cards ── */
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px;
+}
+.field-card .label {
+  font-size: 11px; font-weight: 500; color: #9CA3AF;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  display: flex; align-items: center;
+}
+.field-card .value { font-size: 1.077rem; color: var(--fg); line-height: 1.6; }
+.field-card .value[contenteditable] { outline: none; cursor: text; position: relative; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.field-card .value[contenteditable]:focus {
+  box-shadow: 0 0 0 1px var(--border); border-radius: 3px;
+}
+.field-card .value.empty { color: var(--muted-fg); font-style: italic; }
+.field-card .value[contenteditable]:not(:focus) { cursor: text; }
+/* .save-status lives in css/save-status.css */
+
+.num-list { list-style: none; padding: 0; cursor: text; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.num-list:empty::before { content: ''; display: block; height: calc(1.5 * 1.077rem); margin-bottom: 4px; }
+.num-list li { font-size: 1.077rem; color: var(--fg); margin-bottom: 4px; line-height: 1.5; }
+.num-list li::before {
+  content: attr(data-n); color: var(--muted-fg); margin-right: 6px; font-size: 1.077rem;
+}
+.num-list li[contenteditable] { outline: none; border-radius: 3px; }
+.num-list li[contenteditable]:focus { box-shadow: 0 0 0 1px var(--border); border-radius: 3px; }
+
+
+/* ── Recordings ── */
+.section-title { font-size: 1.077rem; font-weight: 600; color: var(--fg); margin-bottom: 12px; }
+.recording-list { display: flex; flex-direction: column; gap: 6px; }
+.recording-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); transition: border-color 0.15s, box-shadow 0.15s;
+}
+.recording-row.clickable { cursor: pointer; }
+.recording-row.clickable:hover { border-color: var(--accent-bd); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+
+.status-icon { flex-shrink: 0; line-height: 0; cursor: default; }
+.status-icon.status-clickable { cursor: pointer; }
+.status-icon svg { width: 16px; height: 16px; }
+.status-icon.done      svg { color: var(--accent); }
+.status-icon.active    svg { color: var(--accent); }
+.status-icon.warn      svg { color: var(--warn); }
+.status-icon.pending   svg { color: var(--muted-fg); }
+.status-icon.error     svg { color: var(--destr); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status-icon.active svg { animation: spin 1s linear infinite; }
+.status-icon.warn   svg { animation: spin 2s linear infinite; }
+
+.rec-segment { font-size: 0.923rem; color: var(--muted-fg); flex-shrink: 0; cursor: pointer; border-radius: var(--radius); padding: 1px 5px; margin: -1px -5px; transition: background 0.15s, color 0.15s; }
+.rec-person-icon { display: inline-flex; align-items: center; }
+.rec-person-icon svg { width: 13px; height: 13px; }
+.sec-title-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+.sec-title-icon svg { width: 14px; height: 14px; }
+.section-title { display: inline-flex; align-items: center; gap: 6px; }
+.rec-segment:hover { background: var(--muted); color: var(--fg); }
+.seg-picker {
+  position: fixed; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: 4px; min-width: 180px; max-height: 280px; overflow-y: auto;
+  z-index: 300; display: none;
+}
+.seg-picker.show { display: block; }
+.seg-picker-item {
+  display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 30px;
+  cursor: pointer; border-radius: calc(var(--radius) - 1px);
+  font-size: 0.923rem; color: var(--fg); transition: background 0.1s; white-space: nowrap;
+}
+.seg-picker-item:hover { background: var(--muted); }
+.seg-picker-item.active { color: var(--accent); font-weight: 600; }
+.seg-picker-item .seg-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; display: none;
+}
+.seg-picker-item.active .seg-dot { display: block; }
+.rec-sep { color: var(--muted-fg); font-size: 0.923rem; flex-shrink: 0; opacity: 0.7; }
+.rec-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.rec-meta     { font-size: 0.923rem; color: var(--muted-fg); flex-shrink: 0; }
+.rec-duration { font-size: 0.923rem; color: var(--muted-fg); flex-shrink: 0; font-family: var(--font-mono); }
+.rec-progress { font-size: 0.8rem; color: var(--accent); flex-shrink: 0; font-family: var(--font-mono); white-space: nowrap; }
+.rec-progress:empty { display: none; }
+
+.rec-name-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.rec-name-wrap input.rec-name-edit {
+  flex: 1; min-width: 0; font-size: 1.077rem; font-weight: 500; color: var(--fg);
+  background: var(--muted); border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 4px 8px; outline: none; font-family: var(--font-body);
+}
+.rec-edit {
+  width: 22px; height: 22px; border-radius: var(--radius);
+  background: none; border: none; cursor: pointer; color: var(--muted-fg);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: all 0.15s; flex-shrink: 0;
+}
+.recording-row:hover .rec-edit { opacity: 1; }
+.rec-edit:hover { color: var(--accent); background: var(--accent-dim); }
+.rec-edit svg { width: 11px; height: 11px; }
+.rec-del {
+  width: 22px; height: 22px; border-radius: var(--radius);
+  background: none; border: none; cursor: pointer; color: var(--muted-fg);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: all 0.15s; flex-shrink: 0;
+}
+.recording-row:hover .rec-del { opacity: 1; }
+.rec-del:hover { color: var(--destr); background: var(--destr-dim); }
+.rec-del svg { width: 11px; height: 11px; }
+
+.btn-tx-cancel {
+  background: none; border: none; color: var(--muted-fg); cursor: pointer;
+  font-size: 0.692rem; padding: 1px 3px; border-radius: 3px;
+  vertical-align: middle; margin-left: 3px; transition: color 0.15s; line-height: 1;
+}
+.btn-tx-cancel:hover { color: var(--destr); }
+
+/* ── Drop zone ── */
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 32px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent-bd); background: var(--accent-dim); }
+.drop-zone.dz-link-only { cursor: pointer; }
+.drop-zone.dz-link-only.drag-over { border-color: var(--border); background: transparent; }
+.dz-icon {
+  width: 32px; height: 32px; color: var(--muted-fg);
+  margin: 0 auto 8px; display: block; transition: color 0.15s;
+}
+.drop-zone:hover .dz-icon, .drop-zone.drag-over .dz-icon { color: var(--accent); }
+.dz-title { font-size: 1.077rem; font-weight: 500; color: var(--fg); margin-top: 8px; }
+.dz-sub { font-size: 0.923rem; color: var(--muted-fg); margin-top: 4px; }
+.drop-zone.uploading { pointer-events: none; opacity: 0.6; }
+.spk-prompt-opts { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.spk-prompt-opt { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; cursor: pointer; }
+.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border-color, rgba(128,128,128,0.4)); border-radius: 6px; background: transparent; color: inherit; text-align: center; }
+.spk-prompt-opt input[type=number]:focus { outline: none; border-color: var(--accent); }
+.spk-prompt-go { padding: 9px 16px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: var(--font-body, inherit); }
+.spk-prompt-go:hover { filter: brightness(1.07); }
+
+.dz-wrap { position: relative; }
+.dz-foot {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 10px; font-size: 0.923rem; color: var(--muted-fg); flex-wrap: wrap;
+  text-align: center;
+}
+.dz-mode-txt { line-height: 1.4; max-width: 100%; }
+.dz-hint-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+.dz-hint-pop {
+  display: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + 8px);
+  width: min(340px, 90vw);
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 80;
+  font-size: 0.846rem;
+  line-height: 1.5;
+  color: var(--fg);
+  text-align: left;
+}
+.dz-hint-pop.open { display: block; }
+.dz-hint-pop a { color: var(--accent); }
+.dz-hint-pop p { margin: 0 0 8px; }
+.dz-hint-pop p:last-child { margin-bottom: 0; }
+
+/* ── Summary card ── */
+.summary-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.summary-card .s-label {
+  font-size: 0.846rem; font-weight: 500; color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+}
+.summary-card .value { font-size: 1.077rem; line-height: 1.6; color: var(--fg); }
+.summary-card .value[contenteditable] { outline: none; cursor: text; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.summary-card .value[contenteditable]:focus {
+  box-shadow: 0 0 0 1px var(--border); border-radius: 3px;
+}
+.summary-card .value.empty { color: var(--muted-fg); font-style: italic; }
+
+/* ── Attachments ── */
+.att-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.att-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); transition: border-color 0.15s, box-shadow 0.15s; }
+.att-item:hover { border-color: var(--accent-bd); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.att-name-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.att-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.att-name:hover { text-decoration: underline; }
+.att-name-edit { flex: 1; font-size: 1.077rem; font-weight: 500; color: var(--fg); outline: none; background: transparent; border: none; border-bottom: 1px dashed var(--border); cursor: text; min-width: 0; }
+.att-name-edit:focus { border-bottom-color: var(--accent); }
+.att-edit { width: 22px; height: 22px; border-radius: var(--radius); background: none; border: none; cursor: pointer; color: var(--muted-fg); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: all 0.15s; flex-shrink: 0; }
+.att-item:hover .att-edit { opacity: 1; }
+.att-edit:hover { color: var(--accent); background: var(--accent-dim); }
+.att-edit svg { width: 11px; height: 11px; }
+.att-del { width: 22px; height: 22px; border-radius: var(--radius); background: none; border: none; cursor: pointer; color: var(--muted-fg); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: all 0.15s; flex-shrink: 0; }
+.att-item:hover .att-del { opacity: 1; }
+.att-del:hover { color: var(--destr); background: var(--destr-dim); }
+.att-del svg { width: 11px; height: 11px; }
+.att-dz-wrap { position: relative; margin-top: 8px; }
+label.att-upload-zone.drop-zone { display: block; }
+
+/* ── Segments ── */
+.seg-list { display: flex; flex-direction: column; gap: 10px; }
+.seg-empty { font-size: 1.077rem; color: var(--muted-fg); font-style: italic; padding: 4px 0; }
+.seg-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px;
+}
+.seg-card-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.seg-name {
+  flex: 1; font-size: 1.077rem; font-weight: 600; color: var(--fg); outline: none; cursor: text;
+  border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px;
+}
+.seg-name:focus { box-shadow: 0 0 0 1px var(--border); border-radius: 3px; }
+.seg-del {
+  width: 20px; height: 20px; border-radius: var(--radius);
+  background: none; border: none; cursor: pointer; color: var(--muted-fg);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: all 0.15s; flex-shrink: 0;
+}
+.seg-card:hover .seg-del { opacity: 1; }
+.seg-del:hover { color: var(--destr); background: var(--destr-dim); }
+.seg-del svg { width: 11px; height: 11px; }
+.seg-target-row {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+  font-size: 0.923rem; color: var(--muted-fg);
+}
+.seg-stepper {
+  display: inline-flex; align-items: center; gap: 0;
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--card);
+}
+.seg-stepper:focus-within { border-color: var(--accent-bd); box-shadow: 0 0 0 2px var(--accent-dim); }
+.seg-stepper-btn {
+  width: 26px; height: 26px; border: none; background: var(--card);
+  color: var(--fg); font-size: 14px; font-weight: 500; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s; flex-shrink: 0;
+}
+.seg-stepper-btn:hover { background: var(--secondary); }
+.seg-stepper-btn:active { background: var(--border); }
+.seg-target-input {
+  width: 40px; height: 26px; background: var(--card); border: none; border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+  border-radius: 0; padding: 4px 6px; font-size: 0.846rem; color: var(--fg);
+  font-family: var(--font-mono); text-align: center; outline: none; transition: border-color 0.15s;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.seg-target-input::-webkit-outer-spin-button,
+.seg-target-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.seg-target-input:focus { border-left-color: var(--accent); border-right-color: var(--accent); }
+.seg-assigned { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #6B7280; margin-left: 6px; }
+.seg-assigned svg { color: #9CA3AF; flex-shrink: 0; }
+.seg-field { margin-bottom: 8px; }
+.seg-field:last-child { margin-bottom: 0; }
+.seg-field-lbl {
+  font-size: 11px; font-weight: 500; color: #9CA3AF;
+  letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px;
+}
+.seg-field-val {
+  font-size: 1.077rem; color: var(--fg); line-height: 1.5;
+  outline: none; cursor: text; min-height: 18px; position: relative;
+  border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px;
+}
+.seg-field-val:focus { box-shadow: 0 0 0 1px var(--border); border-radius: 3px; }
+.btn-add-seg {
+  background: none; border: none; cursor: pointer; font-size: 0.923rem;
+  color: var(--accent); font-family: var(--font-body); font-weight: 500;
+  padding: 2px 6px; border-radius: var(--radius); transition: background 0.15s;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-add-seg:hover { background: var(--accent-dim); }
+.btn-add-seg svg { width: 10px; height: 10px; }
+
+/* ── Add section dropdown ── */
+.add-sec-wrap { position: relative; }
+.btn-add-sec {
+  background: none; border: none; cursor: pointer; font-size: 0.923rem;
+  color: var(--accent); font-family: var(--font-body); font-weight: 500;
+  padding: 2px 6px; border-radius: var(--radius); transition: background 0.15s;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-add-sec:hover { background: var(--accent-dim); }
+.btn-add-sec svg { width: 10px; height: 10px; }
+.btn-toggle-segs svg { transition: transform 0.18s; }
+.btn-toggle-segs.expanded svg { transform: rotate(90deg); }
+.section-collapse-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border-radius: var(--radius);
+  text-align: left;
+  transition: none;
+}
+.section-collapse-head:hover { background: none; }
+.section-collapse-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.section-collapse-head .section-title { margin-bottom: 0; }
+.section-collapse-head.expanded .btn-toggle-segs svg { transform: rotate(90deg); }
+.rec-filter-wrap { position: relative; }
+.rec-filter-menu {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: 4px; min-width: 180px; display: none; z-index: 200;
+}
+.rec-filter-menu.show { display: block; }
+.rec-filter-menu { max-height: 280px; overflow-y: auto; }
+.rec-filter-item {
+  width: 100%; height: 28px; border: none; background: none;
+  border-radius: calc(var(--radius) - 1px); padding: 0 10px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.923rem; color: var(--fg); cursor: pointer;
+  font-family: var(--font-body); transition: background 0.1s; white-space: nowrap;
+}
+.rec-filter-item:hover { background: var(--muted); }
+.rec-filter-chk {
+  width: 15px; height: 15px; flex-shrink: 0; border-radius: 3px;
+  border: 2px solid var(--border); background: var(--card);
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rec-filter-chk.on { border-color: var(--accent); background: var(--accent); }
+.rec-filter-chk svg { display: none; }
+.rec-filter-chk.on svg { display: block; }
+.add-sec-menu {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: 4px; min-width: 160px; display: none; z-index: 200;
+}
+.add-sec-menu.show { display: block; }
+.remove-section-btn {
+  background: none; border: none; cursor: pointer; padding: 2px;
+  color: var(--muted-fg); border-radius: 3px; line-height: 0;
+  transition: color 0.15s, background 0.15s; flex-shrink: 0; margin-left: auto;
+}
+.remove-section-btn:hover { color: var(--destr); background: var(--destr-dim); }
+.remove-section-btn svg { width: 9px; height: 9px; }
+
+/* ── Draggable section cards ── */
+.field-card.draggable { cursor: grab; position: relative; }
+.field-card.draggable:active { cursor: grabbing; }
+.field-card.draggable .label { justify-content: space-between; text-align: left; }
+/* Section header rows are space-between (heading + trailing "Add section" control).
+   The badge soaks up the free space on its right, so it stays next to the heading
+   and the trailing control stays hard right. */
+.section-head-row .save-status { margin-right: auto; }
+.custom-block-title { outline: none; border-bottom: 1px dashed transparent; cursor: text; }
+.custom-block-title:hover { border-bottom-color: #9CA3AF; }
+.custom-block-title:focus { border-bottom-color: var(--accent, #6366F1); }
+.field-card.dragging { opacity: 0.6; }
+.field-card.drop-before::before,
+.field-card.drop-after::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 3px;
+  background: var(--accent); border-radius: 2px; z-index: 1;
+}
+.field-card.drop-before::before { top: -6px; }
+.field-card.drop-after::after { bottom: -6px; }
+
+/* ── Modals ── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  backdrop-filter: blur(4px); z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.18s;
+}
+.overlay.show { opacity: 1; pointer-events: all; }
+.modal {
+  width: 380px; background: var(--card); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2); padding: 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+  transform: translateY(8px); transition: transform 0.18s;
+}
+.overlay.show .modal { transform: translateY(0); }
+.modal-title { font-size: 1.154rem; font-weight: 700; margin-bottom: 6px; font-family: var(--font-body); }
+.modal-desc { font-size: 1rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* export modal */
+.m-sub { font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 14px; line-height: 1.5; }
+.export-tabs {
+  display: flex; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 3px; gap: 2px; margin-bottom: 14px;
+}
+.export-tab {
+  flex: 1; padding: 5px 8px; font-size: 0.923rem; font-weight: 500;
+  border-radius: calc(var(--radius) - 1px); background: none; border: none;
+  color: var(--muted-fg); cursor: pointer; font-family: var(--font-body);
+  transition: all 0.15s; text-align: center;
+}
+.export-tab.on { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.m-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.m-lbl { font-size: 1rem; color: var(--fg); }
+.m-lbl-with-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 44px); }
+.sw {
+  width: 30px; height: 17px; border-radius: 99px; background: var(--secondary);
+  position: relative; cursor: pointer; flex-shrink: 0;
+  border: 1px solid var(--border); transition: all 0.15s;
+}
+.sw::after {
+  content: ''; position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--muted-fg); top: 2px; left: 2px; transition: all 0.15s;
+}
+.sw.on { background: var(--accent); border-color: var(--accent); }
+.sw.on::after { left: 15px; background: #fff; }
+.sw.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.fmt-pick { display: flex; gap: 4px; }
+.export-rec-list {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 14px; max-height: 180px; overflow-y: auto;
+}
+.export-rec-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  border-radius: var(--radius); background: var(--muted);
+  border: 1px solid var(--border); cursor: pointer; transition: border-color 0.15s;
+}
+.export-rec-row:hover { border-color: var(--muted-fg); }
+.export-rec-check {
+  width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid var(--border);
+  background: none; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; pointer-events: none;
+}
+.export-rec-row.checked .export-rec-check { background: var(--accent); border-color: var(--accent); }
+.export-rec-row.checked .export-rec-check::after {
+  content: ''; width: 7px; height: 5px;
+  border-left: 1.5px solid #fff; border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+}
+.export-rec-name { flex: 1; font-size: 0.923rem; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-rec-dur { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); flex-shrink: 0; }
+.m-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.fmt-hint { font-size: 0.846rem; color: var(--muted-fg); text-align: right; margin-top: -6px; margin-bottom: 4px; }
+.pii-export-time { color: var(--muted-fg); font-weight: 400; }
+
+/* Toast and inline save status live in css/save-status.css */
+</style>
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
+</head>
+<body>
+
+<!-- Delete modal -->
+<div class="overlay" id="deleteOverlay" onclick="if(event.target===this)closeDeleteModal()">
+  <div class="modal">
+    <div class="modal-title" id="deleteModalTitle">Delete project?</div>
+    <div class="modal-desc" id="deleteModalDesc">This will permanently remove the project folder and all its transcriptions, codes, and comments. This cannot be undone.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn-delete-confirm" id="deleteConfirmBtn">Delete permanently</button>
+    </div>
+  </div>
+</div>
+
+<!-- Speaker-count prompt (mandatory before adding a recording) -->
+<div class="overlay" id="speakersOverlay" onclick="if(event.target===this)cancelSpeakersPrompt()">
+  <div class="modal" style="width:380px">
+    <div class="modal-title">How many speakers?</div>
+    <div class="modal-desc">How many people speak in <span id="spkPromptCount">this recording</span>? This guides speaker identification. Choose <b>Auto</b> if you're unsure.</div>
+    <div class="spk-prompt-opts">
+      <label class="spk-prompt-opt"><input type="radio" name="spkPromptMode" value="auto" checked> Auto-detect</label>
+      <label class="spk-prompt-opt"><input type="radio" name="spkPromptMode" value="exact"> Exactly
+        <input type="number" id="spkPromptNum" min="1" max="10" step="1" value="2" onfocus="_spkPromptPickExact()" oninput="_spkPromptPickExact()" /></label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cancelSpeakersPrompt()">Cancel</button>
+      <button class="spk-prompt-go" onclick="confirmSpeakersPrompt()">Start transcription</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="overlay" id="exportOverlay" onclick="if(event.target===this)closeExport()">
+  <div class="modal" style="width:440px">
+    <div class="modal-title" id="exportModalTitle">Export project</div>
+    <div class="m-sub">Choose transcriptions and options for this export.</div>
+    <div class="export-tabs">
+      <button class="export-tab on" id="exportTabAll" onclick="setExportMode('all')">All transcriptions</button>
+      <button class="export-tab" id="exportTabSel" onclick="setExportMode('select')">Selected transcriptions</button>
+    </div>
+    <div class="export-rec-list" id="exportRecList" style="display:none"></div>
+    <div class="m-row"><span class="m-lbl">Include comments</span><div class="sw on" id="expComments" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include codes</span><div class="sw on" id="expTags" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include project details</span><div class="sw on" id="expProjectDetails" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl">Include participants details</span><div class="sw on" id="expParticipant" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row"><span class="m-lbl m-lbl-with-hint">Include LLM prompt<button type="button" class="hint-tip" aria-label="What Include LLM prompt does" title="When this is on, your saved instruction is added at the very beginning of exported files. Paste the export into an LLM (ChatGPT, Claude, etc.) and the model already knows your goal—synthesis across interviews, a one-recording summary, pulling themes, or a custom task—so you do not have to retype instructions each time.">?</button></span><div class="sw on" id="expPrompt" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row" id="expPiiRow">
+      <span class="m-lbl" id="expPiiLbl">Anonymize PII <span class="pii-export-time" id="expPiiTimeEstimate"></span></span>
+      <div class="sw" id="expPii" onclick="if(!this.classList.contains('disabled'))this.classList.toggle('on')"></div>
+    </div>
+    <div class="m-row" style="border-bottom:none">
+      <span class="m-lbl">Format</span>
+      <div class="fmt-pick" id="expFmt">
+        <button class="fmt-btn on" onclick="pickFmt(this)" data-fmt="markdown" data-hint="Best for further synthesis with AI">Markdown</button>
+        <button class="fmt-btn" onclick="pickFmt(this)" data-fmt="odt" data-hint="Best for sharing and editing in Google Docs">ODT</button>
+      </div>
+    </div>
+    <div class="fmt-hint" id="fmtHint">Best for further synthesis with AI</div>
+    <div class="m-actions">
+      <button class="m-cancel" onclick="closeExport()">Cancel</button>
+      <button class="m-export-btn" id="exportBtn" onclick="doProjectExport()">Export</button>
+    </div>
+  </div>
+</div>
+
+<!-- Segment picker (inline assignment) -->
+<div class="seg-picker" id="segPicker" onclick="event.stopPropagation()"></div>
+
+<!-- App -->
+<div class="app">
+
+  <!-- LEFT COLUMN -->
+  <div class="left-col">
+
+    <!-- Top bar -->
+    <header class="top-bar">
+      <a class="tb-logo" href="/" title="Go to projects">
+        <img src="{{ url_for('static', filename='icons/pine.png') }}" alt="PINE icon" class="tb-logo-icon" />
+        <span class="tb-name">PINE</span>
+      </a>
+      <div class="tb-sep compact"></div>
+      <span class="tb-sub">Private Interview &amp; Notes Environment</span>
+      <div class="tb-sep compact"></div>
+      <button
+        type="button"
+        class="py-link-status state-checking"
+        id="pyLinkStatus"
+        aria-label="Checking Python backend connection"
+        title="Checking Python backend connection"
+        onclick="handlePythonLinkClick(event)"
+      ></button>
+    </header>
+
+    <!-- New project + search -->
+    <div class="left-header">
+      <button class="btn-new btn-lg" id="addProjectBtn">
+        <svg viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        New project
+      </button>
+      <div class="search-wrap">
+        <svg class="s-ico" viewBox="0 0 13 13" fill="none">
+          <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <input class="search-in" type="text" placeholder="Search projects…" id="searchInput" />
+        <button class="search-clear" id="searchClear" type="button" aria-label="Clear search">
+          <svg viewBox="0 0 10 10" width="8" height="8"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Project list -->
+    <div class="project-list" id="projList">
+      <div class="list-section" id="activeSection"></div>
+      <button class="archive-toggle-btn" id="archiveDivider">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Archive
+        <span class="archive-badge" id="archiveCount">0</span>
+      </button>
+      <div class="list-section" id="archiveSection"></div>
+    </div>
+
+    <!-- Single Transcriptions -->
+    <div class="single-tx-section" id="singleTxSection">
+      <button class="single-tx-sidebar-btn" id="singleTxBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        Single transcriptions
+      </button>
+      <!-- Popover -->
+      <div class="stx-popover" id="singleTxPopover">
+        <div class="stx-popover-title">Single transcription</div>
+        <div class="stx-popover-desc">Transcribe audio without creating a project.</div>
+        <div class="stx-dropzone" id="singleTxDropzone">
+          <svg class="stx-dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div class="stx-dz-title">Drop files here or click to browse</div>
+        </div>
+        <input type="file" id="singleTxFileInput" style="display:none"
+               accept=".mp3,.mp4,.m4a,.wav,.mkv,.webm,.ogg,.flac" multiple />
+        <div class="single-tx-list-hdr" id="singleTxListHeader" style="display:none">Previous transcriptions</div>
+        <div class="single-tx-list" id="singleTxList"></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="left-footer">
+      <a href="/settings" class="lf-btn" style="flex:1;justify-content:flex-start">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Settings
+      </a>
+      <button class="lf-btn" id="quitBtn" title="Stops PINE. Any transcription in progress will be interrupted.">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+        </svg>
+        Quit
+      </button>
+    </div>
+
+  </div><!-- /left-col -->
+
+  <!-- Resize handle -->
+  <div class="resize-handle" id="resizeHandle"></div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="right-col" id="rightCol">
+    <div class="empty-state" id="emptyState">
+      <svg viewBox="0 0 40 40" fill="none">
+        <rect x="4" y="8" width="32" height="24" rx="4" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 16h16M12 22h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <p>Create a new project to get started.</p>
+      <button class="btn-new btn-new-ghost" id="emptyNewProjectBtn">
+        <svg viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        New project
+      </button>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<div class="toast" id="toast"></div>
+
+<div class="lang-confirm-overlay" id="langConfirmOverlay" aria-hidden="true">
+  <div class="lang-confirm-modal" role="dialog" aria-labelledby="langConfirmTitle" aria-modal="true">
+    <div id="langConfirmStep1">
+      <h3 id="langConfirmTitle">Recording language</h3>
+      <p class="lang-confirm-desc" id="langConfirmDesc"></p>
+      <label class="lang-confirm-label" for="langConfirmSelect">Language</label>
+      <select id="langConfirmSelect" class="lang-confirm-select"></select>
+      <label class="lang-confirm-label" for="langConfirmCustom">Or enter a Whisper language code</label>
+      <input type="text" id="langConfirmCustom" class="lang-confirm-input" maxlength="16"
+             placeholder="e.g. en, ru, de, uk" autocomplete="off" />
+      <div class="lang-confirm-actions">
+        <button type="button" class="btn-outline" id="langConfirmStop">Stop transcription</button>
+        <button type="button" class="btn-primary" id="langConfirmOk">Continue</button>
+      </div>
+    </div>
+    <div id="langConfirmStep2" style="display:none">
+      <h3 id="langRememberTitle">Default for this project?</h3>
+      <p class="lang-confirm-desc" id="langRememberDesc"></p>
+      <div class="lang-confirm-actions">
+        <button type="button" class="btn-outline" id="langRememberNo">No, only this recording</button>
+        <button type="button" class="btn-primary" id="langRememberYes">Yes, all future recordings</button>
+      </div>
+    </div>
+    <p class="lang-confirm-footnote" role="note">
+      Note: the first time you transcribe with a given language, PINE may download alignment model files
+      (from Hugging Face if allowed). That download usually takes on the order of <strong style="color:var(--fg);font-weight:600">about 10 minutes</strong>
+      depending on your connection.
+    </p>
+  </div>
+</div>
+
+<script>
+const API = '/api/projects';
+let projects = { active: [], archived: [] };
+let _saveTimers = {};
+
+// Redirect to onboarding if needed
+(async function checkOnboarding() {
+  try {
+    const r = await fetch('/api/onboarding/status');
+    const d = await r.json();
+    if (!d.completed) { window.location.replace('/?t=' + Date.now()); return; }
+  } catch (_) {}
+})();
+
+let selectedId = null;
+let lastOpenProjectId = {{ init_last_project_id | tojson }};
+let archiveOpen = true;
+let pendingDeleteId = null;
+
+// ── SVG constants ──
+const SVG_ARCHIVE   = '<svg viewBox="0 0 13 13" fill="none"><rect x="1.5" y="4.5" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 4.5L3 1.5h7l1.5 3" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M4.5 7.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const SVG_UNARCHIVE = '<svg viewBox="0 0 13 13" fill="none"><rect x="1.5" y="4.5" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 4.5L3 1.5h7l1.5 3" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6.5 9.5V7M5 8.5l1.5-1.5 1.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_EXPORT    = '<svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1v7.5M3.5 6l3 3 3-3M2 11h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_DELETE    = '<svg viewBox="0 0 13 13" fill="none"><path d="M2.5 4h8M5 4V2.5h3V4M5.5 6v4M7.5 6v4M3.5 4l.5 7h5l.5-7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_CLOCK     = '<svg viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.1"/><path d="M5.5 3.5v2l1.5 1" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>';
+const SVG_CALENDAR  = '<svg viewBox="0 0 13 13" fill="none"><rect x="1.5" y="2.5" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 5h10M4 1v3M9 1v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const SVG_UPLOAD    = '<svg class="dz-icon" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const SVG_TAGS      = '<svg viewBox="0 0 13 13" fill="none" aria-hidden="true"><path d="M1.5 7L6.5 2l4.2.3.3 4.2-5 5a1 1 0 01-1.4 0l-3.1-3.1a1 1 0 010-1.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="9" cy="4" r=".8" fill="currentColor"/></svg>';
+const SVG_FILTER   = '<svg viewBox="0 0 14 14" fill="none"><path d="M1 2h12M4 7h6M6 12h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="4" cy="2" r="1.5" fill="currentColor"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/><circle cx="7" cy="12" r="1.5" fill="currentColor"/></svg>';
+const SVG_PENCIL   = '<svg viewBox="0 0 13 13" fill="none"><path d="M9.5 1.5l2 2-7.5 7.5-2.5.5.5-2.5 7.5-7.5z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const SVG_PERSON   = '<svg viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="4" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 12c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const SVG_DETAILS  = '<svg viewBox="0 0 13 13" fill="none"><rect x="2" y="1.5" width="9" height="10" rx="1.2" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 5h4M4.5 7.5h4M4.5 10h2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>';
+const SVG_MIC      = '<svg viewBox="0 0 13 13" fill="none"><rect x="4.5" y="1" width="4" height="6" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 7a4 4 0 008 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M6.5 11v1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const SVG_SUMMARY  = '<svg viewBox="0 0 13 13" fill="none"><path d="M2 3h9M2 6h9M2 9h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const SVG_ATTACH   = '<svg viewBox="0 0 13 13" fill="none"><path d="M10 6.5L5.5 11a2.8 2.8 0 01-4-4l5-5a1.8 1.8 0 012.5 2.5L4.5 9a.9.9 0 01-1.3-1.3L8 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// ── Helpers ──
+function timeAgo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return days + 'd ago';
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function fmtFull(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+  return d.toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function fmtDuration(secs) {
+  if (!secs || secs <= 0) return '--:--';
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
+  const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+const _statusIcons = {
+  transcribed: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12l2.5 2.5L16 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  transcribing: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>',
+  awaiting_language: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="round"/><path d="M12 8v4M12 14h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  cancelling: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>',
+  cancelled: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="7" y1="7" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  error: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  pending: '<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><polyline points="12,7 12,12 15,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+};
+function _statusIconActionAttrs(status, pid, rid) {
+  if (status !== 'awaiting_language') return '';
+  return ` class="status-icon warn status-clickable" role="button" tabindex="0" onclick="event.stopPropagation();openLangConfirmModalFromClick(${pid},${rid})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();openLangConfirmModalFromClick(${pid},${rid});}"`;
+}
+function recStatusHTML(status, message, pid, rid) {
+  const stageLabels = { loading: 'Loading models…', transcribing: 'Transcribing…', aligning: 'Aligning…', diarizing: 'Diarizing…' };
+  let cls, tip;
+  if (status === 'transcribed')       { cls = 'done';    tip = 'Transcribed'; }
+  else if (status === 'transcribing') { cls = 'active';  tip = message || 'Transcribing…'; }
+  else if (status === 'awaiting_language') { cls = 'warn'; tip = message || 'Choose language…'; }
+  else if (status === 'cancelling')   { cls = 'warn';    tip = 'Cancelling…'; }
+  else if (status === 'cancelled')    { cls = 'pending'; tip = 'Cancelled'; }
+  else if (status === 'error')        { cls = 'error';   tip = message || 'Error'; }
+  else                                { cls = 'pending'; tip = 'Pending'; }
+  const safeTip = esc(tip);
+  const icon = _statusIcons[status] || _statusIcons.pending;
+  const actionAttrs = _statusIconActionAttrs(status, pid, rid);
+  if (actionAttrs) {
+    return `<span${actionAttrs} title="${safeTip}"><svg viewBox="0 0 24 24" fill="none">${icon}</svg></span>`;
+  }
+  return `<span class="status-icon ${cls}" title="${safeTip}"><svg viewBox="0 0 24 24" fill="none">${icon}</svg></span>`;
+}
+
+// ── Transcription progress text (percent / ETA / queue position) ──
+function fmtEtaShort(secs) {
+  if (secs == null || secs < 0) return '';
+  secs = Math.round(secs);
+  if (secs < 60) return secs + 's';
+  const m = Math.floor(secs / 60), s = secs % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+function progressText(d) {
+  if (d.status === 'transcribing') {
+    let t = (typeof d.percent === 'number') ? d.percent + '%' : '';
+    const eta = fmtEtaShort(d.eta_secs);
+    if (eta) t += (t ? ' · ' : '') + '~' + eta;
+    if (!t) t = ({ loading: 'loading…', aligning: 'aligning…', diarizing: 'diarizing…' })[d.stage] || '';
+    return t;
+  }
+  if (d.status === 'pending' && d.queue_total) return `#${d.queue_position} of ${d.queue_total}`;
+  return '';
+}
+// On initial render the server doesn't persist live percent, so only show a
+// neutral hint for in-progress recordings; live updates arrive over the socket.
+function initialProgressText(r) {
+  return r.transcription_status === 'transcribing' ? '…' : '';
+}
+
+function findProject(id) {
+  return projects.active.find(p => p.id === id) || projects.archived.find(p => p.id === id);
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// ── Section block builders (for dynamic insert) ──
+const SECTION_ORDER_KEYS = ['objective', 'questions', 'hypotheses', 'stakeholders', 'methodology', 'interview_guide'];
+const SECTION_LABELS = { objective: 'Research objective', questions: 'Research questions', hypotheses: 'Hypotheses', stakeholders: 'Stakeholders', methodology: 'Methodology', interview_guide: 'Interview Guide' };
+const SUMMARY_ORDER_KEYS = ['key_findings', 'further_steps', 'recommendations'];
+const SUMMARY_LABELS = { key_findings: 'Key Findings', further_steps: 'Further Steps', recommendations: 'Recommendations' };
+const SVG_RM = '<svg viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+
+function buildSectionBlockHtml(key, pid, p) {
+  // Handle custom blocks
+  if (key.startsWith('custom_')) {
+    const block = (p?.custom_sections || []).find(b => b.id === key);
+    if (block) return buildCustomBlockHtml(block, pid, false);
+    return '';
+  }
+  const rmBtn = (k) => `<button class="remove-section-btn" onclick="removeSection('${k}',${pid})" title="Remove section">${SVG_RM}</button>`;
+  const qItems = (p?.research_questions || []).map((q, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(q)}</li>`).join('');
+  const hItems = (p?.hypotheses || []).map((h, i) => `<li data-n="H${i+1}" contenteditable="true" spellcheck="false">${esc(h)}</li>`).join('');
+  const sItems = (p?.stakeholders || []).map((s, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(s)}</li>`).join('');
+  const blocks = {
+    objective: `<div class="field-card draggable" data-section-key="objective" draggable="true"><div class="label">${SECTION_LABELS.objective} ${rmBtn('objective')}</div><div class="value${(p?.objective || '') ? '' : ' empty'}" id="field-objective" contenteditable="true" spellcheck="false" data-field="objective" data-project-id="${pid}">${esc(p?.objective || '') || ''}</div></div>`,
+    questions: `<div class="field-card draggable" data-section-key="questions" draggable="true"><div class="label">${SECTION_LABELS.questions} ${rmBtn('questions')}</div><ul class="num-list" id="field-questions" data-list-type="q" data-project-id="${pid}">${qItems}</ul></div>`,
+    hypotheses: `<div class="field-card draggable" data-section-key="hypotheses" draggable="true"><div class="label">${SECTION_LABELS.hypotheses} ${rmBtn('hypotheses')}</div><ul class="num-list" id="field-hypotheses" data-list-type="h" data-project-id="${pid}">${hItems}</ul></div>`,
+    stakeholders: `<div class="field-card draggable" data-section-key="stakeholders" draggable="true"><div class="label">${SECTION_LABELS.stakeholders} ${rmBtn('stakeholders')}</div><ul class="num-list" id="field-stakeholders" data-list-type="s" data-project-id="${pid}">${sItems}</ul></div>`,
+    methodology: `<div class="field-card draggable" data-section-key="methodology" draggable="true"><div class="label">${SECTION_LABELS.methodology} ${rmBtn('methodology')}</div><div class="value${(p?.methodology || '') ? '' : ' empty'}" id="field-methodology" contenteditable="true" spellcheck="false" data-field="methodology" data-project-id="${pid}">${esc(p?.methodology || '') || ''}</div></div>`,
+    interview_guide: `<div class="field-card draggable" data-section-key="interview_guide" draggable="true"><div class="label">${SECTION_LABELS.interview_guide} ${rmBtn('interview_guide')}</div><div class="value${(p?.interview_guide || '') ? '' : ' empty'}" id="field-interview_guide" contenteditable="true" spellcheck="false" data-field="interview_guide" data-project-id="${pid}">${esc(p?.interview_guide || '') || ''}</div></div>`,
+  };
+  return blocks[key] || '';
+}
+
+function buildCustomBlockHtml(block, pid, isSummary) {
+  const attrKey = isSummary ? 'data-summary-key' : 'data-section-key';
+  const removeFn = isSummary ? 'removeSummarySection' : 'removeSection';
+  const rmBtn = `<button class="remove-section-btn" onclick="${removeFn}('${block.id}',${pid})" title="Remove section">${SVG_RM}</button>`;
+  return `<div class="field-card draggable" ${attrKey}="${block.id}" draggable="true"><div class="label"><span class="custom-block-title" contenteditable="true" spellcheck="false" data-block-id="${block.id}" data-project-id="${pid}" data-summary="${isSummary ? '1' : ''}">${esc(block.title || 'Other')}</span> ${rmBtn}</div><div class="value${(block.content || '') ? '' : ' empty'}" id="field-${block.id}" contenteditable="true" spellcheck="false" data-field="${block.id}" data-project-id="${pid}" data-custom-block="1" data-summary="${isSummary ? '1' : ''}">${esc(block.content || '') || ''}</div></div>`;
+}
+
+function buildSummaryBlockHtml(key, pid, p) {
+  const rmBtn = (k) => `<button class="remove-section-btn" onclick="removeSummarySection('${k}',${pid})" title="Remove section">${SVG_RM}</button>`;
+  // Handle custom blocks
+  if (key.startsWith('custom_')) {
+    const block = (p?.custom_summary_sections || []).find(b => b.id === key);
+    if (block) return buildCustomBlockHtml(block, pid, true);
+    return '';
+  }
+  const blocks = {
+    key_findings: `<div class="field-card draggable" data-summary-key="key_findings" draggable="true"><div class="label">${SUMMARY_LABELS.key_findings} ${rmBtn('key_findings')}</div><div class="value${(p?.key_findings || '') ? '' : ' empty'}" id="field-key_findings" contenteditable="true" spellcheck="false" data-field="key_findings" data-project-id="${pid}">${esc(p?.key_findings || '') || ''}</div></div>`,
+    further_steps: `<div class="field-card draggable" data-summary-key="further_steps" draggable="true"><div class="label">${SUMMARY_LABELS.further_steps} ${rmBtn('further_steps')}</div><div class="value${(p?.further_steps || '') ? '' : ' empty'}" id="field-further_steps" contenteditable="true" spellcheck="false" data-field="further_steps" data-project-id="${pid}">${esc(p?.further_steps || '') || ''}</div></div>`,
+    recommendations: `<div class="field-card draggable" data-summary-key="recommendations" draggable="true"><div class="label">${SUMMARY_LABELS.recommendations} ${rmBtn('recommendations')}</div><div class="value${(p?.recommendations || '') ? '' : ' empty'}" id="field-recommendations" contenteditable="true" spellcheck="false" data-field="recommendations" data-project-id="${pid}">${esc(p?.recommendations || '') || ''}</div></div>`,
+  };
+  return blocks[key] || '';
+}
+
+// toast() and showSaveStatus() come from js/save-status.js
+
+// ── API ──
+async function api(url, opts = {}) {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json', ...opts.headers }, ...opts });
+  if (!res.ok) {
+    let msg = 'Request failed';
+    try { const d = await res.json(); if (d.error) msg = d.error; } catch (_) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+// ── Load projects ──
+async function loadProjects(selectAfter) {
+  try {
+    const data = await api(API);
+    projects = data;
+    renderList();
+    document.getElementById('archiveCount').textContent = projects.archived.length;
+    if (selectAfter !== undefined && findProject(selectAfter)) { await selectProject(selectAfter); }
+    else if (selectedId && findProject(selectedId)) { await selectProject(selectedId); }
+    else if (lastOpenProjectId != null && findProject(lastOpenProjectId)) { await selectProject(lastOpenProjectId); }
+    else if (projects.active.length) { await selectProject(projects.active[0].id); }
+    else if (projects.archived.length) { await selectProject(projects.archived[0].id); }
+    else { selectedId = null; showEmpty(); }
+  } catch (e) { toast('Failed to load projects: ' + e.message, true); }
+}
+
+// ── Render left panel ──
+function archiveMonthKeyUTC(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function archivedSectionHTML() {
+  const monthFmt = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const groups = new Map();
+  for (const p of projects.archived) {
+    const iso = p.archived_at || p.updated_at || p.created_at;
+    const key = archiveMonthKeyUTC(iso);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  for (const arr of groups.values()) {
+    arr.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  }
+  const keys = [...groups.keys()].sort().reverse();
+  const parts = [];
+  for (const key of keys) {
+    const y = +key.slice(0, 4);
+    const mo = +key.slice(5, 7) - 1;
+    const label = monthFmt.format(new Date(Date.UTC(y, mo, 15)));
+    parts.push('<div class="archive-month-group">');
+    parts.push('<div class="archive-month-heading">' + esc(label) + '</div>');
+    parts.push(groups.get(key).map(p => projRowHTML(p, true)).join(''));
+    parts.push('</div>');
+  }
+  return parts.join('');
+}
+
+function renderList() {
+  const activeEl = document.getElementById('activeSection');
+  const archiveEl = document.getElementById('archiveSection');
+  activeEl.innerHTML = projects.active.map(p => projRowHTML(p, false)).join('');
+  archiveEl.innerHTML = archivedSectionHTML();
+  activeEl.querySelectorAll('.project-row').forEach(r => r.addEventListener('click', () => selectProject(+r.dataset.id)));
+  archiveEl.querySelectorAll('.project-row').forEach(r => r.addEventListener('click', () => selectProject(+r.dataset.id)));
+  doSearchFilter();
+}
+
+function projRowHTML(p, archived) {
+  const cls = archived ? 'project-row archived' : 'project-row';
+  const active = p.id === selectedId ? ' active' : '';
+  const sub = p.recording_count + ' transcription' + (p.recording_count !== 1 ? 's' : '') + ' · ' + timeAgo(p.updated_at);
+  return `<div class="${cls}${active}" data-id="${p.id}">
+    <div class="p-info">
+      <div class="p-name">${esc(p.name)}</div>
+      <div class="p-meta">${sub}</div>
+    </div>
+  </div>`;
+}
+
+// ── Select project ──
+async function selectProject(id) {
+  selectedId = id;
+  lastOpenProjectId = id;
+  document.querySelectorAll('.project-row').forEach(r => r.classList.toggle('active', +r.dataset.id === id));
+  try {
+    const [data, settingsRes] = await Promise.all([
+      api(API + '/' + id),
+      fetch('/api/settings').then(r => r.json()),
+    ]);
+    if (data.error) return;
+    _appSettings = Object.assign({}, _appSettings, settingsRes);
+    renderDetail(data);
+    fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ last_open_project_id: String(id) }),
+    }).catch(() => {});
+  } catch (e) { toast('Failed to load project: ' + e.message, true); }
+}
+
+function showEmpty() {
+  document.querySelectorAll('.project-detail').forEach(d => d.remove());
+  document.getElementById('emptyState').style.display = 'flex';
+}
+
+// ── Render right panel detail ──
+function renderDetail(p) {
+  document.getElementById('emptyState').style.display = 'none';
+  const existing = document.getElementById('projectDetail');
+  if (existing) existing.remove();
+
+  const questions = p.research_questions || [];
+  const hypotheses = p.hypotheses || [];
+  const recs = p.recordings || [];
+  const isArchived = p.is_archived;
+  const archiveLabel = isArchived ? 'Unarchive' : 'Archive';
+  const archiveSvg = isArchived ? SVG_UNARCHIVE : SVG_ARCHIVE;
+  const archiveAction = isArchived ? `doUnarchive(${p.id})` : `doArchive(${p.id})`;
+
+  const archiveDropdown = `
+    <div class="split-dropdown" id="archiveDropdown">
+      <div class="split-btn">
+        <button class="btn-outline btn-lg" onclick="${archiveAction}">${archiveSvg} ${archiveLabel}</button>
+        <button type="button" class="split-arrow" onclick="toggleArchiveDropdown(event)" aria-label="More actions">
+          <svg viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="split-dropdown-menu">
+        <button class="drop-item danger" onclick="openDeleteModal(${p.id},'${esc(p.name).replace(/'/g,"\\'")}');closeArchiveDropdown()">
+          ${SVG_DELETE} Delete
+        </button>
+      </div>
+    </div>`;
+
+  const qItems = questions.map((q, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(q)}</li>`).join('');
+  const hItems = hypotheses.map((h, i) => `<li data-n="H${i+1}" contenteditable="true" spellcheck="false">${esc(h)}</li>`).join('');
+  const stakeholdersList = p.stakeholders || [];
+  const sItems = stakeholdersList.map((s, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(s)}</li>`).join('');
+  const enabledSections = p.enabled_sections || [];
+
+  const sectionBlockHtml = (k) => buildSectionBlockHtml(k, p.id, p);
+  const optionalBlocksHtml = enabledSections.map(k => sectionBlockHtml(k)).join('');
+  const availSections = SECTION_ORDER_KEYS.filter(k => !enabledSections.includes(k));
+
+  const enabledSummarySections = p.enabled_summary_sections || ['key_findings'];
+  const summaryBlockHtml = (k) => buildSummaryBlockHtml(k, p.id, p);
+  const summaryBlocksHtml = enabledSummarySections.map(k => summaryBlockHtml(k)).join('');
+  const availSummarySections = SUMMARY_ORDER_KEYS.filter(k => !enabledSummarySections.includes(k));
+  const addSummarySectionHtml = `<div class="add-sec-wrap">
+    <button class="btn-add-sec" onclick="toggleAddSummarySection(${p.id},event)">
+      <svg viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      Add section
+    </button>
+    <div class="add-sec-menu" id="addSummarySecMenu-${p.id}">
+      ${availSummarySections.map(k => `<button class="drop-item" data-summary-key="${k}" onclick="addSummarySection('${k}',${p.id},event)">${SUMMARY_LABELS[k]}</button>`).join('')}
+      <button class="drop-item" data-summary-key="__new_custom__" onclick="addCustomSummarySection(${p.id},event)">Other</button>
+    </div>
+  </div>`;
+  const addSectionHtml = `<div class="add-sec-wrap">
+    <button class="btn-add-sec" onclick="toggleAddSection(${p.id},event)">
+      <svg viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      Add section
+    </button>
+    <div class="add-sec-menu" id="addSecMenu-${p.id}">
+      ${availSections.map(k => `<button class="drop-item" data-section-key="${k}" onclick="addSection('${k}',${p.id},event)">${SECTION_LABELS[k]}</button>`).join('')}
+      <button class="drop-item" data-section-key="__new_custom__" onclick="addCustomSection(${p.id},event)">Other</button>
+    </div>
+  </div>`;
+
+  const recItems = recs.map(r => {
+    const canOpen = r.transcription_status === 'transcribed';
+    const recUrl = canOpen ? `/project/${p.id}/recording/${r.id}` : '#';
+    const segLabel = r.segment_name || null;
+    const segId = r.segment_id ? String(r.segment_id) : 'unassigned';
+    const displayName = (r.original_name || 'Recording').replace(/\.[^.]+$/, '');
+    const origName = r.original_name || 'Recording';
+    return `<div class="recording-row${canOpen ? ' clickable' : ''}" data-rec-id="${r.id}" data-segment-id="${segId}" data-project-id="${p.id}" ${canOpen ? `onclick="if(!this.dataset.editing) window.location.href='${recUrl}'"` : ''}>
+      ${recStatusHTML(r.transcription_status, r.error_message || '', p.id, r.id)}
+      <span class="rec-progress" data-rec-progress="${r.id}">${esc(initialProgressText(r))}</span>
+      <span class="rec-sep" aria-hidden="true">·</span>
+      <span class="rec-segment" title="Assign segment" onclick="event.stopPropagation();openSegmentPicker(this,${p.id},${r.id})">${segLabel ? esc(segLabel) : '<span class="rec-person-icon">' + SVG_PERSON + '</span>'}</span>
+      <span class="rec-sep" aria-hidden="true">·</span>
+      <div class="rec-name-wrap">
+        <span class="rec-name" data-original-name="${esc(origName)}">${esc(displayName)}</span>
+        <button class="rec-edit" onclick="event.stopPropagation();beginRenameRecording(this)" title="Rename recording">${SVG_PENCIL}</button>
+      </div>
+      <span class="rec-duration">${fmtDuration(r.duration_seconds)}</span>
+      <span class="rec-sep">·</span>
+      <span class="rec-meta">${timeAgo(r.created_at)}</span>
+      <button class="rec-del" onclick="event.stopPropagation();deleteRecording(${p.id},${r.id})" title="Delete recording">${SVG_DELETE}</button>
+    </div>`;
+  }).join('');
+
+  const linkMode = _appSettings.link_recordings === 'true';
+  const dzModeLine = linkMode
+    ? 'Recordings <strong>won\u2019t be copied</strong> to the project folder.'
+    : 'Recordings <strong>will be copied</strong> to the project folder.';
+  const dzTitleMain = linkMode
+    ? 'Click to add recordings'
+    : 'Drop files here or click to browse';
+  const dzSubMain = linkMode
+    ? ''
+    : '';
+  const dzHintInner = linkMode
+    ? `<p>Linking is on: PINE stores each file\u2019s path on disk. The audio file is not duplicated into your project folder; transcripts and annotations are still saved there.</p><p>Add recordings by clicking this area to open the system file picker (multi-select supported). Drag-and-drop is not available in this mode.</p><p>If you move, rename, or delete the original file, playback and transcription for that recording will stop working until the file is back at the stored path. Saved transcripts and any codes, comments, or speaker labels you added stay in your project folder, but you won\u2019t be able to play the audio or run transcription again until PINE can read the media file.</p><p><a href="/settings#sec-recordings">Recordings settings</a></p>`
+    : `<p>Copy mode: each file is copied into this project\u2019s folder. You can move or delete the originals elsewhere without affecting the project.</p><p><a href="/settings#sec-recordings">Recordings settings</a></p>`;
+
+  const defaultTxLang = (p.default_transcription_language || '').trim();
+  const defaultLangLine = defaultTxLang
+    ? `<div style="font-size:0.8125rem;color:var(--muted-fg);margin:-6px 0 12px;line-height:1.45">
+         <span>Default transcript language for new recordings: <strong style="color:var(--fg)">${esc(defaultTxLang)}</strong></span>
+         <button type="button" class="btn-outline btn-inline-compact" onclick="event.stopPropagation();clearProjectDefaultLang(${p.id})">Clear</button>
+       </div>`
+    : '';
+
+  const html = `
+  <div class="project-detail" id="projectDetail" data-enabled='${JSON.stringify(enabledSections)}' data-enabled-summary='${JSON.stringify(enabledSummarySections)}'>
+    <div class="right-header">
+      <div class="project-title-row">
+        <div class="project-name-block">
+          <div class="project-name" id="detailName">${esc(p.name)}</div>
+        </div>
+        <div class="project-meta">
+          <span title="${esc(fmtFull(p.created_at))}">${SVG_CALENDAR} Created ${timeAgo(p.created_at)}</span>
+          <span class="project-meta-dot"></span>
+          <span title="${esc(fmtFull(p.updated_at))}">${SVG_CLOCK} Updated ${timeAgo(p.updated_at)}</span>
+        </div>
+      </div>
+      <div class="actions-wrap">
+        <div class="actions">
+          <button class="btn-primary btn-lg" onclick="window.location.href='/project/${p.id}/tags'">${SVG_TAGS} Work with codes</button>
+          <button class="btn-outline btn-lg" onclick="openExport(${p.id})">${SVG_EXPORT} Export</button>
+          <span style="flex:1"></span>
+          ${archiveDropdown}
+        </div>
+      </div>
+    </div>
+
+    <div class="right-body">
+      <div>
+        <div class="section-head-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button type="button" class="section-collapse-head expanded" id="collapseHeadProjectDetails-${p.id}" onclick="toggleProjectDetails(${p.id})" aria-expanded="true" aria-controls="projectDetailsCards-${p.id}">
+            <span class="section-title"><span class="sec-title-icon">${SVG_DETAILS}</span>Project details</span>
+            <span class="btn-toggle-segs" aria-hidden="true">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M4 3l5 4-5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <!-- Outside the collapse button on purpose: inside it, a click would toggle the section. -->
+          <span class="save-status" id="projectDetailsSaveStatus-${p.id}" role="status" aria-live="polite"></span>
+          ${addSectionHtml}
+        </div>
+        <div class="project-details-cards" id="projectDetailsCards-${p.id}" style="display:flex;flex-direction:column;gap:10px">
+          <div class="field-card">
+            <div class="label">Description</div>
+            <div class="value${p.description ? '' : ' empty'}" id="field-description" contenteditable="true" spellcheck="false" data-field="description" data-project-id="${p.id}">${esc(p.description) || ''}</div>
+          </div>
+          ${optionalBlocksHtml}
+        </div>
+      </div>
+
+      <div id="segmentsSection-${p.id}">
+        <div class="section-head-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <button type="button" class="section-collapse-head expanded" id="collapseHeadSegments-${p.id}" onclick="toggleSegments(${p.id})" aria-expanded="true" aria-controls="segList-${p.id}">
+            <span class="section-title"><span class="sec-title-icon">${SVG_PERSON}</span>Participant segments</span>
+            <span class="btn-toggle-segs" aria-hidden="true">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M4 3l5 4-5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <!-- Outside the collapse button on purpose: inside it, a click would toggle the section. -->
+          <span class="save-status" id="segmentsSaveStatus-${p.id}" role="status" aria-live="polite"></span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn-add-seg" onclick="addSegment(${p.id})">
+              <svg viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Add segment
+            </button>
+          </div>
+        </div>
+        <div class="seg-list" id="segList-${p.id}"></div>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:12px">
+          <div class="section-title" style="margin-bottom:0"><span class="sec-title-icon">${SVG_MIC}</span>Recordings${p.recording_count ? ` (${p.recording_count})` : ''}</div>
+          <div class="rec-filter-wrap">
+            <button class="btn-rec-filter" id="recFilterBtn-${p.id}" onclick="toggleRecFilter(${p.id})" title="Filter by segment" aria-label="Filter recordings by segment">
+              ${SVG_FILTER}
+            </button>
+            <div class="rec-filter-menu" id="recFilterMenu-${p.id}" onclick="event.stopPropagation()"></div>
+          </div>
+        </div>
+        ${defaultLangLine}
+        <div class="recording-list" id="recList">
+          ${recItems}
+          <div class="dz-wrap">
+            <div class="drop-zone${linkMode ? ' dz-link-only' : ''}" id="dropzone-${p.id}">
+              ${SVG_UPLOAD}
+              <div class="dz-title">${dzTitleMain}</div>
+              <div class="dz-sub">${dzSubMain}</div>
+            </div>
+            <div class="dz-foot">
+              <span class="dz-mode-txt" id="dzModeTxt-${p.id}">${dzModeLine}</span>
+              <span class="dz-hint-wrap">
+                <button type="button" class="hint-tip dz-hint-btn" id="dzHintBtn-${p.id}" aria-expanded="false" aria-controls="dzHintPop-${p.id}" aria-label="About how recordings are stored">?</button>
+                <div class="dz-hint-pop" id="dzHintPop-${p.id}" role="tooltip" hidden>${dzHintInner}</div>
+              </span>
+            </div>
+            <input type="file" id="fileInput-${p.id}" style="display:none" accept=".mp3,.mp4,.m4a,.wav,.mkv,.webm,.ogg,.flac" multiple />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-head-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button type="button" class="section-collapse-head expanded" id="collapseHeadSummary-${p.id}" onclick="toggleProjectSummary(${p.id})" aria-expanded="true" aria-controls="summaryCards-${p.id}">
+            <span class="section-title"><span class="sec-title-icon">${SVG_SUMMARY}</span>Summary</span>
+            <span class="btn-toggle-segs" aria-hidden="true">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M4 3l5 4-5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <!-- Outside the collapse button on purpose: inside it, a click would toggle the section. -->
+          <span class="save-status" id="summarySaveStatus-${p.id}" role="status" aria-live="polite"></span>
+          ${addSummarySectionHtml}
+        </div>
+        <div class="summary-cards-container" id="summaryCards-${p.id}" style="display:flex;flex-direction:column;gap:10px" data-enabled-summary='${JSON.stringify(enabledSummarySections)}'>
+          ${summaryBlocksHtml}
+        </div>
+      </div>
+      <div style="margin-top:20px">
+        <div class="section-head-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button type="button" class="section-collapse-head expanded" id="collapseHeadAttachments-${p.id}" onclick="toggleAttachments(${p.id})" aria-expanded="true" aria-controls="attachmentsBody-${p.id}">
+            <span class="section-title"><span class="sec-title-icon">${SVG_ATTACH}</span>Attachments</span>
+            <span class="btn-toggle-segs" aria-hidden="true">
+              <svg viewBox="0 0 14 14" fill="none"><path d="M4 3l5 4-5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+        </div>
+        <div id="attachmentsBody-${p.id}">
+          <div class="att-list" id="attList-${p.id}"></div>
+          <div class="att-dz-wrap">
+            <label class="drop-zone att-upload-zone" for="attInput-${p.id}">
+              ${SVG_UPLOAD}
+              <div class="dz-title">Drop files here or click to browse</div>
+              <input type="file" id="attInput-${p.id}" style="display:none" onchange="uploadAttachment(${p.id},this)">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('rightCol').insertAdjacentHTML('beforeend', html);
+  setupDetailEvents(p.id);
+  loadSegments(p.id);
+  restoreSegmentsVisibility(p.id);
+  restoreProjectDetailsVisibility(p.id);
+  restoreProjectSummaryVisibility(p.id);
+  loadAttachments(p.id);
+  restoreAttachmentsVisibility(p.id);
+  if (_recFilterState[p.id]) applyRecFilter(p.id);
+}
+
+// ── Wire detail events ──
+function setupDetailEvents(pid) {
+  const nameEl = document.getElementById('detailName');
+  nameEl.addEventListener('click', () => {
+    if (nameEl.contentEditable === 'true') return;
+    nameEl.contentEditable = 'true'; nameEl.focus();
+    const r = document.createRange(); r.selectNodeContents(nameEl);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
+  });
+  nameEl.addEventListener('blur', async () => {
+    nameEl.contentEditable = 'false';
+    const name = nameEl.textContent.trim() || 'Untitled project';
+    nameEl.textContent = name;
+    try {
+      await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ name }) });
+      // loadProjects re-renders the whole detail pane, which would throw away a badge
+      // shown before it — so wait for the new markup and mark that one saved instead.
+      await loadProjects(pid);
+      const freshName = document.getElementById('detailName');
+      if (freshName) showSaveStatus(freshName.parentElement, 'saved');
+    }
+    catch (e) { showSaveStatus(nameEl.parentElement, false, () => nameEl.blur()); }
+  });
+  nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
+
+  document.querySelectorAll('#projectDetail .value[contenteditable]').forEach(el => {
+    if (el.dataset.customBlock) return; // custom blocks use their own event setup
+    el.addEventListener('input', () => {
+      const field = el.dataset.field; const pid2 = parseInt(el.dataset.projectId, 10);
+      clearTimeout(_saveTimers[field]);
+      _saveTimers[field] = setTimeout(() => saveField(field, pid2), 400);
+    });
+    el.addEventListener('keydown', e => {
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); saveField(el.dataset.field, parseInt(el.dataset.projectId, 10)); }
+    });
+    el.addEventListener('focus', () => { if (el.classList.contains('empty')) { el.textContent = ''; el.classList.remove('empty'); } });
+    el.addEventListener('blur', () => {
+      const field = el.dataset.field; const pid2 = parseInt(el.dataset.projectId, 10);
+      clearTimeout(_saveTimers[field]);
+      if (!el.textContent.trim()) { el.textContent = ''; el.classList.add('empty'); }
+      saveField(field, pid2);
+    });
+  });
+
+  // Setup custom block events for initially rendered custom blocks
+  const detail = document.getElementById('projectDetail');
+  let _initEnabled = [];
+  try { _initEnabled = JSON.parse(detail?.dataset.enabled || '[]'); } catch (_) {}
+  _initEnabled.filter(k => k.startsWith('custom_')).forEach(k => setupCustomBlockEvents(k, pid, false));
+  let _initSummaryEnabled = [];
+  try { _initSummaryEnabled = JSON.parse(detail?.dataset.enabledSummary || '[]'); } catch (_) {}
+  _initSummaryEnabled.filter(k => k.startsWith('custom_')).forEach(k => setupCustomBlockEvents(k, pid, true));
+
+  ['field-questions', 'field-hypotheses', 'field-stakeholders'].forEach(id => setupNumListEditing(id, pid));
+
+  const dz = document.getElementById('dropzone-' + pid);
+  const fi = document.getElementById('fileInput-' + pid);
+  const linkMode = _appSettings.link_recordings === 'true';
+  dz.addEventListener('click', () => {
+    if (linkMode) openNativePickAndLink(pid);
+    else fi.click();
+  });
+  if (linkMode) {
+    dz.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault();
+      dz.classList.remove('drag-over');
+      toast('Linked recordings can only be added by clicking here (the browser can\u2019t link dropped files). Turn off \u201cLink files instead of copying\u201d in Recordings settings if you want to add files by drag-and-drop.', true);
+    });
+  } else {
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); startUpload(pid, e.dataTransfer.files); });
+  }
+  fi.addEventListener('change', () => { if (fi.files.length) startUpload(pid, fi.files); fi.value = ''; });
+
+  setupDzHintPopover(pid);
+
+  setupSectionCardDrag(pid, 'projectDetailsCards', false);
+  setupSectionCardDrag(pid, 'summaryCards', true);
+}
+
+// ── Num-list inline editing ──
+function setupNumListEditing(ulId, pid) {
+  const ul = document.getElementById(ulId);
+  if (!ul) return;
+  const fieldName = ulId.replace(/^field-/, '');
+  ul.addEventListener('input', () => {
+    clearTimeout(_saveTimers[fieldName]);
+    _saveTimers[fieldName] = setTimeout(() => saveListField(fieldName, pid), 400);
+  });
+  ul.addEventListener('blur', () => { clearTimeout(_saveTimers[fieldName]); saveListField(fieldName, pid); }, true);
+  ul.addEventListener('click', e => {
+    if (ul.children.length === 0) { const li = addListItem(ul); setTimeout(() => { li.focus(); placeCaretIn(li, true); }, 0); }
+    else if (!e.target.closest('li')) { const first = ul.querySelector('li'); if (first) setTimeout(() => { first.focus(); placeCaretIn(first, false); }, 0); }
+  });
+  const lbl = ul.closest('.field-card')?.querySelector('.label');
+  if (lbl) lbl.addEventListener('click', e => {
+    if (e.target.closest('.remove-section-btn')) return;
+    if (ul.children.length === 0) { const li = addListItem(ul); setTimeout(() => { li.focus(); placeCaretIn(li, true); }, 0); }
+    else { const first = ul.querySelector('li'); if (first) setTimeout(() => { first.focus(); placeCaretIn(first, false); }, 0); }
+  });
+  ul.addEventListener('keydown', e => {
+    if (!e.target.closest('li')) return;
+    const li = e.target.closest('li'); const items = [...ul.querySelectorAll('li')];
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); saveListField(fieldName, pid); }
+    else if (e.key === 'Enter') { e.preventDefault(); const newLi = addListItem(ul, li); newLi.focus(); }
+    else if (e.key === 'Backspace' && li.textContent === '') {
+      if (items.length <= 1) return;
+      e.preventDefault(); const idx = items.indexOf(li); const prev = items[idx - 1]; li.remove(); renumberList(ul);
+      if (prev) { prev.focus(); const r = document.createRange(); r.selectNodeContents(prev); r.collapse(false); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+    }
+  });
+}
+
+function placeCaretIn(el, atStart) {
+  const r = document.createRange();
+  if (el.childNodes.length) { r.selectNodeContents(el); r.collapse(atStart); } else { r.setStart(el, 0); r.collapse(true); }
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+function addListItem(ul, afterLi) {
+  const li = document.createElement('li'); li.contentEditable = 'true'; li.spellcheck = false;
+  if (afterLi) afterLi.after(li); else ul.appendChild(li); renumberList(ul); return li;
+}
+function renumberList(ul) {
+  const type = ul.dataset.listType || 'q';
+  [...ul.querySelectorAll('li')].forEach((li, i) => { li.dataset.n = type === 'h' ? `H${i+1}` : `${i+1}.`; });
+}
+
+// ── Save fields ──
+/* Save feedback belongs on the section heading ("Project details" / "Summary"),
+   not on the individual card label ("Description"). Which section a card lives in
+   is read off the DOM so custom and summary blocks route correctly too. */
+function sectionSaveAnchor(el, pid) {
+  const inSummary = !!el?.closest('.summary-cards-container');
+  return document.getElementById((inSummary ? 'summarySaveStatus-' : 'projectDetailsSaveStatus-') + pid);
+}
+
+async function saveField(field, pid) {
+  const el = document.getElementById('field-' + field);
+  const val = el.classList.contains('empty') ? '' : el.textContent.trim();
+  const body = {}; body[field] = val;
+  const labelEl = sectionSaveAnchor(el, pid);
+  try {
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify(body) });
+    showSaveStatus(labelEl, true);
+  } catch (e) { showSaveStatus(labelEl, false, () => saveField(field, pid)); }
+}
+
+async function saveListField(fieldName, pid) {
+  const ulIdMap = { questions: 'field-questions', hypotheses: 'field-hypotheses', stakeholders: 'field-stakeholders' };
+  const apiFieldMap = { questions: 'research_questions', hypotheses: 'hypotheses', stakeholders: 'stakeholders' };
+  const ulId = ulIdMap[fieldName] || ('field-' + fieldName);
+  const ul = document.getElementById(ulId);
+  if (!ul) return;
+  const items = [...ul.querySelectorAll('li')].map(li => li.textContent.trim()).filter(Boolean);
+  const apiField = apiFieldMap[fieldName] || fieldName;
+  const body = {}; body[apiField] = items;
+  const labelEl = sectionSaveAnchor(ul, pid);
+  try {
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify(body) });
+    showSaveStatus(labelEl, true);
+  } catch (e) { showSaveStatus(labelEl, false, () => saveListField(fieldName, pid)); }
+}
+
+// ── Drop zone hint popover ──
+let _dzHintOpenPid = null;
+
+function closeDzHintPopover() {
+  if (_dzHintOpenPid == null) return;
+  const btn = document.getElementById('dzHintBtn-' + _dzHintOpenPid);
+  const pop = document.getElementById('dzHintPop-' + _dzHintOpenPid);
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  if (pop) { pop.hidden = true; pop.classList.remove('open'); }
+  _dzHintOpenPid = null;
+  document.removeEventListener('mousedown', _dzHintOutside);
+  document.removeEventListener('keydown', _dzHintEscape);
+}
+
+function _dzHintOutside(e) {
+  if (_dzHintOpenPid == null) return;
+  const btn = document.getElementById('dzHintBtn-' + _dzHintOpenPid);
+  const pop = document.getElementById('dzHintPop-' + _dzHintOpenPid);
+  if (btn && btn.contains(e.target)) return;
+  if (pop && pop.contains(e.target)) return;
+  closeDzHintPopover();
+}
+
+function _dzHintEscape(e) {
+  if (e.key === 'Escape') closeDzHintPopover();
+}
+
+function setupDzHintPopover(pid) {
+  const btn = document.getElementById('dzHintBtn-' + pid);
+  const pop = document.getElementById('dzHintPop-' + pid);
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (_dzHintOpenPid === pid) {
+      closeDzHintPopover();
+      return;
+    }
+    closeDzHintPopover();
+    _dzHintOpenPid = pid;
+    pop.hidden = false;
+    pop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+    setTimeout(() => {
+      document.addEventListener('mousedown', _dzHintOutside);
+      document.addEventListener('keydown', _dzHintEscape);
+    }, 0);
+  });
+}
+
+async function linkPathsFromPicker(pid, paths, numSpeakers) {
+  for (const filePath of paths) {
+    const body = { path: filePath };
+    if (numSpeakers) body.num_speakers = numSpeakers;
+    const linkRes = await fetch(API + '/' + pid + '/recordings/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const linkData = await linkRes.json();
+    if (!linkRes.ok) throw new Error(linkData.error || 'Failed to link file');
+  }
+}
+
+function projectDzIdleTitle() {
+  return _appSettings.link_recordings === 'true' ? 'Click to add recordings' : 'Drop files here or click to browse';
+}
+
+async function openNativePickAndLink(pid) {
+  const dz = document.getElementById('dropzone-' + pid);
+  const setTitle = (t) => { if (dz) { const el = dz.querySelector('.dz-title'); if (el) el.textContent = t; } };
+  let paths = [];
+  if (dz) dz.classList.add('uploading');
+  setTitle('Opening file picker\u2026');
+  try {
+    const res = await fetch('/api/utils/pick-files', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to open file picker');
+    paths = data.paths || [];
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (dz) dz.classList.remove('uploading');
+    setTitle(projectDzIdleTitle());
+  }
+  if (!paths.length) return;
+  promptSpeakers(paths.length, (numSpeakers) => linkPaths(pid, paths, numSpeakers));
+}
+
+async function linkPaths(pid, paths, numSpeakers) {
+  const dz = document.getElementById('dropzone-' + pid);
+  const setTitle = (t) => { if (dz) { const el = dz.querySelector('.dz-title'); if (el) el.textContent = t; } };
+  if (dz) dz.classList.add('uploading');
+  setTitle('Adding\u2026');
+  try {
+    await linkPathsFromPicker(pid, paths, numSpeakers);
+    await selectProject(pid);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (dz) dz.classList.remove('uploading');
+    setTitle(projectDzIdleTitle());
+  }
+}
+
+// ── Mandatory speaker-count prompt (shown before every add) ──
+let _spkPromptOnConfirm = null;
+
+function startUpload(pid, files) {
+  const arr = [...files];
+  if (!arr.length) return;
+  promptSpeakers(arr.length, (numSpeakers) => uploadFiles(pid, arr, numSpeakers));
+}
+
+function _playAwaitingInputSound() {
+  try {
+    if ((_appSettings.transcription_complete_sound_enabled || 'true') === 'false') return;
+    const vol = parseInt(_appSettings.transcription_complete_sound_volume, 10);
+    const volume = (Number.isFinite(vol) ? Math.max(0, Math.min(100, vol)) : 50) / 100;
+    if (volume <= 0) return;
+    const audio = new Audio('/static/sounds/install-complete.mp3');
+    audio.volume = volume;
+    audio.play().catch(() => {});
+  } catch (e) {}
+}
+
+function promptSpeakers(count, onConfirm) {
+  _spkPromptOnConfirm = onConfirm;
+  const c = document.getElementById('spkPromptCount');
+  if (c) c.textContent = count > 1 ? (count + ' recordings') : 'this recording';
+  const auto = document.querySelector('input[name="spkPromptMode"][value="auto"]');
+  if (auto) auto.checked = true;
+  const num = document.getElementById('spkPromptNum');
+  if (num) num.value = 2;
+  document.getElementById('speakersOverlay').classList.add('show');
+  document.addEventListener('keydown', _spkPromptKey);
+  _playAwaitingInputSound();
+}
+
+function _spkPromptKey(e) {
+  if (e.key === 'Escape') { e.preventDefault(); cancelSpeakersPrompt(); }
+  else if (e.key === 'Enter') { e.preventDefault(); confirmSpeakersPrompt(); }
+}
+
+function _spkPromptPickExact() {
+  const ex = document.querySelector('input[name="spkPromptMode"][value="exact"]');
+  if (ex) ex.checked = true;
+}
+
+function cancelSpeakersPrompt() {
+  document.getElementById('speakersOverlay').classList.remove('show');
+  document.removeEventListener('keydown', _spkPromptKey);
+  _spkPromptOnConfirm = null;
+}
+
+function confirmSpeakersPrompt() {
+  const sel = document.querySelector('input[name="spkPromptMode"]:checked');
+  let numSpeakers = '';
+  if (sel && sel.value === 'exact') {
+    let n = parseInt(document.getElementById('spkPromptNum').value, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    numSpeakers = String(Math.min(n, 10));
+  }
+  const cb = _spkPromptOnConfirm;
+  cancelSpeakersPrompt();
+  if (cb) cb(numSpeakers);
+}
+
+// ── Upload (copy mode only; linking uses openNativePickAndLink) ──
+async function uploadFiles(pid, files, numSpeakers) {
+  const dz = document.getElementById('dropzone-' + pid);
+  const arr = [...files];
+  if (!arr.length) return;
+
+  if (dz) {
+    dz.classList.add('uploading');
+    const title = dz.querySelector('.dz-title');
+    if (title) title.textContent = 'Uploading\u2026';
+  }
+  try {
+    for (const file of arr) {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (numSpeakers) fd.append('num_speakers', numSpeakers);
+      const res = await fetch(API + '/' + pid + '/recordings', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('Upload failed for ' + file.name);
+    }
+  } catch (e) { toast(e.message, true); }
+  finally {
+    if (dz) {
+      dz.classList.remove('uploading');
+      const title = dz.querySelector('.dz-title');
+      if (title) title.textContent = projectDzIdleTitle();
+    }
+  }
+  await selectProject(pid);
+}
+
+async function deleteRecording(pid, rid) {
+  try { await api(API + '/' + pid + '/recordings/' + rid, { method: 'DELETE' }); selectProject(pid); }
+  catch (e) { toast('Failed to delete recording: ' + e.message, true); }
+}
+
+function beginRenameRecording(btnEl) {
+  const wrap = btnEl.closest('.rec-name-wrap');
+  const span = wrap.querySelector('.rec-name');
+  const row = btnEl.closest('.recording-row');
+  const pid = parseInt(row.dataset.projectId, 10);
+  const rid = parseInt(row.dataset.recId, 10);
+  const origName = span.dataset.originalName || '';
+  const lastDot = origName.lastIndexOf('.');
+  const ext = lastDot > 0 ? origName.slice(lastDot) : '';
+  const displayName = ext ? origName.slice(0, lastDot) : origName;
+
+  row.dataset.editing = 'true';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rec-name-edit';
+  input.value = displayName;
+  input.dataset.pid = pid;
+  input.dataset.rid = rid;
+  input.dataset.ext = ext;
+  wrap.replaceChild(input, span);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async () => {
+    if (done) return;
+    done = true;
+    input.onblur = null;
+    const newDisplay = input.value.trim() || displayName;
+    const newOrigName = newDisplay + ext;
+    if (input.parentNode === wrap) wrap.removeChild(input);
+    const newSpan = document.createElement('span');
+    newSpan.className = 'rec-name';
+    newSpan.dataset.originalName = newOrigName;
+    newSpan.textContent = newDisplay;
+    wrap.insertBefore(newSpan, btnEl);
+
+    delete row.dataset.editing;
+    if (newOrigName === origName) return;
+    try {
+      await api(API + '/' + pid + '/recordings/' + rid, {
+        method: 'PATCH',
+        body: JSON.stringify({ original_name: newOrigName }),
+      });
+      toast('Recording renamed');
+    } catch (e) {
+      newSpan.dataset.originalName = origName;
+      newSpan.textContent = displayName;
+      toast('Failed to rename: ' + e.message, true);
+    }
+  };
+
+  input.onblur = () => finish();
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') {
+      done = true;
+      input.onblur = null;
+      delete row.dataset.editing;
+      if (input.parentNode === wrap) wrap.removeChild(input);
+      const newSpan = document.createElement('span');
+      newSpan.className = 'rec-name';
+      newSpan.dataset.originalName = origName;
+      newSpan.textContent = displayName;
+      wrap.insertBefore(newSpan, btnEl);
+    }
+  };
+}
+
+// ── Create project ──
+async function createProject() {
+  try {
+    const data = await api(API, { method: 'POST', body: JSON.stringify({}) });
+    await loadProjects(data.id);
+    setTimeout(() => {
+      const nameEl = document.getElementById('detailName');
+      if (nameEl) { nameEl.contentEditable = 'true'; nameEl.focus(); const r = document.createRange(); r.selectNodeContents(nameEl); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+    }, 100);
+  } catch (e) { toast('Failed to create project: ' + e.message, true); }
+}
+
+// ── Archive / Unarchive ──
+async function doArchive(pid) {
+  try { await api(API + '/' + pid + '/archive', { method: 'POST' }); loadProjects(pid); }
+  catch (e) { toast('Failed to archive: ' + e.message, true); }
+}
+async function doUnarchive(pid) {
+  try { await api(API + '/' + pid + '/unarchive', { method: 'POST' }); loadProjects(pid); }
+  catch (e) { toast('Failed to unarchive: ' + e.message, true); }
+}
+
+// ── Delete project ──
+function openDeleteModal(pid, name) {
+  pendingDeleteId = pid;
+  document.getElementById('deleteModalTitle').textContent = 'Delete "' + name + '"?';
+  document.getElementById('deleteOverlay').classList.add('show');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteOverlay').classList.remove('show'); pendingDeleteId = null;
+}
+document.getElementById('deleteConfirmBtn').addEventListener('click', async () => {
+  if (!pendingDeleteId) return;
+  try { await api(API + '/' + pendingDeleteId, { method: 'DELETE' }); closeDeleteModal(); selectedId = null; loadProjects(); }
+  catch (e) { toast('Failed to delete project: ' + e.message, true); }
+});
+
+// ── Add section dropdown ──
+function toggleAddSection(pid, e) {
+  e.stopPropagation();
+  const menu = document.getElementById('addSecMenu-' + pid);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('show');
+  closeAllAddSections();
+  if (!wasOpen) { menu.classList.add('show'); setTimeout(() => document.addEventListener('click', closeAllAddSections), 0); }
+}
+function toggleAddSummarySection(pid, e) {
+  e.stopPropagation();
+  const menu = document.getElementById('addSummarySecMenu-' + pid);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('show');
+  closeAllAddSections();
+  if (!wasOpen) { menu.classList.add('show'); setTimeout(() => document.addEventListener('click', closeAllAddSections), 0); }
+}
+function closeAllAddSections() {
+  document.querySelectorAll('.add-sec-menu.show').forEach(m => m.classList.remove('show'));
+  document.removeEventListener('click', closeAllAddSections);
+}
+async function addSection(sectionKey, pid, ev) {
+  if (ev) ev.stopPropagation();
+  const detail = document.getElementById('projectDetail');
+  let enabled = [];
+  try { enabled = JSON.parse(detail?.dataset.enabled || '[]'); } catch (_) {}
+  if (enabled.includes(sectionKey)) return;
+  try {
+    const newEnabled = [...enabled, sectionKey];
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ enabled_sections: newEnabled }) });
+    detail.dataset.enabled = JSON.stringify(newEnabled);
+    const p = await api(API + '/' + pid);
+    const html = buildSectionBlockHtml(sectionKey, pid, p);
+    const container = document.getElementById('projectDetailsCards-' + pid);
+    if (container) container.insertAdjacentHTML('beforeend', html);
+    setupSectionCardEvents(sectionKey, pid);
+    setupSectionCardDrag(pid, 'projectDetailsCards');
+    const btn = document.querySelector(`#addSecMenu-${pid} .drop-item[data-section-key="${sectionKey}"]`);
+    if (btn) btn.remove();
+    const menu = document.getElementById('addSecMenu-' + pid);
+    if (menu && !menu.querySelector('.drop-item')) { closeAllAddSections(); menu.closest('.add-sec-wrap')?.remove(); }
+  } catch (e) { toast('Failed to add section: ' + e.message, true); }
+}
+async function addSummarySection(sectionKey, pid, ev) {
+  if (ev) ev.stopPropagation();
+  const container = document.getElementById('summaryCards-' + pid);
+  let enabled = [];
+  try { enabled = JSON.parse(container?.dataset.enabledSummary || '[]'); } catch (_) {}
+  if (enabled.includes(sectionKey)) return;
+  try {
+    const newEnabled = [...enabled, sectionKey];
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ enabled_summary_sections: newEnabled }) });
+    const detail = document.getElementById('projectDetail');
+    if (detail) detail.dataset.enabledSummary = JSON.stringify(newEnabled);
+    if (container) container.dataset.enabledSummary = JSON.stringify(newEnabled);
+    const p = await api(API + '/' + pid);
+    const html = buildSummaryBlockHtml(sectionKey, pid, p);
+    if (container) container.insertAdjacentHTML('beforeend', html);
+    setupSectionCardEvents(sectionKey, pid, true);
+    setupSectionCardDrag(pid, 'summaryCards', true);
+    const btn = document.querySelector(`#addSummarySecMenu-${pid} .drop-item[data-summary-key="${sectionKey}"]`);
+    if (btn) btn.remove();
+    const menu = document.getElementById('addSummarySecMenu-' + pid);
+    if (menu && !menu.querySelector('.drop-item')) { closeAllAddSections(); menu.closest('.add-sec-wrap')?.remove(); }
+  } catch (e) { toast('Failed to add section: ' + e.message, true); }
+}
+async function addCustomSection(pid, ev) {
+  if (ev) ev.stopPropagation();
+  closeAllAddSections();
+  const detail = document.getElementById('projectDetail');
+  let enabled = [];
+  try { enabled = JSON.parse(detail?.dataset.enabled || '[]'); } catch (_) {}
+  const blockId = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const newBlock = { id: blockId, title: 'Other', content: '' };
+  try {
+    const p = await api(API + '/' + pid);
+    const customBlocks = [...(p.custom_sections || []), newBlock];
+    const newEnabled = [...enabled, blockId];
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ enabled_sections: newEnabled, custom_sections: customBlocks }) });
+    detail.dataset.enabled = JSON.stringify(newEnabled);
+    const html = buildCustomBlockHtml(newBlock, pid, false);
+    const container = document.getElementById('projectDetailsCards-' + pid);
+    if (container) container.insertAdjacentHTML('beforeend', html);
+    setupCustomBlockEvents(blockId, pid, false);
+    setupSectionCardDrag(pid, 'projectDetailsCards');
+  } catch (e) { toast('Failed to add section: ' + e.message, true); }
+}
+async function addCustomSummarySection(pid, ev) {
+  if (ev) ev.stopPropagation();
+  closeAllAddSections();
+  const container = document.getElementById('summaryCards-' + pid);
+  let enabled = [];
+  try { enabled = JSON.parse(container?.dataset.enabledSummary || '[]'); } catch (_) {}
+  const blockId = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const newBlock = { id: blockId, title: 'Other', content: '' };
+  try {
+    const p = await api(API + '/' + pid);
+    const customBlocks = [...(p.custom_summary_sections || []), newBlock];
+    const newEnabled = [...enabled, blockId];
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ enabled_summary_sections: newEnabled, custom_summary_sections: customBlocks }) });
+    const detail = document.getElementById('projectDetail');
+    if (detail) detail.dataset.enabledSummary = JSON.stringify(newEnabled);
+    if (container) container.dataset.enabledSummary = JSON.stringify(newEnabled);
+    const html = buildCustomBlockHtml(newBlock, pid, true);
+    if (container) container.insertAdjacentHTML('beforeend', html);
+    setupCustomBlockEvents(blockId, pid, true);
+    setupSectionCardDrag(pid, 'summaryCards', true);
+  } catch (e) { toast('Failed to add section: ' + e.message, true); }
+}
+function setupCustomBlockEvents(blockId, pid, isSummary) {
+  const el = document.getElementById('field-' + blockId);
+  if (el) {
+    el.addEventListener('input', () => { clearTimeout(_saveTimers[blockId]); _saveTimers[blockId] = setTimeout(() => saveCustomBlock(pid, blockId, isSummary), 400); });
+    el.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); saveCustomBlock(pid, blockId, isSummary); } });
+    el.addEventListener('focus', () => { if (el.classList.contains('empty')) { el.textContent = ''; el.classList.remove('empty'); } });
+    el.addEventListener('blur', () => { clearTimeout(_saveTimers[blockId]); if (!el.textContent.trim()) { el.textContent = 'Not set.'; el.classList.add('empty'); } saveCustomBlock(pid, blockId, isSummary); });
+  }
+  const titleEl = document.querySelector(`.custom-block-title[data-block-id="${blockId}"]`);
+  if (titleEl) {
+    titleEl.addEventListener('input', () => { clearTimeout(_saveTimers['title_' + blockId]); _saveTimers['title_' + blockId] = setTimeout(() => saveCustomBlock(pid, blockId, isSummary), 400); });
+    titleEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); } });
+    titleEl.addEventListener('blur', () => { clearTimeout(_saveTimers['title_' + blockId]); if (!titleEl.textContent.trim()) titleEl.textContent = 'Other'; saveCustomBlock(pid, blockId, isSummary); });
+  }
+}
+async function saveCustomBlock(pid, blockId, isSummary) {
+  const el = document.getElementById('field-' + blockId);
+  const titleEl = document.querySelector(`.custom-block-title[data-block-id="${blockId}"]`);
+  const content = el && !el.classList.contains('empty') ? el.textContent.trim() : '';
+  const title = titleEl ? titleEl.textContent.trim() || 'Other' : 'Other';
+  const field = isSummary ? 'custom_summary_sections' : 'custom_sections';
+  // Title-only edits can run with no value element, so fall back to the isSummary flag.
+  const labelEl = el
+    ? sectionSaveAnchor(el, pid)
+    : document.getElementById((isSummary ? 'summarySaveStatus-' : 'projectDetailsSaveStatus-') + pid);
+  try {
+    const p = await api(API + '/' + pid);
+    const blocks = (p[field] || []).map(b => b.id === blockId ? { ...b, title, content } : b);
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ [field]: blocks }) });
+    showSaveStatus(labelEl, true);
+  } catch (e) { showSaveStatus(labelEl, false, () => saveCustomBlock(pid, blockId, isSummary)); }
+}
+function setupSectionCardEvents(sectionKey, pid, isSummary) {
+  const listIds = { questions: 'field-questions', hypotheses: 'field-hypotheses', stakeholders: 'field-stakeholders' };
+  if (listIds[sectionKey]) setupNumListEditing(listIds[sectionKey], pid);
+  const textFields = ['objective', 'methodology', 'interview_guide', 'key_findings', 'further_steps', 'recommendations'];
+  if (textFields.includes(sectionKey)) {
+    const el = document.getElementById('field-' + sectionKey);
+    if (el) setupContentEditableField(el, pid);
+  }
+}
+function setupContentEditableField(el, pid) {
+  const field = el.dataset.field;
+  el.addEventListener('input', () => {
+    clearTimeout(_saveTimers[field]);
+    _saveTimers[field] = setTimeout(() => saveField(field, pid), 400);
+  });
+  el.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); saveField(field, pid); } });
+  el.addEventListener('focus', () => { if (el.classList.contains('empty')) { el.textContent = ''; el.classList.remove('empty'); } });
+  el.addEventListener('blur', () => {
+    clearTimeout(_saveTimers[field]);
+    if (!el.textContent.trim()) {
+      el.textContent = el.dataset.field === 'description' ? 'No description yet.' : 'Not set.';
+      el.classList.add('empty');
+    }
+    saveField(field, pid);
+  });
+}
+function setupSectionCardDrag(pid, containerId, isSummary) {
+  const container = document.getElementById(containerId + '-' + pid);
+  if (!container) return;
+  function clearDropIndicators() {
+    container.querySelectorAll('.field-card.drop-before, .field-card.drop-after').forEach(c => c.classList.remove('drop-before', 'drop-after'));
+  }
+  container.addEventListener('dragleave', e => {
+    if (!container.contains(e.relatedTarget)) clearDropIndicators();
+  });
+  container.querySelectorAll('.field-card.draggable').forEach(card => {
+    if (card.dataset.dragSetup) return;
+    card.dataset.dragSetup = '1';
+    card.addEventListener('dragstart', e => { card.classList.add('dragging'); e.dataTransfer.setData('text/plain', card.dataset.sectionKey || card.dataset.summaryKey); e.dataTransfer.effectAllowed = 'move'; });
+    card.addEventListener('dragend', () => { card.classList.remove('dragging'); clearDropIndicators(); });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const target = e.target.closest('.field-card.draggable');
+      const dragging = container.querySelector('.field-card.dragging');
+      if (!target || target === dragging) { clearDropIndicators(); return; }
+      clearDropIndicators();
+      const rect = target.getBoundingClientRect();
+      target.classList.add(e.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
+    });
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      clearDropIndicators();
+      const key = e.dataTransfer.getData('text/plain');
+      const cards = [...container.querySelectorAll('.field-card.draggable')];
+      const dragIdx = cards.findIndex(c => (c.dataset.sectionKey || c.dataset.summaryKey) === key);
+      if (dragIdx < 0) return;
+      const dropTarget = e.target.closest('.field-card.draggable');
+      if (!dropTarget || dropTarget === cards[dragIdx]) return;
+      const dropIdx = cards.indexOf(dropTarget);
+      const order = cards.map(c => c.dataset.sectionKey || c.dataset.summaryKey);
+      const [moved] = order.splice(dragIdx, 1);
+      const insertIdx = dropIdx > dragIdx ? dropIdx - 1 : dropIdx;
+      order.splice(insertIdx, 0, moved);
+      const field = isSummary ? 'enabled_summary_sections' : 'enabled_sections';
+      api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify({ [field]: order }) }).then(() => {
+        const el = cards[dragIdx];
+        if (dropIdx > dragIdx) dropTarget.after(el); else dropTarget.before(el);
+      }).catch(err => toast('Failed to reorder: ' + err.message, true));
+    });
+  });
+}
+async function removeSection(sectionKey, pid) {
+  const detail = document.getElementById('projectDetail');
+  let enabled = [];
+  try { enabled = JSON.parse(detail?.dataset.enabled || '[]'); } catch (_) {}
+  const newEnabled = enabled.filter(k => k !== sectionKey);
+  try {
+    const patch = { enabled_sections: newEnabled };
+    if (sectionKey.startsWith('custom_')) {
+      const p = await api(API + '/' + pid);
+      patch.custom_sections = (p.custom_sections || []).filter(b => b.id !== sectionKey);
+    }
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify(patch) });
+    detail.dataset.enabled = JSON.stringify(newEnabled);
+    const card = document.querySelector(`#projectDetailsCards-${pid} .field-card[data-section-key="${sectionKey}"]`);
+    if (card) card.remove();
+    if (!sectionKey.startsWith('custom_')) {
+      const menu = document.getElementById('addSecMenu-' + pid);
+      if (menu) {
+        const existingBtn = menu.querySelector(`.drop-item[data-section-key="${sectionKey}"]`);
+        if (!existingBtn) {
+          const btn = document.createElement('button');
+          btn.className = 'drop-item';
+          btn.dataset.sectionKey = sectionKey;
+          btn.textContent = SECTION_LABELS[sectionKey];
+          btn.onclick = (ev) => addSection(sectionKey, pid, ev);
+          const otherBtn = menu.querySelector('.drop-item[data-section-key="__new_custom__"]');
+          if (otherBtn) menu.insertBefore(btn, otherBtn); else menu.appendChild(btn);
+        }
+      }
+    }
+  } catch (e) { toast('Failed to remove section: ' + e.message, true); }
+}
+async function removeSummarySection(sectionKey, pid) {
+  const container = document.getElementById('summaryCards-' + pid);
+  let enabled = [];
+  try { enabled = JSON.parse(container?.dataset.enabledSummary || '[]'); } catch (_) {}
+  const newEnabled = enabled.filter(k => k !== sectionKey);
+  try {
+    const patch = { enabled_summary_sections: newEnabled };
+    if (sectionKey.startsWith('custom_')) {
+      const p = await api(API + '/' + pid);
+      patch.custom_summary_sections = (p.custom_summary_sections || []).filter(b => b.id !== sectionKey);
+    }
+    await api(API + '/' + pid, { method: 'PATCH', body: JSON.stringify(patch) });
+    const detail = document.getElementById('projectDetail');
+    if (detail) detail.dataset.enabledSummary = JSON.stringify(newEnabled);
+    if (container) container.dataset.enabledSummary = JSON.stringify(newEnabled);
+    const card = document.querySelector(`#summaryCards-${pid} .field-card[data-summary-key="${sectionKey}"]`);
+    if (card) card.remove();
+    if (!sectionKey.startsWith('custom_')) {
+      const menu = document.getElementById('addSummarySecMenu-' + pid);
+      if (menu) {
+        const existingBtn = menu.querySelector(`.drop-item[data-summary-key="${sectionKey}"]`);
+        if (!existingBtn) {
+          const btn = document.createElement('button');
+          btn.className = 'drop-item';
+          btn.dataset.summaryKey = sectionKey;
+          btn.textContent = SUMMARY_LABELS[sectionKey];
+          btn.onclick = (ev) => addSummarySection(sectionKey, pid, ev);
+          const otherBtn = menu.querySelector('.drop-item[data-summary-key="__new_custom__"]');
+          if (otherBtn) menu.insertBefore(btn, otherBtn); else menu.appendChild(btn);
+        }
+      }
+    }
+  } catch (e) { toast('Failed to remove section: ' + e.message, true); }
+}
+
+// ── Archive dropdown ──
+function toggleArchiveDropdown(e) {
+  e.stopPropagation();
+  const el = document.getElementById('archiveDropdown'); if (!el) return;
+  const wasOpen = el.classList.contains('open');
+  closeAllArchiveDropdowns();
+  if (!wasOpen) { el.classList.add('open'); setTimeout(() => document.addEventListener('click', closeAllArchiveDropdowns), 0); }
+}
+function closeArchiveDropdown() { closeAllArchiveDropdowns(); }
+function closeAllArchiveDropdowns() {
+  document.querySelectorAll('.split-dropdown.open').forEach(el => el.classList.remove('open'));
+  document.removeEventListener('click', closeAllArchiveDropdowns);
+}
+
+// ── Export ──
+let exportProjectId = null, exportProjectData = null;
+let exportFormat = 'markdown';
+function _formatPiiExportMinutesLabel(recordingCount) {
+  const n = Math.max(0, recordingCount);
+  const minutes = n * 2;
+  if (n < 1) return '0';
+  if (minutes === Math.floor(minutes)) return String(minutes);
+  return minutes.toFixed(1);
+}
+function updateExportPiiTimeHint() {
+  const span = document.getElementById('expPiiTimeEstimate');
+  if (!span) return;
+  const p = exportProjectData || findProject(exportProjectId);
+  if (!p) { span.textContent = ''; return; }
+  const isAll = document.getElementById('exportTabAll')?.classList.contains('on');
+  let n;
+  if (isAll) {
+    n = (p.recordings || []).filter(r => r.transcription_status === 'transcribed').length;
+  } else {
+    n = document.querySelectorAll('#exportRecList .export-rec-row.checked').length;
+  }
+  span.textContent = '(~' + _formatPiiExportMinutesLabel(n) + ' min)';
+}
+async function openExport(pid) {
+  exportProjectId = pid;
+  try {
+    const data = await api(API + '/' + pid); exportProjectData = data;
+    document.getElementById('exportModalTitle').textContent = 'Export "' + (data.name || 'Project') + '"';
+  } catch (e) { toast('Could not load project: ' + (e.message || 'Unknown error'), true); return; }
+  document.getElementById('exportOverlay').classList.add('show');
+  setExportMode('all'); populateExportRecList();
+  const piiSw = document.getElementById('expPii'); const piiRow = document.getElementById('expPiiRow');
+  try {
+    const res = await fetch('/api/settings'); const data = await res.json();
+    const defaultFmt = (data.export_default_format || 'md').toLowerCase();
+    const fmtForModal = defaultFmt === 'odt' ? 'odt' : 'markdown';
+    exportFormat = fmtForModal;
+    document.querySelectorAll('#exportOverlay .fmt-btn').forEach(b => {
+      b.classList.toggle('on', b.dataset.fmt === fmtForModal);
+    });
+    const fmtHint = document.getElementById('fmtHint');
+    if (fmtHint) {
+      const sel = document.querySelector('#exportOverlay .fmt-btn.on');
+      if (sel?.dataset.hint) fmtHint.textContent = sel.dataset.hint;
+    }
+    document.getElementById('expProjectDetails').classList.toggle('on', data.export_default_project_details !== 'false');
+    document.getElementById('expComments').classList.toggle('on', data.export_default_comments !== 'false');
+    document.getElementById('expTags').classList.toggle('on', data.export_default_tags !== 'false');
+    document.getElementById('expParticipant').classList.toggle('on', data.export_default_participant_details !== 'false');
+    document.getElementById('expPrompt').classList.toggle('on', data.export_default_include_prompt !== 'false');
+    const piiModel = (data.models || []).find(m => m.id === 'gliner-pii');
+    const piiAvail = piiModel && (piiModel.status === 'downloaded' || piiModel.status === 'ready');
+    piiSw.classList.toggle('disabled', !piiAvail);
+    if (!piiAvail) piiSw.classList.remove('on');
+    else piiSw.classList.toggle('on', data.export_default_remove_pii === 'true');
+    const hint = piiRow.querySelector('.pii-hint'); if (hint) hint.remove();
+    const timeEst = document.getElementById('expPiiTimeEstimate');
+    if (timeEst) timeEst.style.display = piiAvail ? '' : 'none';
+    updateExportPiiTimeHint();
+    if (!piiAvail) { const h = document.createElement('span'); h.className = 'pii-hint'; h.style.cssText = 'font-size:0.846rem;color:var(--muted-fg);margin-left:6px'; h.textContent = '(not installed)'; document.getElementById('expPiiLbl')?.appendChild(h); }
+  } catch (_) { piiSw.classList.add('disabled'); piiSw.classList.remove('on'); const te = document.getElementById('expPiiTimeEstimate'); if (te) te.style.display = 'none'; }
+}
+function closeExport() { document.getElementById('exportOverlay').classList.remove('show'); }
+function setExportMode(mode) {
+  const isAll = mode === 'all';
+  document.getElementById('exportTabAll').classList.toggle('on', isAll);
+  document.getElementById('exportTabSel').classList.toggle('on', !isAll);
+  const listEl = document.getElementById('exportRecList'); listEl.style.display = isAll ? 'none' : 'flex';
+  if (!isAll) populateExportRecList();
+  updateExportPiiTimeHint();
+}
+function populateExportRecList() {
+  const listEl = document.getElementById('exportRecList'); if (!listEl || !exportProjectId) return;
+  const p = exportProjectData || findProject(exportProjectId); if (!p) return;
+  const transcribed = (p.recordings || []).filter(r => r.transcription_status === 'transcribed');
+  listEl.innerHTML = transcribed.length
+    ? transcribed.map(r => `<div class="export-rec-row checked" data-rec-id="${r.id}" onclick="this.classList.toggle('checked');updateExportPiiTimeHint()"><div class="export-rec-check"></div><span class="export-rec-name">${esc((r.original_name || 'Recording').replace(/\.[^.]+$/, ''))}</span><span class="export-rec-dur">${fmtDuration(r.duration_seconds)}</span></div>`).join('')
+    : '<div style="padding:10px;font-size:0.923rem;color:var(--muted-fg);text-align:center">No transcribed recordings</div>';
+  updateExportPiiTimeHint();
+}
+function pickFmt(btn) {
+  exportFormat = btn.dataset.fmt || 'markdown';
+  btn.closest('.fmt-pick').querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const hint = document.getElementById('fmtHint'); if (hint && btn.dataset.hint) hint.textContent = btn.dataset.hint;
+}
+async function doProjectExport() {
+  if (!exportProjectId) return;
+  const p = exportProjectData || findProject(exportProjectId);
+  if (!p) { toast('Project not found', true); return; }
+  const isAll = document.getElementById('exportTabAll').classList.contains('on');
+  let recordingIds = [];
+  if (isAll) { recordingIds = (p.recordings || []).filter(r => r.transcription_status === 'transcribed').map(r => r.id); }
+  else { recordingIds = [...document.querySelectorAll('#exportRecList .export-rec-row.checked')].map(row => parseInt(row.dataset.recId, 10)).filter(id => !isNaN(id)); }
+  if (!recordingIds.length) { toast(isAll ? 'No transcribed recordings to export' : 'Select at least one recording', true); return; }
+  const fmt = exportFormat;
+  const incC = document.getElementById('expComments')?.classList.contains('on') ?? true;
+  const incT = document.getElementById('expTags')?.classList.contains('on') ?? true;
+  const incPart = document.getElementById('expParticipant')?.classList.contains('on') ?? true;
+  const incProjDet = document.getElementById('expProjectDetails')?.classList.contains('on') ?? true;
+  const incPii = document.getElementById('expPii')?.classList.contains('on') ?? false;
+  const incPrompt = document.getElementById('expPrompt')?.classList.contains('on') ?? true;
+  let action;
+  if (recordingIds.length === 1) {
+    action = API + '/' + exportProjectId + '/recordings/' + recordingIds[0] + '/export';
+  } else {
+    action = API + '/' + exportProjectId + '/export';
+  }
+  const params = new URLSearchParams();
+  params.set('format', fmt);
+  params.set('include_comments', incC);
+  params.set('include_tags', incT);
+  params.set('include_participant_details', incPart);
+  params.set('include_project_details', incProjDet);
+  params.set('remove_pii', incPii);
+  params.set('include_prompt', incPrompt);
+  if (recordingIds.length > 1) params.set('recording_ids', recordingIds.join(','));
+  const btn = document.getElementById('exportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
+  try {
+    const resp = await fetch(action + '?' + params);
+    if (!resp.ok) {
+      let msg = 'Export failed';
+      try { const j = await resp.json(); if (j.error) msg = j.error; } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="([^"]+)"/);
+    const filename = match ? decodeURIComponent(match[1]) : 'export';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    closeExport();
+  } catch (e) {
+    toast(e.message || 'Export failed', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Export'; }
+  }
+}
+
+// ── Segments visibility toggle ──
+function toggleSegments(pid) {
+  const list = document.getElementById('segList-' + pid);
+  const head = document.getElementById('collapseHeadSegments-' + pid);
+  if (!list || !head) return;
+  const isHidden = list.style.display === 'none';
+  list.style.display = isHidden ? '' : 'none';
+  head.classList.toggle('expanded', isHidden);
+  head.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+  try { localStorage.setItem('port-segs-hidden-' + pid, isHidden ? '0' : '1'); } catch (_) {}
+}
+function restoreSegmentsVisibility(pid) {
+  const list = document.getElementById('segList-' + pid);
+  const head = document.getElementById('collapseHeadSegments-' + pid);
+  if (!list || !head) return;
+  try {
+    const hidden = localStorage.getItem('port-segs-hidden-' + pid) === '1';
+    list.style.display = hidden ? 'none' : '';
+    head.classList.toggle('expanded', !hidden);
+    head.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  } catch (_) {}
+}
+
+function _setFlexColumnBlockVisible(el, visible) {
+  if (!el) return;
+  if (visible) {
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.gap = '10px';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function toggleProjectDetails(pid) {
+  const body = document.getElementById('projectDetailsCards-' + pid);
+  const head = document.getElementById('collapseHeadProjectDetails-' + pid);
+  if (!body || !head) return;
+  const isHidden = body.style.display === 'none';
+  _setFlexColumnBlockVisible(body, isHidden);
+  head.classList.toggle('expanded', isHidden);
+  head.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+  try { localStorage.setItem('port-details-hidden-' + pid, isHidden ? '0' : '1'); } catch (_) {}
+}
+function restoreProjectDetailsVisibility(pid) {
+  const body = document.getElementById('projectDetailsCards-' + pid);
+  const head = document.getElementById('collapseHeadProjectDetails-' + pid);
+  if (!body || !head) return;
+  try {
+    const hidden = localStorage.getItem('port-details-hidden-' + pid) === '1';
+    _setFlexColumnBlockVisible(body, !hidden);
+    head.classList.toggle('expanded', !hidden);
+    head.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  } catch (_) {}
+}
+
+function toggleProjectSummary(pid) {
+  const body = document.getElementById('summaryCards-' + pid);
+  const head = document.getElementById('collapseHeadSummary-' + pid);
+  if (!body || !head) return;
+  const isHidden = body.style.display === 'none';
+  _setFlexColumnBlockVisible(body, isHidden);
+  head.classList.toggle('expanded', isHidden);
+  head.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+  try { localStorage.setItem('port-summary-hidden-' + pid, isHidden ? '0' : '1'); } catch (_) {}
+}
+function restoreProjectSummaryVisibility(pid) {
+  const body = document.getElementById('summaryCards-' + pid);
+  const head = document.getElementById('collapseHeadSummary-' + pid);
+  if (!body || !head) return;
+  try {
+    const hidden = localStorage.getItem('port-summary-hidden-' + pid) === '1';
+    _setFlexColumnBlockVisible(body, !hidden);
+    head.classList.toggle('expanded', !hidden);
+    head.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  } catch (_) {}
+}
+
+function toggleAttachments(pid) {
+  const body = document.getElementById('attachmentsBody-' + pid);
+  const head = document.getElementById('collapseHeadAttachments-' + pid);
+  if (!body || !head) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? '' : 'none';
+  head.classList.toggle('expanded', isHidden);
+  head.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+  try { localStorage.setItem('port-attachments-hidden-' + pid, isHidden ? '0' : '1'); } catch (_) {}
+}
+function restoreAttachmentsVisibility(pid) {
+  const body = document.getElementById('attachmentsBody-' + pid);
+  const head = document.getElementById('collapseHeadAttachments-' + pid);
+  if (!body || !head) return;
+  try {
+    const hidden = localStorage.getItem('port-attachments-hidden-' + pid) === '1';
+    body.style.display = hidden ? 'none' : '';
+    head.classList.toggle('expanded', !hidden);
+    head.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  } catch (_) {}
+}
+
+// ── Segments ──
+const _segSaveTimers = {};
+async function loadSegments(pid) {
+  try { const segs = await api(API + '/' + pid + '/segments'); renderSegments(segs, pid); } catch (_) {}
+}
+function renderSegments(segs, pid) {
+  const container = document.getElementById('segList-' + pid); if (!container) return;
+  if (!segs.length) {
+    container.innerHTML = '<div class="seg-empty">No segments yet — add one to categorise the participants.</div>';
+    return;
+  }
+  container.innerHTML = segs.map(s => segCardHTML(s, pid)).join('');
+  segs.forEach(s => setupSegmentCardEvents(s, pid));
+}
+function segCardHTML(s, pid) {
+  const assigned = s.assigned_count || 0, target = s.target_count || 0;
+  const assignedColor = (target > 0 && assigned >= target) ? 'color:var(--accent)' : '';
+  return `<div class="seg-card" data-seg-id="${s.id}">
+    <div class="seg-card-header">
+      <div class="seg-name" contenteditable="true" spellcheck="false" data-seg-id="${s.id}" data-pid="${pid}">${esc(s.name)}</div>
+      <button class="seg-del" onclick="deleteSegment(${pid},${s.id})" title="Delete segment">${SVG_DELETE}</button>
+    </div>
+    <div class="seg-target-row">
+      <span>Target interviews:</span>
+      <div class="seg-stepper">
+        <button class="seg-stepper-btn" type="button" data-delta="-1" data-seg-id="${s.id}" data-pid="${pid}" aria-label="Decrease">−</button>
+        <input class="seg-target-input" type="number" min="0" value="${target}" data-seg-id="${s.id}" data-pid="${pid}" />
+        <button class="seg-stepper-btn" type="button" data-delta="1" data-seg-id="${s.id}" data-pid="${pid}" aria-label="Increase">+</button>
+      </div>
+      <span class="seg-assigned" style="${assignedColor}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>${assigned} interview${assigned !== 1 ? 's' : ''} assigned</span>
+    </div>
+    <div class="seg-field">
+      <div class="seg-field-lbl">Recruitment criteria</div>
+      <div class="seg-field-val" contenteditable="true" spellcheck="false" data-seg-id="${s.id}" data-pid="${pid}" data-field="description">${esc(s.description)}</div>
+    </div>
+  </div>`;
+}
+function setupSegmentCardEvents(s, pid) {
+  const card = document.querySelector(`.seg-card[data-seg-id="${s.id}"]`); if (!card) return;
+  const nameEl = card.querySelector('.seg-name');
+  if (nameEl) {
+    nameEl.addEventListener('input', () => { clearTimeout(_segSaveTimers['name-' + s.id]); _segSaveTimers['name-' + s.id] = setTimeout(() => saveSegmentField(pid, s.id, 'name', nameEl.textContent.trim()), 400); });
+    nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
+    nameEl.addEventListener('blur', () => { const name = nameEl.textContent.trim(); if (!name) nameEl.textContent = ''; saveSegmentField(pid, s.id, 'name', nameEl.textContent.trim()); });
+  }
+  card.querySelectorAll('.seg-field-val').forEach(el => {
+    el.addEventListener('input', () => { const key = el.dataset.field + '-' + s.id; clearTimeout(_segSaveTimers[key]); _segSaveTimers[key] = setTimeout(() => saveSegmentField(pid, s.id, el.dataset.field, el.textContent.trim()), 400); });
+    el.addEventListener('blur', () => saveSegmentField(pid, s.id, el.dataset.field, el.textContent.trim()));
+  });
+  const ti = card.querySelector('.seg-target-input');
+  if (ti) {
+    const commit = () => { const val = Math.max(0, parseInt(ti.value) || 0); ti.value = val; saveSegmentField(pid, s.id, 'target_count', val); };
+    ti.addEventListener('change', commit);
+    ti.addEventListener('blur', commit);
+    card.querySelectorAll('.seg-stepper-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const delta = parseInt(btn.dataset.delta) || 0;
+        const val = Math.max(0, (parseInt(ti.value) || 0) + delta);
+        ti.value = val;
+        commit();
+      });
+    });
+  }
+}
+async function saveSegmentField(pid, sid, field, value) {
+  // Every segment edit (name, target, recruitment criteria) reports against the
+  // "Participant segments" block heading, not the individual sub-field label.
+  const labelEl = document.getElementById('segmentsSaveStatus-' + pid);
+  try {
+    const body = {}; body[field] = value;
+    await api(API + '/' + pid + '/segments/' + sid, { method: 'PATCH', body: JSON.stringify(body) });
+    showSaveStatus(labelEl, 'saved');
+  } catch (e) { showSaveStatus(labelEl, false, () => saveSegmentField(pid, sid, field, value)); }
+}
+async function addSegment(pid) {
+  try {
+    const seg = await api(API + '/' + pid + '/segments', { method: 'POST', body: JSON.stringify({ name: 'New segment', target_count: 0 }) });
+    const segs = await api(API + '/' + pid + '/segments'); renderSegments(segs, pid);
+    const list = document.getElementById('segList-' + pid);
+    const head = document.getElementById('collapseHeadSegments-' + pid);
+    if (list && head) { list.style.display = ''; head.classList.add('expanded'); head.setAttribute('aria-expanded', 'true'); try { localStorage.setItem('port-segs-hidden-' + pid, '0'); } catch (_) {} }
+    setTimeout(() => { const card = document.querySelector(`.seg-card[data-seg-id="${seg.id}"]`); if (card) { const ne = card.querySelector('.seg-name'); if (ne) { ne.focus(); const r = document.createRange(); r.selectNodeContents(ne); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); } } }, 50);
+  } catch (e) { toast('Failed to add segment: ' + e.message, true); }
+}
+async function deleteSegment(pid, sid) {
+  if (!confirm('Delete this segment? Recordings assigned to it will become unassigned.')) return;
+  try { await api(API + '/' + pid + '/segments/' + sid, { method: 'DELETE' }); loadSegments(pid); }
+  catch (e) { toast('Failed to delete segment: ' + e.message, true); }
+}
+
+// ── Recordings filter ──
+let _recFilterState = {};
+
+function applyRecFilter(pid) {
+  const list = document.querySelector('#projectDetail .recording-list');
+  if (!list) return;
+  const state = _recFilterState[pid];
+  const rows = list.querySelectorAll('.recording-row');
+  rows.forEach(row => {
+    const segId = row.dataset.segmentId;
+    if (!state) {
+      row.style.display = '';
+      return;
+    }
+    const show = segId === 'unassigned' ? state.unassigned : state.segmentIds.has(segId);
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function closeRecFilter() {
+  document.querySelectorAll('.rec-filter-menu.show').forEach(m => m.classList.remove('show'));
+  document.removeEventListener('click', closeRecFilter);
+}
+
+async function toggleRecFilter(pid) {
+  const menu = document.getElementById('recFilterMenu-' + pid);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('show');
+  closeRecFilter();
+  if (wasOpen) return;
+  menu.classList.add('show');
+  setTimeout(() => document.addEventListener('click', closeRecFilter), 0);
+  menu.innerHTML = '<div style="color:var(--muted-fg);font-size:0.923rem;padding:8px 10px">Loading…</div>';
+  try {
+    const segs = await api(API + '/' + pid + '/segments');
+    const recList = document.querySelector('#projectDetail .recording-list');
+    const hasUnassigned = recList && recList.querySelector('.recording-row[data-segment-id="unassigned"]');
+    const state = _recFilterState[pid];
+    const defaultChecked = !state;
+    const checkedSegIds = state ? state.segmentIds : new Set(segs.map(s => String(s.id)));
+    const checkedUnassigned = state ? state.unassigned : true;
+    const cs = getComputedStyle(document.documentElement);
+    const cAccent = cs.getPropertyValue('--accent').trim();
+    const cBorder = cs.getPropertyValue('--border').trim();
+    const cCard   = cs.getPropertyValue('--card').trim();
+    const cMuted  = cs.getPropertyValue('--muted').trim();
+    const cFg     = cs.getPropertyValue('--fg').trim();
+    const chkSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const mkItem = (segId, label, checked) => {
+      const bd = checked ? cAccent : cBorder;
+      const bg = checked ? cAccent : cCard;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:0 10px;height:28px;cursor:pointer;border-radius:var(--radius);" onmouseenter="this.style.background='${cMuted}'" onmouseleave="this.style.background=''" onclick="toggleRecFilterItem(this,${pid});event.stopPropagation()" data-seg-id="${segId}">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;flex-shrink:0;border-radius:3px;border:2px solid ${bd};background:${bg};">${checked ? chkSvg : ''}</span>
+        <span style="font-size:0.923rem;color:${cFg}">${label}</span>
+      </div>`;
+    };
+    menu.innerHTML = segs.map(s => {
+      const checked = defaultChecked || checkedSegIds.has(String(s.id));
+      return mkItem(String(s.id), esc(s.name), checked);
+    }).join('') + (hasUnassigned ? mkItem('unassigned', 'Unassigned', checkedUnassigned) : '');
+    if (!segs.length && !hasUnassigned) {
+      menu.innerHTML = '<div style="color:var(--muted-fg);font-size:0.923rem;padding:8px 10px">No segments yet.</div>';
+    }
+  } catch (e) {
+    menu.innerHTML = '<div style="color:var(--destr);font-size:0.923rem;padding:8px 10px">Failed to load.</div>';
+  }
+}
+
+function toggleRecFilterItem(el, pid) {
+  const cs = getComputedStyle(document.documentElement);
+  const cAccent = cs.getPropertyValue('--accent').trim();
+  const cBorder = cs.getPropertyValue('--border').trim();
+  const cCard   = cs.getPropertyValue('--card').trim();
+  const chk = el.querySelector('span');
+  const accentRgb = getComputedStyle(chk).backgroundColor;
+  const accentTest = document.createElement('span');
+  accentTest.style.color = cAccent;
+  document.body.appendChild(accentTest);
+  const accentComputed = getComputedStyle(accentTest).color;
+  document.body.removeChild(accentTest);
+  const isOn = accentRgb === accentComputed;
+  const nowOn = !isOn;
+  chk.style.border = `2px solid ${nowOn ? cAccent : cBorder}`;
+  chk.style.background = nowOn ? cAccent : cCard;
+  const chkSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  chk.innerHTML = nowOn ? chkSvg : '';
+  const menu = document.getElementById('recFilterMenu-' + pid);
+  if (!menu) return;
+  const segmentIds = new Set();
+  let unassigned = false;
+  menu.querySelectorAll('[data-seg-id]').forEach(item => {
+    const segId = item.dataset.segId;
+    const itemChk = item.querySelector('span');
+    const on = !!itemChk.innerHTML.trim();
+    if (segId === 'unassigned') unassigned = on;
+    else if (on) segmentIds.add(segId);
+  });
+  _recFilterState[pid] = { segmentIds, unassigned };
+  applyRecFilter(pid);
+}
+
+// ── Segment picker (inline assignment) ──
+
+function closeSegmentPicker() {
+  const p = document.getElementById('segPicker');
+  if (p) p.classList.remove('show');
+  document.removeEventListener('click', closeSegmentPicker);
+}
+
+async function openSegmentPicker(el, pid, rid) {
+  const picker = document.getElementById('segPicker');
+  if (!picker) return;
+  const wasOpen = picker.classList.contains('show') && picker.dataset.rid === String(rid);
+  closeSegmentPicker();
+  if (wasOpen) return;
+
+  // Position below the clicked element
+  const rect = el.getBoundingClientRect();
+  picker.style.left = rect.left + 'px';
+  picker.style.top = (rect.bottom + 4) + 'px';
+  picker.dataset.rid = String(rid);
+  picker.dataset.pid = String(pid);
+  picker.classList.add('show');
+  picker.innerHTML = '<div class="seg-picker-item" style="color:var(--muted-fg);cursor:default">Loading…</div>';
+  setTimeout(() => document.addEventListener('click', closeSegmentPicker), 0);
+
+  // Get current segment from the row
+  const row = el.closest('.recording-row');
+  const curSegId = row ? row.dataset.segmentId : 'unassigned';
+
+  try {
+    const segs = await api(API + '/' + pid + '/segments');
+    if (!segs.length) {
+      picker.innerHTML = '<div class="seg-picker-item" style="color:var(--muted-fg);cursor:default">No segments defined</div>';
+      return;
+    }
+    const items = segs.map(s => {
+      const active = String(s.id) === curSegId ? ' active' : '';
+      return `<div class="seg-picker-item${active}" onclick="assignSegment(this,${pid},${rid},${s.id})"><span class="seg-dot"></span>${esc(s.name)}</div>`;
+    });
+    // Add "Unassigned" option
+    const unActive = curSegId === 'unassigned' ? ' active' : '';
+    items.push(`<div class="seg-picker-item${unActive}" style="color:var(--muted-fg)" onclick="assignSegment(this,${pid},${rid},null)"><span class="seg-dot"></span>Unassigned</div>`);
+    picker.innerHTML = items.join('');
+  } catch (e) {
+    picker.innerHTML = '<div class="seg-picker-item" style="color:var(--destr);cursor:default">Failed to load</div>';
+  }
+}
+
+async function assignSegment(itemEl, pid, rid, segId) {
+  try {
+    const res = await api(API + '/' + pid + '/recordings/' + rid, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ segment_id: segId })
+    });
+    // Update the row in place
+    const row = document.querySelector(`.recording-row[data-rec-id="${rid}"]`);
+    if (row) {
+      const segSpan = row.querySelector('.rec-segment');
+      if (segId && res.segment) {
+        segSpan.textContent = res.segment.name;
+      } else {
+        segSpan.innerHTML = '<span class="rec-person-icon">' + SVG_PERSON + '</span>';
+      }
+      row.dataset.segmentId = segId ? String(segId) : 'unassigned';
+    }
+  } catch (e) {
+    console.error('Failed to assign segment:', e);
+  }
+  closeSegmentPicker();
+}
+
+// ── Search ──
+function doSearchFilter() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('.project-row').forEach(row => {
+    const name = row.querySelector('.p-name')?.textContent.toLowerCase() || '';
+    row.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+  document.querySelectorAll('.archive-month-group').forEach(group => {
+    const rows = group.querySelectorAll('.project-row');
+    const anyVisible = [...rows].some(r => r.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
+  });
+  document.getElementById('searchClear').classList.toggle('show', !!document.getElementById('searchInput').value.trim());
+}
+document.getElementById('searchInput').addEventListener('input', doSearchFilter);
+document.getElementById('searchClear').addEventListener('click', () => {
+  document.getElementById('searchInput').value = ''; doSearchFilter(); document.getElementById('searchInput').focus();
+});
+
+// ── Archive toggle ──
+document.getElementById('archiveDivider').addEventListener('click', () => {
+  archiveOpen = !archiveOpen;
+  document.getElementById('archiveSection').style.display = archiveOpen ? 'block' : 'none';
+  document.getElementById('archiveDivider').classList.toggle('collapsed', !archiveOpen);
+});
+
+// ── Add project ──
+document.getElementById('addProjectBtn').addEventListener('click', createProject);
+document.getElementById('emptyNewProjectBtn').addEventListener('click', createProject);
+
+// ── Quit ──
+document.getElementById('quitBtn').addEventListener('click', async () => {
+  if (!confirm('Stop PINE? Any transcription or download in progress will be interrupted.')) return;
+  _suppressUnloadPrompt = true;
+  const quitPayload = {
+    reason: 'user_quit_action',
+    source: 'main_page',
+    lease_id: TAB_LEASE_ID,
+  };
+
+  try {
+    await fetch('/api/quit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(quitPayload),
+    });
+  } catch (_) {
+    try {
+      await fetch(SUPERVISOR_URL + '/shutdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quitPayload),
+        mode: 'no-cors',
+      });
+    } catch (e) {}
+  }
+  window.close();
+  setTimeout(() => {
+    document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:40px;text-align:center"><p style="font-size:1.154rem;color:var(--muted-fg)">PINE has stopped. You can close this tab.</p><p style="font-size:0.923rem;color:var(--muted-fg);margin-top:8px">Start PINE again from the launcher when needed.</p></div>';
+  }, 150);
+});
+
+// ── Panel resize ──
+(function () {
+  const handle = document.getElementById('resizeHandle');
+  const left = document.querySelector('.left-col');
+  const MIN = 280, MAX = 600;
+  let dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = left.offsetWidth;
+    handle.classList.add('dragging'); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return; left.style.width = Math.min(MAX, Math.max(MIN, startW + e.clientX - startX)) + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return; dragging = false; handle.classList.remove('dragging');
+    document.body.style.cursor = ''; document.body.style.userSelect = '';
+    try { localStorage.setItem('port-left-w', left.offsetWidth); } catch (e) {}
+  });
+  try { const saved = parseInt(localStorage.getItem('port-left-w')); if (saved >= MIN && saved <= MAX) left.style.width = saved + 'px'; } catch (e) {}
+})();
+
+// ── SocketIO live updates ──
+let _pythonLinkPollTimer = null;
+let _lastSocketDisconnectReason = '';
+const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
+const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
+const TAB_LEASE_KEY = 'pine_tab_lease_id';
+const TAB_LEASE_ID = (() => {
+  try {
+    const existing = sessionStorage.getItem(TAB_LEASE_KEY);
+    if (existing) return existing;
+    const next = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+    sessionStorage.setItem(TAB_LEASE_KEY, next);
+    return next;
+  } catch (e) {
+    return 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+})();
+let _leaseHeartbeatTimer = null;
+let _internalNavigationInProgress = false;
+let _suppressUnloadPrompt = false;
+let _quitLifecycleStarted = false;
+let _pythonRestartInFlight = false;
+
+function _shutdownPayload(reason, source = 'main_page') {
+  return {
+    reason: reason || 'unknown',
+    source,
+    lease_id: TAB_LEASE_ID,
+  };
+}
+
+function _postSupervisorJson(path, payload, keepalive = false) {
+  return fetch(SUPERVISOR_URL + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
+    body: JSON.stringify(payload || {}),
+    keepalive: !!keepalive,
+    mode: keepalive ? 'no-cors' : 'cors',
+  });
+}
+
+function sendLeaseHeartbeat() {
+  _postSupervisorJson('/lease/heartbeat', { lease_id: TAB_LEASE_ID }).catch(() => {});
+}
+
+function startLeaseHeartbeat() {
+  sendLeaseHeartbeat();
+  clearInterval(_leaseHeartbeatTimer);
+  _leaseHeartbeatTimer = setInterval(sendLeaseHeartbeat, 3000);
+}
+
+function releaseLeaseOnly() {
+  try {
+    _postSupervisorJson('/lease/release', { lease_id: TAB_LEASE_ID }, true);
+  } catch (e) {}
+}
+
+function releaseLeaseAndQuit() {
+  if (_quitLifecycleStarted) return;
+  _quitLifecycleStarted = true;
+  releaseLeaseOnly();
+  const payload = _shutdownPayload('tab_or_page_closed');
+  try {
+    const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    navigator.sendBeacon('/api/quit', quitBody);
+  } catch (e) {}
+  try {
+    fetch('/api/quit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+      mode: 'no-cors',
+    });
+  } catch (e) {}
+  try {
+    _postSupervisorJson('/shutdown', payload, true);
+  } catch (e) {}
+}
+
+
+
+function setPythonLinkState(state, details = '') {
+  const el = document.getElementById('pyLinkStatus');
+  if (!el) return;
+  el.className = 'py-link-status state-' + state;
+  if (state === 'error') el.classList.add('status-clickable');
+  const labels = {
+    ok: 'Python is running. Browser is connected.',
+    checking: 'Checking Python backend connection…',
+    warn: 'Python is running, but live updates are reconnecting.',
+    error: 'No connection to Python backend. Click to restart.',
+    restarting: 'Restarting Python backend…',
+  };
+  const detailSuffix = details ? ' ' + details : '';
+  const tooltip = (labels[state] || 'Connection state unknown.') + detailSuffix;
+  el.title = tooltip;
+  el.setAttribute('aria-label', tooltip);
+  el.dataset.state = state;
+}
+
+async function _fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function _isNetworkFetchError(err) {
+  const name = String(err?.name || '');
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    name === 'TypeError' ||
+    name === 'AbortError' ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network') ||
+    msg.includes('timed out')
+  );
+}
+
+async function _probeBackendReachability() {
+  let healthOk = false;
+  let runtimeOk = false;
+  try {
+    const healthRes = await _fetchWithTimeout('/api/health', { cache: 'no-store' }, 1500);
+    healthOk = !!healthRes.ok;
+  } catch (e) {}
+  try {
+    const runtimeRes = await _fetchWithTimeout('/api/utils/runtime-status', { cache: 'no-store' }, 1500);
+    runtimeOk = !!runtimeRes.ok;
+  } catch (e) {}
+  return { healthOk, runtimeOk, reachable: healthOk || runtimeOk };
+}
+
+async function probePythonLinkStatus() {
+  try {
+    const res = await _fetchWithTimeout(SUPERVISOR_URL + '/status', { cache: 'no-store' }, 2500);
+    if (!res.ok) throw new Error('Supervisor endpoint is unavailable.');
+    const st = await res.json().catch(() => ({}));
+    if (st.backend_running && socket.connected) {
+      setPythonLinkState('ok');
+      return;
+    }
+    if (!st.backend_running) {
+      setPythonLinkState(
+        'error',
+        'Python backend is stopped. Click to restart and reconnect.',
+      );
+      return;
+    }
+    const reason = _lastSocketDisconnectReason
+      ? `Socket disconnected: ${_lastSocketDisconnectReason}.`
+      : 'Socket disconnected.';
+    setPythonLinkState('warn', reason + ' Trying to reconnect...');
+  } catch (e) {
+    const reachability = await _probeBackendReachability();
+    if (reachability.reachable) {
+      const details = socket.connected
+        ? 'Supervisor is unavailable, but backend is reachable. Restart fallback is available.'
+        : 'Supervisor is unavailable, backend is reachable, and live updates are reconnecting.';
+      setPythonLinkState('warn', details);
+      return;
+    }
+    setPythonLinkState(
+      'error',
+      'Supervisor and backend are unreachable. Click to retry restart, or relaunch using Launch Pine.bat.',
+    );
+  }
+}
+
+function startPythonLinkMonitor() {
+  setPythonLinkState('checking');
+  probePythonLinkStatus();
+  clearInterval(_pythonLinkPollTimer);
+  _pythonLinkPollTimer = setInterval(probePythonLinkStatus, 1500);
+}
+
+async function handlePythonLinkClick(event) {
+  event.stopPropagation();
+  const state = document.getElementById('pyLinkStatus')?.dataset?.state;
+  if (state !== 'error') return;
+  if (_pythonRestartInFlight) return;
+  if (!confirm('No connection to Python backend. Restart PINE now?')) return;
+
+  _pythonRestartInFlight = true;
+  setPythonLinkState('restarting');
+  try {
+    let usedFallback = false;
+    try {
+      const res = await _fetchWithTimeout(SUPERVISOR_URL + '/restart', { method: 'POST', headers: { 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN } }, 2500);
+      if (!res.ok) throw new Error('Restart request failed.');
+    } catch (err) {
+      if (!_isNetworkFetchError(err)) throw err;
+      usedFallback = true;
+      setPythonLinkState('restarting', 'Supervisor unavailable. Trying local runtime restart...');
+      const fallbackRes = await _fetchWithTimeout('/api/utils/restart', { method: 'POST' }, 2500);
+      if (!fallbackRes.ok) throw new Error('Local runtime restart failed.');
+    }
+
+    toast(usedFallback ? 'Restarting runtime (fallback)...' : 'Restarting Python backend...');
+    setTimeout(() => {
+      probePythonLinkStatus();
+      if (!socket.connected) {
+        try { socket.connect(); } catch (e) {}
+      }
+    }, usedFallback ? 1200 : 700);
+  } catch (e) {
+    const msg = 'Could not restart automatically. Please relaunch using Launch Pine.bat.';
+    setPythonLinkState('error', msg);
+    toast(msg, true);
+  } finally {
+    _pythonRestartInFlight = false;
+  }
+}
+
+const socket = io();
+let _socketWasConnected = false;
+socket.on('connect', () => {
+  _lastSocketDisconnectReason = '';
+  probePythonLinkStatus();
+  if (!_socketWasConnected) { _socketWasConnected = true; return; }
+  console.info('[SocketIO] Reconnected');
+  toast('Reconnected');
+  if (selectedId) loadProjects(selectedId);
+});
+socket.on('disconnect', (reason) => {
+  _lastSocketDisconnectReason = String(reason || 'unknown reason');
+  setPythonLinkState('warn', `Socket disconnected: ${_lastSocketDisconnectReason}. Trying to reconnect…`);
+  setTimeout(probePythonLinkStatus, 250);
+  console.warn('[SocketIO] Disconnected:', reason);
+  toast('Connection lost \u2014 reconnecting\u2026', true);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    probePythonLinkStatus();
+    sendLeaseHeartbeat();
+  }
+});
+function _markInternalNavigation() {
+  _internalNavigationInProgress = true;
+  setTimeout(() => { _internalNavigationInProgress = false; }, 2000);
+}
+function _resolveEventElement(event) {
+  const raw = event && event.target;
+  if (!raw) return null;
+  if (raw instanceof Element) return raw;
+  return raw.parentElement instanceof Element ? raw.parentElement : null;
+}
+document.addEventListener('click', (event) => {
+  const target = _resolveEventElement(event);
+  if (!target) return;
+  const clickableRec = target.closest('.recording-row.clickable, .single-tx-item[onclick]');
+  if (clickableRec) {
+    _markInternalNavigation();
+    return;
+  }
+  const link = target.closest('a[href]');
+  if (link) {
+    const href = link.getAttribute('href') || '';
+    if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+      _markInternalNavigation();
+    }
+    return;
+  }
+  const withOnclick = target.closest('[onclick]');
+  if (!withOnclick) return;
+  const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
+  if (handlerText.includes('window.location')) {
+    _markInternalNavigation();
+  }
+}, true);
+window.addEventListener('beforeunload', (event) => {
+  if (_suppressUnloadPrompt || _internalNavigationInProgress) return;
+  const msg = 'Close PINE tab and stop all background processing?';
+  event.preventDefault();
+  event.returnValue = msg;
+  return msg;
+});
+window.addEventListener('pagehide', () => {
+  if (_internalNavigationInProgress) return;
+  releaseLeaseAndQuit();
+});
+socket.on('transcription:status', data => {
+  const { recording_id, status, stage, message } = data;
+  if (status === 'awaiting_language') {
+    openLangConfirmModal(data);
+  }
+  if (_langConfirmCtx && _langConfirmCtx.rid === recording_id
+      && (status === 'transcribed' || status === 'cancelled' || status === 'error')) {
+    closeLangConfirmModal();
+  }
+  const recItem = document.querySelector(`.recording-row[data-rec-id="${recording_id}"]`);
+  if (recItem) {
+    const iconSpan = recItem.querySelector('.status-icon');
+    if (iconSpan) {
+      const stageLabels = { loading: 'Loading models…', transcribing: 'Transcribing…', aligning: 'Aligning…', diarizing: 'Diarizing…' };
+      let cls, tip;
+      if (status === 'transcribed')       { cls = 'done';    tip = 'Transcribed'; }
+      else if (status === 'transcribing') { cls = 'active';  tip = message || stageLabels[stage] || 'Transcribing…'; }
+      else if (status === 'awaiting_language') { cls = 'warn'; tip = message || 'Choose language…'; }
+      else if (status === 'cancelling')   { cls = 'warn';    tip = 'Cancelling…'; }
+      else if (status === 'cancelled')    { cls = 'pending'; tip = 'Cancelled'; }
+      else if (status === 'error')        { cls = 'error';   tip = message || 'Error'; }
+      else                                { cls = 'pending'; tip = 'Pending'; }
+      const svgKey = (status in _statusIcons) ? status : 'pending';
+      iconSpan.className = 'status-icon ' + cls;
+      iconSpan.title = tip;
+      iconSpan.querySelector('svg').innerHTML = _statusIcons[svgKey];
+      const pid = Number(data.project_id || recItem.dataset.projectId || 0);
+      _bindAwaitingLanguageIcon(iconSpan, status, pid, recording_id);
+    }
+    const progEl = recItem.querySelector('.rec-progress');
+    if (progEl) progEl.textContent = progressText(data);
+  }
+  if ((status === 'transcribed' || status === 'cancelled') && selectedId) loadProjects(selectedId);
+  // Refresh single-tx modal if open
+  if (document.getElementById('singleTxPopover').classList.contains('open')) {
+    loadSingleTranscriptions();
+  }
+});
+
+async function cancelTranscription(pid, rid, e) {
+  e.preventDefault(); e.stopPropagation();
+  if (!confirm('Cancel this transcription?')) return;
+  try { await api(`${API}/${pid}/recordings/${rid}/transcription`, { method: 'DELETE' }); }
+  catch (err) { toast('Could not cancel: ' + err.message, true); }
+}
+
+async function clearProjectDefaultLang(pid) {
+  try {
+    await api(API + '/' + pid, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_transcription_language: '' }),
+    });
+    toast('Default transcript language cleared.');
+    if (selectedId === pid) loadProjects(pid);
+  } catch (e) {
+    toast(e.message || 'Could not clear default language', true);
+  }
+}
+
+const _LANG_PRESETS = [
+  ['en', 'English'], ['ru', 'Russian'], ['de', 'German'], ['fr', 'French'],
+  ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['uk', 'Ukrainian'],
+  ['pl', 'Polish'], ['nl', 'Dutch'], ['tr', 'Turkish'], ['ar', 'Arabic'],
+  ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['hi', 'Hindi'],
+];
+let _langConfirmCtx = null;
+
+function _langConfirmShowStep(step) {
+  const s1 = document.getElementById('langConfirmStep1');
+  const s2 = document.getElementById('langConfirmStep2');
+  if (step === 2) {
+    s1.style.display = 'none';
+    s2.style.display = 'block';
+  } else {
+    s1.style.display = 'block';
+    s2.style.display = 'none';
+  }
+}
+
+function closeLangConfirmModal() {
+  const o = document.getElementById('langConfirmOverlay');
+  o.classList.remove('open');
+  o.setAttribute('aria-hidden', 'true');
+  _langConfirmShowStep(1);
+  _langConfirmCtx = null;
+}
+
+function _bindAwaitingLanguageIcon(iconEl, status, pid, rid) {
+  if (!iconEl) return;
+  if (status === 'awaiting_language' && pid && rid) {
+    iconEl.classList.add('status-clickable');
+    iconEl.setAttribute('role', 'button');
+    iconEl.setAttribute('tabindex', '0');
+    iconEl.onclick = function (event) {
+      event.stopPropagation();
+      openLangConfirmModalFromClick(pid, rid);
+    };
+    iconEl.onkeydown = function (event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        openLangConfirmModalFromClick(pid, rid);
+      }
+    };
+    return;
+  }
+  iconEl.classList.remove('status-clickable');
+  iconEl.removeAttribute('role');
+  iconEl.removeAttribute('tabindex');
+  iconEl.onclick = null;
+  iconEl.onkeydown = null;
+}
+
+function openLangConfirmModalFromClick(pid, rid) {
+  openLangConfirmModal({ project_id: pid, recording_id: rid });
+}
+
+function openLangConfirmModal(data) {
+  let pid = data.project_id;
+  if (pid == null || pid === '') {
+    const row = document.querySelector('.recording-row[data-rec-id="' + data.recording_id + '"]');
+    if (row && row.dataset.projectId) pid = parseInt(row.dataset.projectId, 10);
+  }
+  if (!pid) {
+    toast('Open this project in the list, then choose the recording language when prompted.', true);
+    return;
+  }
+  _langConfirmCtx = { pid, rid: data.recording_id };
+  const guess = (data.guessed_language || '').trim();
+  _langConfirmCtx.guess = guess.toLowerCase().replace(/-/g, '_');
+  const conf = typeof data.language_confidence === 'number' ? data.language_confidence : -1;
+  let guessLine = '';
+  if (guess && conf >= 0 && conf <= 1) {
+    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + ' (about ' + Math.round(conf * 100) + '% confidence). ';
+  } else if (guess) {
+    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + '. ';
+  }
+  document.getElementById('langConfirmDesc').textContent =
+    guessLine + 'Which language is spoken in this recording?';
+  const sel = document.getElementById('langConfirmSelect');
+  sel.innerHTML = '';
+  const seen = new Set();
+  (Array.isArray(data.language_options) ? data.language_options : []).forEach(o => {
+    if (o && o.code && !seen.has(o.code)) {
+      seen.add(o.code);
+      const pct = typeof o.probability === 'number' ? Math.round(o.probability * 100) : '';
+      const lab = pct !== '' ? (o.code + ' (' + pct + '%)') : String(o.code);
+      sel.appendChild(new Option(lab, o.code));
+    }
+  });
+  _LANG_PRESETS.forEach(([code, name]) => {
+    if (!seen.has(code)) {
+      seen.add(code);
+      sel.appendChild(new Option(name + ' (' + code + ')', code));
+    }
+  });
+  const customEl = document.getElementById('langConfirmCustom');
+  customEl.value = '';
+  customEl.placeholder = guess || 'e.g. ru';
+  _langConfirmShowStep(1);
+  const overlay = document.getElementById('langConfirmOverlay');
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+async function submitLangConfirmModal() {
+  if (!_langConfirmCtx) return;
+  const raw = document.getElementById('langConfirmCustom').value.trim().toLowerCase().replace(/-/g, '_');
+  const sel = document.getElementById('langConfirmSelect').value;
+  // Prefer dropdown choice; use custom only when user really typed a different override.
+  const defaultGuess = (_langConfirmCtx.guess || '').trim();
+  const lang = (raw && raw !== defaultGuess) ? raw : (sel || raw);
+  if (!lang || !/^[a-z][a-z0-9_]{0,15}$/.test(lang)) {
+    toast('Enter a valid language code (e.g. en, ru).', true);
+    return;
+  }
+  try {
+    await api(API + '/' + _langConfirmCtx.pid + '/recordings/' + _langConfirmCtx.rid + '/transcription/language', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: lang }),
+    });
+    _langConfirmCtx.chosenLang = lang;
+    const label = _LANG_PRESETS.find(x => x[0] === lang);
+    const namePart = label ? (' (' + label[1] + ')') : '';
+    document.getElementById('langRememberDesc').textContent =
+      'Use ' + lang.toUpperCase() + namePart + ' for every new recording you add to this project? ' +
+      'New uploads will skip the language check while this default is set.';
+    _langConfirmShowStep(2);
+    toast('Language set — transcription continues…');
+    if (selectedId) loadProjects(selectedId);
+  } catch (e) {
+    toast(e.message || 'Could not set language', true);
+  }
+}
+
+async function finishLangRememberSave(remember) {
+  if (!_langConfirmCtx || !_langConfirmCtx.chosenLang) {
+    closeLangConfirmModal();
+    return;
+  }
+  const lang = _langConfirmCtx.chosenLang;
+  const pid = _langConfirmCtx.pid;
+  if (remember) {
+    try {
+      await api(API + '/' + pid, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_transcription_language: lang }),
+      });
+      toast('This project will use ' + lang.toUpperCase() + ' for new recordings.');
+    } catch (e) {
+      toast(e.message || 'Could not save project default', true);
+    }
+  }
+  closeLangConfirmModal();
+  if (selectedId) loadProjects(selectedId);
+}
+
+async function stopLangConfirmTranscription() {
+  if (!_langConfirmCtx) { closeLangConfirmModal(); return; }
+  if (!confirm('Stop transcription for this recording?')) return;
+  try {
+    await api(API + '/' + _langConfirmCtx.pid + '/recordings/' + _langConfirmCtx.rid + '/transcription', { method: 'DELETE' });
+    toast('Transcription cancelled');
+  } catch (e) { toast(e.message || 'Could not cancel', true); }
+  closeLangConfirmModal();
+  if (selectedId) loadProjects(selectedId);
+}
+
+document.getElementById('langConfirmOk').addEventListener('click', () => submitLangConfirmModal());
+document.getElementById('langConfirmStop').addEventListener('click', () => stopLangConfirmTranscription());
+document.getElementById('langRememberYes').addEventListener('click', () => finishLangRememberSave(true));
+document.getElementById('langRememberNo').addEventListener('click', () => finishLangRememberSave(false));
+document.getElementById('langConfirmSelect').addEventListener('change', function () {
+  const code = this.value;
+  if (code) document.getElementById('langConfirmCustom').value = code;
+});
+
+// ── Single Transcription Modal ──
+let _singleTxProjectId = null;
+
+function openSingleTxModal() {
+  const pop = document.getElementById('singleTxPopover');
+  const isOpen = pop.classList.contains('open');
+  if (isOpen) { closeSingleTxModal(); return; }
+  const btn = document.getElementById('singleTxBtn');
+  const rect = btn.getBoundingClientRect();
+  pop.style.left = rect.left + 'px';
+  pop.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+  pop.classList.add('open');
+  loadSingleTranscriptions();
+}
+function closeSingleTxModal() {
+  document.getElementById('singleTxPopover').classList.remove('open');
+}
+
+async function loadSingleTranscriptions() {
+  try {
+    const data = await api('/api/projects/single-transcriptions');
+    _singleTxProjectId = data.project_id;
+    const list = document.getElementById('singleTxList');
+    const header = document.getElementById('singleTxListHeader');
+    if (!data.recordings || !data.recordings.length) {
+      header.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    header.style.display = 'block';
+    list.innerHTML = data.recordings.map(r => {
+      const name = esc((r.original_name || 'Recording').replace(/\.[^.]+$/, ''));
+      const canOpen = r.transcription_status === 'transcribed';
+      const statusHtml = recStatusHTML(r.transcription_status, r.error_message || '', data.project_id, r.id);
+      const dateStr = timeAgo(r.created_at);
+      const clickAttr = canOpen
+        ? `onclick="window.location.href='/project/${data.project_id}/recording/${r.id}'"`
+        : '';
+      return `<div class="single-tx-item" ${clickAttr}>
+        <span>${statusHtml}</span>
+        <span class="stx-name" title="${name}">${name}</span>
+        <span class="stx-date">${dateStr}</span>
+        <button class="stx-del" onclick="event.stopPropagation();deleteSingleTx(${r.id})" title="Delete">
+          <svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>`;
+    }).join('');
+  } catch (e) { toast('Failed to load single transcriptions: ' + e.message, true); }
+}
+
+async function uploadSingleTx(files) {
+  const dz = document.getElementById('singleTxDropzone');
+  const title = dz.querySelector('.stx-dz-title');
+  dz.classList.add('uploading');
+  if (title) title.textContent = 'Uploading\u2026';
+  try {
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/projects/single-transcriptions', { method: 'POST', body: fd });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Upload failed'); }
+    }
+    toast('Transcription started');
+    loadSingleTranscriptions();
+  } catch (e) { toast(e.message, true); }
+  finally {
+    dz.classList.remove('uploading');
+    if (title) title.textContent = 'Drop files here or click to browse';
+  }
+}
+
+async function deleteSingleTx(rid) {
+  try {
+    await api('/api/projects/single-transcriptions/' + rid, { method: 'DELETE' });
+    loadSingleTranscriptions();
+  } catch (e) { toast('Failed to delete: ' + e.message, true); }
+}
+
+// Wire up single-tx modal controls
+(function () {
+  const dz = document.getElementById('singleTxDropzone');
+  const fi = document.getElementById('singleTxFileInput');
+  dz.addEventListener('click', () => fi.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); uploadSingleTx(e.dataTransfer.files); });
+  fi.addEventListener('change', () => { if (fi.files.length) uploadSingleTx(fi.files); fi.value = ''; });
+
+  document.getElementById('singleTxBtn').addEventListener('click', openSingleTxModal);
+
+  // Click outside to close popover
+  document.addEventListener('mousedown', e => {
+    const pop = document.getElementById('singleTxPopover');
+    if (!pop.classList.contains('open')) return;
+    const section = document.getElementById('singleTxSection');
+    if (!section.contains(e.target)) closeSingleTxModal();
+  });
+})();
+
+// ── Init ──
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const projectParam = params.get('project');
+  let projectId;
+  if (projectParam) {
+    const n = parseInt(projectParam, 10);
+    if (!isNaN(n)) projectId = n;
+  }
+  startPythonLinkMonitor();
+  startLeaseHeartbeat();
+  loadProjects(projectId);
+})();
+
+// ── Attachments ──
+async function loadAttachments(pid) {
+  const list = document.getElementById('attList-' + pid);
+  if (!list) return;
+  try {
+    const atts = await api(API + '/' + pid + '/attachments');
+    renderAttachments(pid, atts);
+  } catch (e) {}
+}
+
+function renderAttachments(pid, atts) {
+  const list = document.getElementById('attList-' + pid);
+  if (!list) return;
+  list.innerHTML = atts.map(a => `
+    <div class="att-item" data-aid="${a.id}">
+      <div class="att-name-wrap">
+        <span class="att-name" onclick="downloadAttachment(${pid},'${a.id}')" title="Download">${esc(a.display_name)}</span>
+        <button class="att-edit" onclick="startRenameAttachment(${pid},'${a.id}')" title="Rename">${SVG_PENCIL}</button>
+      </div>
+      <button class="att-del" onclick="deleteAttachment(${pid},'${a.id}')" title="Delete">${SVG_DELETE}</button>
+    </div>`).join('');
+}
+
+function downloadAttachment(pid, aid) {
+  window.location.href = API + '/' + pid + '/attachments/' + aid + '/download';
+}
+
+function startRenameAttachment(pid, aid) {
+  const item = document.querySelector(`.att-item[data-aid="${aid}"]`);
+  if (!item) return;
+  const btn = item.querySelector('.att-name');
+  const currentName = btn.textContent;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'att-name-edit';
+  input.value = currentName;
+  btn.replaceWith(input);
+  input.focus(); input.select();
+  const commit = async () => {
+    const newName = input.value.trim() || currentName;
+    const restored = document.createElement('span');
+    restored.className = 'att-name';
+    restored.textContent = newName;
+    restored.onclick = () => downloadAttachment(pid, aid);
+    input.replaceWith(restored);
+    if (newName === currentName) return;
+    try {
+      await api(API + '/' + pid + '/attachments/' + aid, { method: 'PATCH', body: JSON.stringify({ display_name: newName }) });
+    } catch (e) { restored.textContent = currentName; toast('Rename failed', true); }
+  };
+  input.onblur = commit;
+  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } if (e.key === 'Escape') { input.value = currentName; input.blur(); } };
+}
+
+async function deleteAttachment(pid, aid) {
+  if (!confirm('Delete this attachment?')) return;
+  try {
+    await api(API + '/' + pid + '/attachments/' + aid, { method: 'DELETE' });
+    loadAttachments(pid);
+  } catch (e) { toast('Delete failed', true); }
+}
+
+async function uploadAttachment(pid, input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(API + '/' + pid + '/attachments', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error();
+    loadAttachments(pid);
+  } catch (e) { toast('Upload failed', true); }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1568 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PINE — Codes</title>
+
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/pine.png') }}" />
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
+<style>html{font-size:{{ init_font_size }}px !important;}</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script>
+var _fontStacks = {
+  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+  'space-grotesk': "'Space Grotesk',sans-serif",
+  inter: "'Inter',sans-serif",
+  'source-sans-3': "'Source Sans 3',sans-serif",
+  'open-sans': "'Open Sans',sans-serif",
+  roboto: "'Roboto',sans-serif",
+};
+function _applyTheme(t) {
+  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+}
+_applyTheme('{{ init_theme }}');
+document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
+document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks['inter']);
+if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
+let _appSettings = {};
+fetch('/api/settings').then(r => r.json()).then(s => {
+  _appSettings = s;
+  const t = s.theme || 'system';
+  _applyTheme(t);
+  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
+  const ff = s.font_family || 'inter';
+  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks['inter']);
+}).catch(() => { _applyTheme('system'); });
+</script>
+<script>
+(function () {
+  const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
+  const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
+  const LEASE_KEY = 'pine_tab_lease_id';
+  let internalNavigation = false;
+  let suppressUnloadPrompt = false;
+  let timer = null;
+  let quitLifecycleStarted = false;
+  let leaseId = '';
+  try {
+    leaseId = sessionStorage.getItem(LEASE_KEY) || '';
+    if (!leaseId) {
+      leaseId = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+      sessionStorage.setItem(LEASE_KEY, leaseId);
+    }
+  } catch (e) {
+    leaseId = 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+  function postSupervisor(path, payload, keepalive) {
+    return fetch(SUPERVISOR_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
+      body: JSON.stringify(payload || {}),
+      keepalive: !!keepalive,
+      mode: keepalive ? 'no-cors' : 'cors',
+    });
+  }
+  function heartbeat() {
+    postSupervisor('/lease/heartbeat', { lease_id: leaseId }, false).catch(() => {});
+  }
+  function shutdownPayload(reason) {
+    return {
+      reason: reason || 'unknown',
+      source: 'tags_page',
+      lease_id: leaseId,
+    };
+  }
+  function releaseAndQuit() {
+    if (quitLifecycleStarted) return;
+    quitLifecycleStarted = true;
+    const payload = shutdownPayload('tab_or_page_closed');
+    try { postSupervisor('/lease/release', { lease_id: leaseId }, true); } catch (e) {}
+    try {
+      const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/api/quit', quitBody);
+    } catch (e) {}
+    try {
+      fetch('/api/quit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+        mode: 'no-cors',
+      });
+    } catch (e) {}
+    try {
+      postSupervisor('/shutdown', payload, true);
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') heartbeat();
+  });
+  function markInternalNavigation() {
+    internalNavigation = true;
+    setTimeout(() => { internalNavigation = false; }, 2000);
+  }
+  function resolveEventElement(event) {
+    const raw = event && event.target;
+    if (!raw) return null;
+    if (raw instanceof Element) return raw;
+    return raw.parentElement instanceof Element ? raw.parentElement : null;
+  }
+  document.addEventListener('click', (event) => {
+    const target = resolveEventElement(event);
+    if (!target) return;
+    const link = target.closest('a[href]');
+    if (link) {
+      const href = link.getAttribute('href') || '';
+      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+        markInternalNavigation();
+      }
+      return;
+    }
+    const withOnclick = target.closest('[onclick]');
+    if (!withOnclick) return;
+    const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
+    if (handlerText.includes('window.location')) {
+      markInternalNavigation();
+    }
+    if (handlerText.includes('fetch(\'/api/quit') || handlerText.includes('fetch("/api/quit')) {
+      suppressUnloadPrompt = true;
+    }
+  }, true);
+  window.addEventListener('beforeunload', (event) => {
+    if (suppressUnloadPrompt || internalNavigation) return;
+    const msg = 'Close PINE tab and stop all background processing?';
+    event.preventDefault();
+    event.returnValue = msg;
+    return msg;
+  });
+  window.addEventListener('pagehide', () => {
+    if (internalNavigation) return;
+    releaseAndQuit();
+  });
+  heartbeat();
+  clearInterval(timer);
+  timer = setInterval(heartbeat, 3000);
+})();
+</script>
+<style>
+@font-face { font-family: 'Space Grotesk'; font-weight: 300; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Light.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens: light (default) ── */
+:root {
+  --bg:         hsl(220, 20%, 97%);
+  --fg:         hsl(220, 25%, 10%);
+  --card:       hsl(0, 0%, 100%);
+  --muted:      hsl(220, 15%, 94%);
+  --muted-fg:   hsl(220, 10%, 46%);
+  --accent:     hsl(152, 60%, 42%);
+  --accent-fg:  #fff;
+  --accent-dim: hsla(152, 60%, 42%, 0.10);
+  --accent-bd:  hsla(152, 60%, 42%, 0.25);
+  --border:     hsl(220, 15%, 88%);
+  --secondary:  hsl(220, 15%, 92%);
+  --destr:      hsl(0, 72%, 51%);
+  --destr-dim:  hsla(0, 72%, 51%, 0.10);
+  --destr-bd:   hsla(0, 72%, 51%, 0.25);
+  --warn:       hsl(38, 90%, 55%);
+  --warn-dim:   hsla(38, 90%, 55%, 0.10);
+  --warn-bd:    hsla(38, 90%, 55%, 0.25);
+  --sunken:     hsl(220, 20%, 95%);
+  --radius:     6px;
+  --font-body:  'Inter', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+
+  --tag-pain:     #c0392b;
+  --tag-pain-bg:  rgba(192,57,43,0.08);
+  --tag-pain-bd:  rgba(192,57,43,0.25);
+  --tag-ins:      #1a9650;
+  --tag-ins-bg:   rgba(26,150,80,0.08);
+  --tag-ins-bd:   rgba(26,150,80,0.25);
+  --tag-del:      #b06400;
+  --tag-del-bg:   rgba(176,100,0,0.08);
+  --tag-del-bd:   rgba(176,100,0,0.25);
+  --tag-conf:     #1a70b0;
+  --tag-conf-bg:  rgba(26,112,176,0.08);
+  --tag-conf-bd:  rgba(26,112,176,0.25);
+  --tag-fu:       #606078;
+  --tag-fu-bg:    rgba(96,96,120,0.06);
+  --tag-fu-bd:    rgba(96,96,120,0.20);
+
+  --mod-lbl:   #2b7bbf;
+  --p1-lbl:    #1e8a4a;
+  --p2-lbl:    #8030b8;
+  --p3-lbl:    #9a6c00;
+}
+
+/* ── Design tokens: dark ──
+   :root-scoped: this page puts data-theme on .tag-group elements too, and an
+   unscoped selector would repaint those groups with the dark palette. */
+:root[data-theme="dark"] {
+  --bg:         hsl(220, 20%, 7%);
+  --fg:         hsl(220, 15%, 93%);
+  --card:       hsl(220, 16%, 11%);
+  --muted:      hsl(220, 14%, 14%);
+  --muted-fg:   hsl(220, 10%, 54%);
+  --accent:     hsl(152, 55%, 45%);
+  --accent-dim: hsla(152, 55%, 45%, 0.12);
+  --accent-bd:  hsla(152, 55%, 45%, 0.28);
+  --border:     hsl(220, 16%, 17%);
+  --secondary:  hsl(220, 14%, 16%);
+  --destr:      hsl(0, 62%, 60%);
+  --destr-dim:  hsla(0, 62%, 60%, 0.12);
+  --destr-bd:   hsla(0, 62%, 60%, 0.28);
+  --warn:       hsl(38, 85%, 60%);
+  --warn-dim:   hsla(38, 85%, 60%, 0.10);
+  --warn-bd:    hsla(38, 85%, 60%, 0.25);
+  --sunken:     hsl(220, 18%, 9%);
+
+  --tag-pain:     #f04f4f;
+  --tag-pain-bg:  rgba(240,79,79,0.12);
+  --tag-pain-bd:  rgba(240,79,79,0.30);
+  --tag-ins:      #34c97a;
+  --tag-ins-bg:   rgba(52,201,122,0.10);
+  --tag-ins-bd:   rgba(52,201,122,0.28);
+  --tag-del:      #f5a623;
+  --tag-del-bg:   rgba(245,166,35,0.10);
+  --tag-del-bd:   rgba(245,166,35,0.28);
+  --tag-conf:     #5da8e0;
+  --tag-conf-bg:  rgba(93,168,224,0.10);
+  --tag-conf-bd:  rgba(93,168,224,0.28);
+  --tag-fu:       #a0a0b8;
+  --tag-fu-bg:    rgba(160,160,184,0.08);
+  --tag-fu-bd:    rgba(160,160,184,0.22);
+
+  --mod-lbl:   #5da8e0;
+  --p1-lbl:    #4dbe80;
+  --p2-lbl:    #c07ae8;
+  --p3-lbl:    #d4a940;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+body { font-size: inherit; }
+
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── Top bar ── */
+.top-bar {
+  height: 48px; flex-shrink: 0;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 0;
+  z-index: 100;
+}
+.tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
+  padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
+.tb-logo:hover { background: var(--muted); }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
+.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; flex-shrink: 0; }
+/* ── Body ── */
+.body { flex: 1; display: flex; overflow: hidden; }
+
+/* ── Left panel ── */
+.left {
+  width: 280px; flex-shrink: 0;
+  background: var(--card);
+  display: flex; flex-direction: column; overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+.left-header {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.back-link {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 1rem; color: var(--muted-fg);
+  background: none; border: none; cursor: pointer; padding: 5px 8px;
+  border-radius: var(--radius); transition: all 0.15s; font-family: var(--font-body);
+  text-decoration: none; margin-bottom: 10px; margin-left: -8px;
+}
+.back-link:hover { background: var(--muted); color: var(--fg); }
+.back-link svg { width: 13px; height: 13px; }
+.proj-title-mini {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.proj-title-mini .icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.077rem; flex-shrink: 0;
+  border: 1px solid var(--border); background: var(--muted);
+}
+.proj-title-mini .name {
+  font-size: 1rem; font-weight: 600; color: var(--fg);
+  letter-spacing: -0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.search-wrap { position: relative; }
+.search-ico {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--muted-fg); pointer-events: none;
+}
+.search-in {
+  width: 100%; height: 30px; background: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0 10px 0 30px;
+  font-size: 1rem; color: var(--fg); outline: none;
+  font-family: var(--font-body); transition: border-color 0.15s;
+}
+.search-in:focus { border-color: var(--accent-bd); }
+.search-in::placeholder { color: var(--muted-fg); }
+
+/* ── Tag list ── */
+.tag-list {
+  flex: 1; overflow-y: auto; padding: 8px 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.tag-list::-webkit-scrollbar { width: 3px; }
+.tag-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.tag-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; cursor: pointer;
+  transition: background 0.15s;
+  border-left: 2.5px solid transparent;
+}
+.tag-row:hover { background: var(--muted); }
+.tag-row.active { border-left-color: var(--accent); background: var(--accent-dim); }
+.tag-row.unused { opacity: 0.5; }
+.tag-row.unused:hover { opacity: 1; }
+
+.tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.tag-dot.pain { background: var(--tag-pain); }
+.tag-dot.ins  { background: var(--tag-ins); }
+.tag-dot.del  { background: var(--tag-del); }
+.tag-dot.conf { background: var(--tag-conf); }
+.tag-dot.fu   { background: var(--tag-fu); }
+
+.tag-info { flex: 1; min-width: 0; }
+.tag-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); }
+.tag-sub { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.tag-count {
+  font-size: 0.846rem; font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--secondary); color: var(--muted-fg);
+  padding: 2px 8px; border-radius: 99px; flex-shrink: 0;
+}
+
+.tag-row.all-tags {
+  border-bottom: 1px solid var(--border); margin-bottom: 4px;
+}
+
+/* ── Theme groups ── */
+.tag-group { border-bottom: 1px solid var(--border); }
+.tag-group:last-child { border-bottom: none; }
+.tag-group-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px 8px 8px; cursor: pointer; user-select: none;
+  border-left: 2.5px solid transparent;
+  transition: background 0.15s;
+}
+.tag-group-header:hover { background: var(--muted); }
+.tag-group-header.active { border-left-color: var(--accent); background: var(--accent-dim); }
+.tag-group-chevron {
+  background: none; border: none; cursor: pointer; color: var(--muted-fg);
+  display: flex; padding: 2px; flex-shrink: 0;
+}
+.tag-group-chevron svg { width: 11px; height: 11px; transition: transform 0.2s; }
+.tag-group.collapsed .tag-group-chevron svg { transform: rotate(-90deg); }
+.tag-group.collapsed .tag-group-body { display: none; }
+.tag-group-name {
+  flex: 1; min-width: 0; font-size: 0.923rem; font-weight: 600;
+  letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tag-group-count {
+  font-size: 0.769rem; font-weight: 600; font-family: var(--font-mono);
+  color: var(--muted-fg); flex-shrink: 0;
+}
+.tag-group-body .tag-row { padding-left: 26px; }
+
+/* ── Drag & drop reordering / regrouping ── */
+.tag-row[draggable="true"] { cursor: grab; }
+.tag-row.dragging { opacity: 0.4; cursor: grabbing; }
+.tag-row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.tag-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.tag-group.drop-into > .tag-group-header { background: var(--accent-dim); }
+.tag-group-body { min-height: 2px; }
+.tag-group.drop-into > .tag-group-body { min-height: 20px; }
+#tagList.dnd-active .tag-row:hover { background: none; }
+
+.manage-tags-link {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  margin-top: 8px; padding: 7px 9px;
+  font-size: 0.923rem; color: var(--muted-fg); font-family: var(--font-body);
+  background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; text-decoration: none; transition: all 0.15s;
+}
+.manage-tags-link:hover { background: var(--secondary); color: var(--fg); }
+.manage-tags-link svg { width: 13px; height: 13px; }
+
+.left-footer {
+  flex-shrink: 0; padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+.tag-total { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+
+/* ── Right panel ── */
+.right { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--sunken); }
+
+.right-header {
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; background: var(--card);
+}
+.right-header-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.right-header-row .export-csv-btn { flex-shrink: 0; }
+.right-title {
+  font-size: 1.231rem; font-weight: 700; letter-spacing: -0.3px;
+  color: var(--fg); margin-bottom: 2px;
+}
+.right-subtitle { font-size: 0.923rem; color: var(--muted-fg); font-family: var(--font-mono); }
+
+/* ── Quotes area ── */
+.quotes-scroll {
+  flex: 1; overflow-y: auto; padding: 16px 24px 32px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.quotes-scroll::-webkit-scrollbar { width: 4px; }
+.quotes-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* ── Interview group ── */
+.interview-group { margin-bottom: 18px; }
+.interview-group-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px; padding: 5px 0;
+  cursor: pointer; user-select: none;
+}
+.interview-group-header:hover .ig-name { color: var(--fg); }
+.ig-icon {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--muted); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted-fg); flex-shrink: 0;
+}
+.ig-icon svg { width: 11px; height: 11px; }
+.ig-name { font-size: 1rem; font-weight: 500; color: var(--muted-fg); transition: color 0.15s; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-meta { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); flex-shrink: 0; }
+.ig-chevron { width: 12px; height: 12px; color: var(--muted-fg); transition: transform 0.2s; flex-shrink: 0; }
+.interview-group.collapsed .ig-chevron { transform: rotate(-90deg); }
+.interview-group.collapsed .ig-quotes { display: none; }
+
+/* ── Quote card ── */
+.quote-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); padding: 12px 14px; margin-bottom: 8px;
+  cursor: pointer; transition: border-color 0.15s;
+  position: relative; overflow: hidden;
+}
+.quote-card:hover { border-color: var(--accent-bd); }
+.quote-tag-indicator {
+  position: absolute; top: 0; left: 0; width: 3px; height: 100%;
+}
+.quote-tag-indicator.pain { background: var(--tag-pain); }
+.quote-tag-indicator.ins  { background: var(--tag-ins); }
+.quote-tag-indicator.del  { background: var(--tag-del); }
+.quote-tag-indicator.conf { background: var(--tag-conf); }
+.quote-tag-indicator.fu   { background: var(--tag-fu); }
+
+.quote-text {
+  font-size: 1rem; color: var(--fg); line-height: 1.6;
+  margin-bottom: 8px; padding-left: 8px;
+}
+.quote-footer {
+  display: flex; align-items: center; gap: 7px;
+  padding-left: 8px; flex-wrap: wrap;
+}
+.quote-speaker { font-size: 0.923rem; font-weight: 600; color: var(--muted-fg); }
+.quote-timestamp { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.quote-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.quote-tag-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.846rem; font-weight: 500; padding: 1px 7px 1px 5px;
+  border-radius: 99px; border: 1px solid transparent;
+}
+.quote-tag-chip .cdot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.quote-tag-chip.pain { background: var(--tag-pain-bg); color: var(--tag-pain); border-color: var(--tag-pain-bd); }
+.quote-tag-chip.ins  { background: var(--tag-ins-bg);  color: var(--tag-ins);  border-color: var(--tag-ins-bd); }
+.quote-tag-chip.del  { background: var(--tag-del-bg);  color: var(--tag-del);  border-color: var(--tag-del-bd); }
+.quote-tag-chip.conf { background: var(--tag-conf-bg); color: var(--tag-conf); border-color: var(--tag-conf-bd); }
+.quote-tag-chip.fu   { background: var(--tag-fu-bg);   color: var(--tag-fu);   border-color: var(--tag-fu-bd); }
+
+.quote-jump {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.846rem; color: var(--accent);
+  font-family: var(--font-mono);
+  margin-left: auto; cursor: pointer; text-decoration: none;
+  opacity: 0; transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.quote-card:hover .quote-jump { opacity: 1; }
+.quote-jump:hover { text-decoration: underline; }
+.quote-jump svg { width: 10px; height: 10px; }
+
+.quote-comment {
+  margin-top: 8px; padding: 7px 10px;
+  background: var(--accent-dim); border: 1px solid var(--accent-bd);
+  border-radius: var(--radius); margin-left: 8px;
+}
+.quote-comment-label {
+  font-size: 0.769rem; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--accent);
+  font-family: var(--font-mono); margin-bottom: 3px;
+}
+.quote-comment-text { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.5; }
+
+/* ── Empty state ── */
+.empty-quotes {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 40px; text-align: center; color: var(--muted-fg); flex: 1;
+}
+.empty-quotes svg { width: 36px; height: 36px; opacity: 0.3; margin-bottom: 12px; }
+.empty-quotes p { font-size: 1.077rem; color: var(--muted-fg); max-width: 260px; line-height: 1.6; }
+
+/* Toast and inline save status live in css/save-status.css */
+
+/* ── Segment filter ── */
+.seg-filter {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px -24px -14px;
+  padding: 10px 24px 12px;
+  border-top: 1px solid var(--border);
+}
+.seg-filter.visible { display: flex; }
+.seg-chip-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted-fg);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.seg-chip.active .seg-chip-dot { background: var(--accent); }
+
+/* ── Recording filter ── */
+.rec-filter {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px -24px -14px;
+  padding: 10px 24px 12px;
+  border-top: 1px solid var(--border);
+}
+.rec-filter.visible { display: flex; }
+
+/* ── Back to recording button ── */
+.back-to-rec-btn { position: fixed; bottom: 24px; right: 24px; z-index: 100; }
+
+/* ── Left-header create actions ── */
+.lh-actions { display: flex; gap: 6px; margin-top: 8px; }
+.lh-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font-family: var(--font-body); font-size: 0.846rem; font-weight: 500; padding: 6px 8px;
+  border-radius: var(--btn-radius, 8px); border: 1px solid var(--border); background: var(--card);
+  color: var(--fg); cursor: pointer; transition: all .15s; }
+.lh-btn:hover { background: var(--muted); border-color: var(--accent-bd); }
+.lh-btn svg { width: 12px; height: 12px; }
+
+/* ── Edit-details toggle (right header) ── */
+.edit-toggle { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  font-family: var(--font-body); font-size: 0.846rem; font-weight: 500; min-height: 30px; padding: 0 11px;
+  border-radius: var(--btn-radius, 8px); border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; }
+.edit-toggle:hover { background: var(--muted); border-color: var(--accent-bd); }
+.edit-toggle.on { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); }
+.edit-toggle svg { width: 13px; height: 13px; }
+/* In the left rail it sits with New theme / New code and matches their sizing. */
+.lh-actions .edit-toggle { flex: 1; min-height: 0; padding: 6px 8px; }
+.lh-actions .edit-toggle svg { width: 12px; height: 12px; }
+.right-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* ── Inspector (tag/theme editor) ── */
+.inspector { width: 340px; flex-shrink: 0; background: var(--card); border-left: 1px solid var(--border);
+  overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.inspector::-webkit-scrollbar { width: 4px; }
+.inspector::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.inspector.hidden { display: none; }
+.ins-inner { padding: 18px 18px 60px; }
+.ins-h { display: flex; align-items: center; gap: 8px; font-size: 0.769rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-fg); margin-bottom: 14px; }
+.ins-h .ins-x { margin-left: auto; width: 24px; height: 24px; border: none; background: transparent;
+  color: var(--muted-fg); border-radius: var(--radius); cursor: pointer; font-size: 1.2rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; }
+.ins-h .ins-x:hover { background: var(--muted); color: var(--fg); }
+.ed-top { display: flex; align-items: center; gap: 10px; }
+.ed-sw { width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(0,0,0,.14); cursor: pointer; flex-shrink: 0; padding: 0; }
+.ed-name { flex: 1; min-width: 0; font-size: 1.154rem; font-weight: 700; letter-spacing: -.2px; color: var(--fg);
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: 4px 7px; outline: none; font-family: var(--font-body); }
+.ed-name:hover { border-color: var(--border); }
+.ed-name:focus { border-color: var(--accent-bd); background: var(--bg); }
+.ed-mv { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.mvb { width: 28px; height: 28px; border: 1px solid var(--border); background: var(--card); border-radius: var(--radius);
+  cursor: pointer; color: var(--muted-fg); display: inline-flex; align-items: center; justify-content: center; }
+.mvb:hover:not(:disabled) { background: var(--muted); color: var(--fg); }
+.mvb:disabled { opacity: .35; cursor: default; }
+.mvb svg { width: 14px; height: 14px; }
+.ed-stats { display: flex; gap: 20px; margin: 16px 2px 4px; }
+.ed-stats .n { font-size: 1.308rem; font-weight: 700; font-family: var(--font-mono); }
+.ed-stats .l { font-size: 0.72rem; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .04em; }
+label.fl { display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted-fg); margin: 18px 0 6px; }
+.fld { width: 100%; font-family: var(--font-body); font-size: 0.923rem; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; outline: none; }
+.fld:focus { border-color: var(--accent-bd); }
+textarea.fld { min-height: 100px; resize: vertical; line-height: 1.55; }
+select.fld { appearance: none; -webkit-appearance: none; -moz-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M2 3.5l3 3 3-3' stroke='%23888fa0' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+.ed-tags-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ed-tag-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.846rem; color: var(--muted-fg);
+  background: var(--secondary); border-radius: 99px; padding: 4px 10px; }
+.ed-del { margin-top: 22px; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-body);
+  font-size: 0.846rem; padding: 7px 12px; border-radius: var(--btn-radius, 8px); border: 1px solid var(--destr-bd);
+  background: transparent; color: var(--destr); cursor: pointer; }
+.ed-del:hover { background: var(--destr-dim); }
+.ins-empty { color: var(--muted-fg); font-size: 0.923rem; line-height: 1.6; }
+
+/* ── Color popover ── */
+.color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: 600; }
+.color-pop.show { display: block; }
+.color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
+.csw { width: 22px; height: 22px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.csw.sel { border-color: var(--fg); }
+</style>
+<script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
+</head>
+<body>
+
+<div class="shell">
+  <header class="top-bar">
+    <a class="tb-logo" href="/" title="Go to projects">
+      <img src="{{ url_for('static', filename='icons/pine.png') }}" alt="PINE icon" class="tb-logo-icon" />
+      <span class="tb-name">PINE</span>
+    </a>
+    <div class="tb-sep"></div>
+    <a class="back-btn" id="backLink" href="/?project={{ project_id }}">
+      <svg viewBox="0 0 13 13" fill="none" width="13" height="13"><path d="M8 2.5L4 6.5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Back to Project
+    </a>
+    <span class="save-status" id="pageSaveStatus" role="status" aria-live="polite"></span>
+  </header>
+
+  <div class="body">
+
+    <!-- LEFT PANEL -->
+    <aside class="left">
+      <div class="left-header">
+        <div class="search-wrap">
+          <svg class="search-ico" viewBox="0 0 13 13" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.2"/><path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <input class="search-in" type="text" id="tagSearch" placeholder="Search codes…" oninput="filterTagList(this.value)" />
+        </div>
+        <div class="lh-actions">
+          <button class="lh-btn" onclick="edAddTheme()" title="Create a new theme">
+            <svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5v10M1.5 6.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            New theme
+          </button>
+          <button class="lh-btn" onclick="edAddTag(null)" title="Create a new code">
+            <svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1.5v10M1.5 6.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            New code
+          </button>
+        </div>
+        <div class="lh-actions">
+          <button class="lh-btn edit-toggle" id="editToggle" onclick="toggleInspector()" title="Show / hide the code editor">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M9 2.5l2.5 2.5L5 11.5 2.5 12l.5-2.5L9 2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            Editor
+          </button>
+        </div>
+      </div>
+
+      <div class="tag-list" id="tagList"></div>
+
+      <div class="left-footer">
+        <span class="tag-total" id="tagTotal"></span>
+      </div>
+    </aside>
+
+    <!-- RIGHT PANEL -->
+    <main class="right">
+      <div class="right-header">
+        <div class="right-header-row">
+          <div>
+            <div class="right-title" id="rightTitle">All codes</div>
+            <div class="right-subtitle" id="rightSubtitle"></div>
+          </div>
+          <div class="right-header-actions">
+            <button class="export-csv-btn" onclick="exportCSV()" title="Export filtered quotes as CSV">
+              <svg viewBox="0 0 12 12" fill="none" width="12" height="12"><path d="M6 1v6.5M3.5 5 6 7.5 8.5 5M2 10h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Export
+            </button>
+          </div>
+        </div>
+        <div class="seg-filter" id="segFilter"></div>
+        <div class="rec-filter" id="recFilter"></div>
+      </div>
+      <div class="quotes-scroll" id="quotesScroll"></div>
+    </main>
+
+    <!-- INSPECTOR (tag / theme editor) -->
+    <aside class="inspector hidden" id="inspector"><div class="ins-inner" id="insInner"></div></aside>
+
+  </div>
+</div>
+
+<div class="color-pop" id="colorPop"><div class="color-grid" id="colorGrid"></div></div>
+
+<script>
+const PROJECT_ID = {{ project_id }};
+const API = '/api/projects/' + PROJECT_ID;
+const KNOWN_TAG_COLORS = ['pain', 'ins', 'del', 'conf', 'fu'];
+
+let allData = null;
+let activeTagId = 'all';
+let selectedSegmentIds = new Set();
+let selectedRecordingIds = new Set();
+
+// ── Editor (inspector) state ──
+let inspectorOpen = false;          // analysis-first: editing is opt-in
+let _pendingFocusTagId = null;
+let _colorTarget = null;
+let _colorPopCloseHandler = null;
+const TAG_PALETTE = ['#f04f4f','#34c97a','#f5a623','#5da8e0','#a0a0b8','#e91e63','#9c27b0','#00bcd4','#8bc34a','#ff5722','#607d8b','#795548'];
+function tagColor(c) {
+  if (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
+  const map = { pain:'#f04f4f', ins:'#34c97a', del:'#f5a623', conf:'#5da8e0', fu:'#a0a0b8' };
+  return map[c] || '#a0a0b8';
+}
+
+// toast() and showSaveStatus() come from js/save-status.js
+
+function esc(s) {
+  // Attribute-safe: also escapes quotes so values placed in HTML attributes
+  // cannot break out and inject markup/handlers.
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+// Defense-in-depth: never interpolate an arbitrary string into a style attr.
+function safeHex(c) {
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) ? c : '#a0a0b8';
+}
+
+function pluralize(count, singular) {
+  return count + ' ' + singular + (count !== 1 ? 's' : '');
+}
+
+function fmtTime(secs) {
+  if (!secs || secs < 0) return '0:00';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function isKnownTagColor(color) {
+  return KNOWN_TAG_COLORS.includes(color);
+}
+
+function tagChipHtml(tagName, tagColor) {
+  if (isKnownTagColor(tagColor)) {
+    return `<span class="quote-tag-chip ${tagColor}"><span class="cdot" style="background:var(--tag-${tagColor})"></span>${esc(tagName)}</span>`;
+  }
+  const hex = safeHex(tagColor);
+  return `<span class="quote-tag-chip" style="background:rgba(0,0,0,0.06);color:${hex};border-color:${hex}40"><span class="cdot" style="background:${hex}"></span>${esc(tagName)}</span>`;
+}
+
+function tagIndicatorHtml(tagColor) {
+  if (isKnownTagColor(tagColor)) return `<div class="quote-tag-indicator ${tagColor}"></div>`;
+  return `<div class="quote-tag-indicator" style="background:${safeHex(tagColor)}"></div>`;
+}
+
+function tagDotHtml(tagColor) {
+  if (isKnownTagColor(tagColor)) return `<div class="tag-dot ${tagColor}"></div>`;
+  return `<div class="tag-dot" style="background:${safeHex(tagColor)}"></div>`;
+}
+
+async function loadData() {
+  try {
+    const res = await fetch(API + '/tags/quotes');
+    if (!res.ok) throw new Error('Server error');
+    allData = await res.json();
+
+    const _ridParam = new URLSearchParams(window.location.search).get('recording');
+    if (_ridParam) {
+      const _rid = parseInt(_ridParam, 10);
+      if (allData.recordings.find(r => r.id === _rid)) {
+        selectedRecordingIds.add(_rid);
+        const backBtn = document.getElementById('backToRecBtn');
+        backBtn.href = `/project/${PROJECT_ID}/recording/${_rid}`;
+        backBtn.style.display = 'flex';
+      }
+    }
+
+    if (new URLSearchParams(window.location.search).get('edit') === '1') inspectorOpen = true;
+
+    renderSegFilter();
+    renderRecFilter();
+    renderTagList();
+    renderQuotes('all');
+  } catch (e) {
+    toast('Failed to load codes: ' + e.message, true);
+  }
+}
+
+function getFilteredRecordings() {
+  let recs = allData.recordings;
+  if (selectedRecordingIds.size > 0) {
+    recs = recs.filter(r => selectedRecordingIds.has(r.id));
+  }
+  if (selectedSegmentIds.size > 0) {
+    recs = recs.filter(r => r.segment_id && selectedSegmentIds.has(r.segment_id));
+  }
+  return recs;
+}
+
+function renderRecFilter() {
+  const el = document.getElementById('recFilter');
+  const recordings = (allData.recordings || []);
+  if (recordings.length === 0) {
+    el.classList.remove('visible');
+    el.innerHTML = '';
+    return;
+  }
+
+  const allActive = selectedRecordingIds.size === 0;
+  let html = `<button class="seg-chip${allActive ? ' active' : ''}" onclick="toggleRecording(null)">
+    <span class="seg-chip-dot"></span>All recordings
+  </button>`;
+  for (const rec of recordings) {
+    const active = selectedRecordingIds.has(rec.id);
+    html += `<button class="seg-chip${active ? ' active' : ''}" onclick="toggleRecording(${rec.id})">
+      <span class="seg-chip-dot"></span>${esc(getRecordingDisplayName(rec.name))}
+    </button>`;
+  }
+  el.innerHTML = html;
+  el.classList.add('visible');
+}
+
+function toggleRecording(recId) {
+  if (recId === null) {
+    selectedRecordingIds.clear();
+  } else if (selectedRecordingIds.has(recId)) {
+    selectedRecordingIds.delete(recId);
+  } else {
+    selectedRecordingIds.add(recId);
+  }
+  renderRecFilter();
+  renderTagList();
+  renderQuotes(activeTagId);
+}
+
+function renderSegFilter() {
+  const el = document.getElementById('segFilter');
+  const segments = (allData.segments || []);
+  if (segments.length === 0) {
+    el.classList.remove('visible');
+    el.innerHTML = '';
+    return;
+  }
+
+  const allActive = selectedSegmentIds.size === 0;
+  let html = `<button class="seg-chip${allActive ? ' active' : ''}" onclick="toggleSegment(null)">
+    <span class="seg-chip-dot"></span>All segments
+  </button>`;
+  for (const seg of segments) {
+    const active = selectedSegmentIds.has(seg.id);
+    html += `<button class="seg-chip${active ? ' active' : ''}" onclick="toggleSegment(${seg.id})">
+      <span class="seg-chip-dot"></span>${esc(seg.name)}
+    </button>`;
+  }
+  el.innerHTML = html;
+  el.classList.add('visible');
+}
+
+function toggleSegment(segId) {
+  if (segId === null) {
+    selectedSegmentIds.clear();
+  } else if (selectedSegmentIds.has(segId)) {
+    selectedSegmentIds.delete(segId);
+  } else {
+    selectedSegmentIds.add(segId);
+  }
+  renderSegFilter();
+  renderTagList();
+  renderQuotes(activeTagId);
+}
+
+function buildAllTagsRow(totalQuotes) {
+  return `
+    <div class="tag-row all-tags" data-tag="all">
+      <div class="tag-info"><div class="tag-name">All codes</div></div>
+      <div class="tag-count">${totalQuotes}</div>
+    </div>`;
+}
+
+function buildTagRowHtml(tag) {
+  const sub = tag.count
+    ? `across ${tag.recording_count} ${tag.recording_count === 1 ? 'recording' : 'recordings'}`
+    : 'no quotes yet';
+  return `
+    <div class="tag-row ${tag.count ? '' : 'unused'}" data-tag="${esc(tag.id)}" draggable="true" title="Drag to reorder or move into a theme">
+      ${tagDotHtml(tag.color)}
+      <div class="tag-info">
+        <div class="tag-name">${esc(tag.name)}</div>
+        <div class="tag-sub">${sub}</div>
+      </div>
+      <div class="tag-count">${tag.count}</div>
+    </div>`;
+}
+
+function renderTagList() {
+  const { tags } = allData;
+  const filtered = getFilteredRecordings();
+
+  const tagQuoteCount = {};
+  const tagRecSets = {};
+  let totalQuotes = 0;
+  for (const t of tags) { tagQuoteCount[t.id] = 0; tagRecSets[t.id] = new Set(); }
+
+  for (const rec of filtered) {
+    for (const q of rec.quotes) {
+      if (q.tag_id in tagQuoteCount) {
+        tagQuoteCount[q.tag_id]++;
+        tagRecSets[q.tag_id].add(rec.id);
+      }
+      totalQuotes++;
+    }
+  }
+
+  const filteredTags = tags.map(t => ({
+    ...t,
+    count: tagQuoteCount[t.id] || 0,
+    recording_count: (tagRecSets[t.id] || new Set()).size,
+  }));
+
+  const totalTags = filteredTags.filter(t => t.count > 0).length;
+  document.getElementById('tagTotal').textContent =
+    pluralize(totalTags, 'tag') + ' · ' + pluralize(totalQuotes, 'quote');
+
+  const allRow = buildAllTagsRow(totalQuotes);
+
+  // Group tag rows under their themes (two-level hierarchy). The rail always
+  // shows the full codebook (all tags + all themes, incl. empty); tags with no
+  // quotes in the current view are rendered dimmed (see buildTagRowHtml).
+  const themes = allData.themes || [];
+  const themeIdSet = new Set(themes.map(t => t.id));
+  let groupsHtml = '';
+
+  for (const theme of themes) {
+    const themeTags = filteredTags.filter(t => t.group_id === theme.id);
+    const qCount = themeTags.reduce((s, t) => s + t.count, 0);
+    groupsHtml += buildThemeGroupHtml(theme, themeTags, qCount, true);
+  }
+
+  const ungrouped = filteredTags.filter(t => !t.group_id || !themeIdSet.has(t.group_id));
+  if (themes.length) {
+    // Themes render above, so Ungrouped is always the last block. It is rendered
+    // even when empty: otherwise, once every code is grouped there is no drop
+    // target left for dragging a code back out of its theme.
+    const qCount = ungrouped.reduce((s, t) => s + t.count, 0);
+    groupsHtml += buildThemeGroupHtml({ id: '__ungrouped__', name: 'Ungrouped', color: 'fu' }, ungrouped, qCount, false);
+  } else if (ungrouped.length) {
+    // No themes defined → flat list (unchanged behavior).
+    groupsHtml += ungrouped.map(buildTagRowHtml).join('');
+  }
+
+  document.getElementById('tagList').innerHTML = allRow + groupsHtml;
+
+  document.querySelectorAll('#tagList .tag-row').forEach(row => {
+    row.addEventListener('click', () => selectTag(row.dataset.tag, row));
+    if (row.dataset.tag === activeTagId) row.classList.add('active');
+  });
+  document.querySelectorAll('#tagList .tag-group-header').forEach(h => {
+    if ('theme:' + h.dataset.theme === activeTagId) h.classList.add('active');
+  });
+  wireTagDragAndDrop();
+}
+
+/* ── Drag & drop: reorder codes and move them in and out of themes ──
+   The DOM is treated as the source of truth once a drop lands: the dragged row
+   is moved into place, then allData.tags is rebuilt from the resulting order. */
+let _dragTagId = null;
+
+function _clearDropMarkers() {
+  document.querySelectorAll('#tagList .drop-before, #tagList .drop-after')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  document.querySelectorAll('#tagList .tag-group.drop-into')
+    .forEach(el => el.classList.remove('drop-into'));
+}
+
+function _rebuildTagOrderFromDom() {
+  const listEl = document.getElementById('tagList');
+  if (!listEl) return;
+  const byId = {};
+  allData.tags.forEach(t => { byId[t.id] = t; });
+  const ordered = [];
+  const seen = new Set();
+  listEl.querySelectorAll('.tag-row[data-tag]').forEach(row => {
+    const id = row.dataset.tag;
+    if (id === 'all' || seen.has(id)) return;
+    const tag = byId[id];
+    if (!tag) return;
+    const groupEl = row.closest('.tag-group');
+    const themeId = groupEl ? groupEl.dataset.theme : null;
+    tag.group_id = (themeId && themeId !== '__ungrouped__') ? themeId : null;
+    seen.add(id);
+    ordered.push(tag);
+  });
+  // Tags missing from the DOM (shouldn't happen, but never drop data on the floor).
+  allData.tags.forEach(t => { if (!seen.has(t.id)) ordered.push(t); });
+  allData.tags = ordered;
+}
+
+function _commitTagDrop() {
+  _clearDropMarkers();
+  _rebuildTagOrderFromDom();
+  _dragTagId = null;
+  renderTagList();
+  patchTags();
+}
+
+function wireTagDragAndDrop() {
+  const listEl = document.getElementById('tagList');
+  if (!listEl) return;
+
+  listEl.querySelectorAll('.tag-row[data-tag]').forEach(row => {
+    if (row.classList.contains('all-tags')) return;
+
+    row.addEventListener('dragstart', e => {
+      _dragTagId = row.dataset.tag;
+      row.classList.add('dragging');
+      listEl.classList.add('dnd-active');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', _dragTagId); } catch (_) {}
+    });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      listEl.classList.remove('dnd-active');
+      _clearDropMarkers();
+      _dragTagId = null;
+    });
+
+    row.addEventListener('dragover', e => {
+      if (!_dragTagId || row.dataset.tag === _dragTagId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = row.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      _clearDropMarkers();
+      row.classList.add(after ? 'drop-after' : 'drop-before');
+    });
+
+    row.addEventListener('drop', e => {
+      if (!_dragTagId || row.dataset.tag === _dragTagId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dragged = listEl.querySelector(`.tag-row[data-tag="${CSS.escape(_dragTagId)}"]`);
+      if (!dragged) return;
+      const rect = row.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      row.parentNode.insertBefore(dragged, after ? row.nextSibling : row);
+      _commitTagDrop();
+    });
+  });
+
+  // Dropping on a theme's header or empty body moves the code into that theme.
+  listEl.querySelectorAll('.tag-group').forEach(group => {
+    group.addEventListener('dragover', e => {
+      if (!_dragTagId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (e.target.closest('.tag-row')) return;   // row handler owns this position
+      _clearDropMarkers();
+      group.classList.add('drop-into');
+    });
+
+    group.addEventListener('drop', e => {
+      if (!_dragTagId) return;
+      e.preventDefault();
+      const dragged = listEl.querySelector(`.tag-row[data-tag="${CSS.escape(_dragTagId)}"]`);
+      const body = group.querySelector('.tag-group-body');
+      if (!dragged || !body) return;
+      body.appendChild(dragged);
+      _commitTagDrop();
+    });
+  });
+}
+
+function buildThemeGroupHtml(theme, themeTags, qCount, selectable) {
+  const rows = themeTags.map(buildTagRowHtml).join('');
+  const headerClick = selectable ? ` onclick="selectTheme('${esc(theme.id)}')"` : '';
+  return `
+    <div class="tag-group" data-theme="${esc(theme.id)}">
+      <div class="tag-group-header"${headerClick}>
+        <button class="tag-group-chevron" onclick="event.stopPropagation();toggleTagGroup(this)" title="Collapse / expand">
+          <svg viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        ${tagDotHtml(theme.color)}
+        <span class="tag-group-name">${esc(theme.name)}</span>
+        <span class="tag-group-count">${qCount}</span>
+      </div>
+      <div class="tag-group-body">${rows}</div>
+    </div>`;
+}
+
+function toggleTagGroup(btn) {
+  btn.closest('.tag-group').classList.toggle('collapsed');
+}
+
+function selectTheme(themeId) {
+  activeTagId = 'theme:' + themeId;
+  document.querySelectorAll('#tagList .tag-row').forEach(r => r.classList.remove('active'));
+  document.querySelectorAll('#tagList .tag-group-header').forEach(h => h.classList.remove('active'));
+  const header = document.querySelector(`.tag-group[data-theme="${CSS.escape(themeId)}"] .tag-group-header`);
+  if (header) header.classList.add('active');
+  renderQuotes(activeTagId);
+}
+
+// Predicate selecting which quotes belong to the active tag/theme/all view.
+function quoteMatcher(tagId) {
+  if (tagId === 'all') return () => true;
+  if (typeof tagId === 'string' && tagId.startsWith('theme:')) {
+    const themeId = tagId.slice(6);
+    const ids = new Set((allData.tags || []).filter(t => t.group_id === themeId).map(t => t.id));
+    return (q) => ids.has(q.tag_id);
+  }
+  return (q) => q.tag_id === tagId;
+}
+
+function getRecordingDisplayName(recordingName) {
+  return recordingName.replace(/\.[^.]+$/, '');
+}
+
+function updateRightHeader(tagId, tags, recordings, totalQuotes) {
+  const titleEl = document.getElementById('rightTitle');
+  const subtitleEl = document.getElementById('rightSubtitle');
+
+  if (tagId === 'all') {
+    const recCount = recordings.filter(r => r.quotes.length > 0).length;
+    titleEl.textContent = 'All codes';
+    subtitleEl.textContent =
+      pluralize(totalQuotes, 'tagged quote') + ' across ' +
+      pluralize(recCount, 'recording');
+    return;
+  }
+
+  const match = quoteMatcher(tagId);
+  if (typeof tagId === 'string' && tagId.startsWith('theme:')) {
+    const theme = (allData.themes || []).find(t => t.id === tagId.slice(6));
+    titleEl.textContent = theme ? theme.name : 'Theme';
+  } else {
+    const tagInfo = tags.find(t => t.id === tagId);
+    titleEl.textContent = tagInfo ? tagInfo.name : tagId;
+  }
+  const recSet = new Set();
+  for (const rec of recordings) {
+    if (rec.quotes.some(match)) recSet.add(rec.id);
+  }
+  subtitleEl.textContent =
+    pluralize(totalQuotes, 'quote') + ' across ' +
+    pluralize(recSet.size, 'recording');
+}
+
+function buildQuoteCardHtml(quote, recordingId) {
+  const timestamp = Math.floor(quote.timestamp);
+  const jumpUrl = `/project/${PROJECT_ID}/recording/${recordingId}?t=${timestamp}`;
+  const commentHtml = quote.comment
+    ? `<div class="quote-comment"><div class="quote-comment-label">Note</div><div class="quote-comment-text">${esc(quote.comment)}</div></div>`
+    : '';
+
+  return `
+    <div class="quote-card" onclick="handleCardClick(event,${recordingId},${timestamp})">
+      ${tagIndicatorHtml(quote.tag_color)}
+      <div class="quote-text">${esc(quote.text)}</div>
+      <div class="quote-footer">
+        <span class="quote-speaker">${esc(quote.speaker)}</span>
+        <span class="quote-dot"></span>
+        <span class="quote-timestamp">${fmtTime(quote.timestamp)}</span>
+        <span class="quote-dot"></span>
+        ${tagChipHtml(quote.tag_name, quote.tag_color)}
+        <a class="quote-jump" href="${jumpUrl}" onclick="event.stopPropagation()">
+          <svg viewBox="0 0 10 10" fill="none"><path d="M1 9L9 1M9 1H4M9 1v5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Jump to
+        </a>
+      </div>
+      ${commentHtml}
+    </div>`;
+}
+
+function buildInterviewGroupHtml(recording, match) {
+  const quotes = recording.quotes.filter(match);
+  if (!quotes.length) return '';
+
+  const quotesHtml = quotes.map(q => buildQuoteCardHtml(q, recording.id)).join('');
+  const displayName = getRecordingDisplayName(recording.name);
+
+  return `
+    <div class="interview-group" id="group-${recording.id}">
+      <div class="interview-group-header" onclick="toggleGroup(this.parentElement)">
+        <div class="ig-icon">
+          <svg viewBox="0 0 13 13" fill="none"><path d="M6.5 1a3 3 0 013 3v3a3 3 0 01-6 0V4a3 3 0 013-3z" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 6.5a4 4 0 01-8 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <span class="ig-name">${esc(displayName)}</span>
+        <span class="ig-meta">${pluralize(quotes.length, 'quote')}</span>
+        <svg class="ig-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="ig-quotes">${quotesHtml}</div>
+    </div>`;
+}
+
+const EMPTY_QUOTES_HTML = `
+  <div class="empty-quotes">
+    <svg viewBox="0 0 40 40" fill="none"><rect x="4" y="10" width="32" height="22" rx="4" stroke="currentColor" stroke-width="2"/><path d="M12 18h16M12 24h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <p>No coded quotes found for this combination.</p>
+  </div>`;
+
+function renderQuotes(tagId) {
+  activeTagId = tagId;
+  const { tags } = allData;
+  const filtered = getFilteredRecordings();
+  const scroll = document.getElementById('quotesScroll');
+  const match = quoteMatcher(tagId);
+
+  const totalFiltered = filtered.reduce((sum, r) => sum + r.quotes.filter(match).length, 0);
+
+  updateRightHeader(tagId, tags, filtered, totalFiltered);
+
+  const groups = filtered
+    .map(rec => buildInterviewGroupHtml(rec, match))
+    .join('');
+
+  scroll.innerHTML = groups.trim() ? groups : EMPTY_QUOTES_HTML;
+  renderInspector();
+}
+
+function selectTag(tagId, rowEl) {
+  document.querySelectorAll('#tagList .tag-row').forEach(r => r.classList.remove('active'));
+  document.querySelectorAll('#tagList .tag-group-header').forEach(h => h.classList.remove('active'));
+  rowEl.classList.add('active');
+  renderQuotes(tagId);
+}
+
+function toggleGroup(el) {
+  el.classList.toggle('collapsed');
+}
+
+function handleCardClick(e, recId, timestamp) {
+  if (e.target.closest('.quote-jump')) return;
+  window.location.href = `/project/${PROJECT_ID}/recording/${recId}?t=${timestamp}`;
+}
+
+function filterTagList(query) {
+  const searchTerm = query.toLowerCase();
+  document.querySelectorAll('#tagList .tag-row').forEach(row => {
+    if (row.classList.contains('all-tags')) {
+      row.style.display = searchTerm ? 'none' : '';
+      return;
+    }
+    const tagName = row.querySelector('.tag-name')?.textContent.toLowerCase() || '';
+    row.style.display = tagName.includes(searchTerm) ? '' : 'none';
+  });
+}
+
+function exportCSV() {
+  const filtered = getFilteredRecordings();
+  const match = quoteMatcher(activeTagId);
+  const rows = [];
+  for (const rec of filtered) {
+    const quotes = rec.quotes.filter(match);
+    for (const q of quotes) {
+      rows.push({
+        tag: q.tag_name,
+        quote: q.text,
+        speaker: q.speaker,
+        recording: rec.name,
+        timestamp: fmtTime(q.timestamp),
+        comment: q.comment || ''
+      });
+    }
+  }
+  if (rows.length === 0) { toast('No quotes to export', true); return; }
+  const cols = ['tag', 'quote', 'speaker', 'recording', 'timestamp', 'comment'];
+  const csvCell = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(r[c])).join(','))).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tags_export.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`Exported ${rows.length} quotes`);
+}
+
+/* ════════ Tag / theme editor (inspector) ════════ */
+function tagById(id) { return (allData && allData.tags || []).find(t => t.id === id) || null; }
+function themeById(id) { return (allData && allData.themes || []).find(t => t.id === id) || null; }
+function slugify(name) { return name.toLowerCase().replace(/\s/g, '_').replace(/[^\w]/g, '_').slice(0, 24); }
+function uniqueId(prefix, name) {
+  const base = prefix + '_' + (slugify(name) || 'item');
+  const taken = new Set([...((allData && allData.tags) || []).map(t => t.id), ...((allData && allData.themes) || []).map(t => t.id)]);
+  let id = base, n = 2;
+  while (taken.has(id)) id = base + '_' + (n++);
+  return id;
+}
+function selectionValid(sel) {
+  if (sel === 'all' || sel == null) return true;
+  if (typeof sel === 'string' && sel.startsWith('theme:')) return !!themeById(sel.slice(6));
+  return !!tagById(sel);
+}
+
+function toggleInspector() {
+  inspectorOpen = !inspectorOpen;
+  renderInspector();          // rail no longer depends on edit mode
+}
+
+function renderInspector() {
+  const insp = document.getElementById('inspector');
+  const toggle = document.getElementById('editToggle');
+  if (toggle) toggle.classList.toggle('on', inspectorOpen);
+  if (!insp) return;
+  insp.classList.toggle('hidden', !inspectorOpen);
+  if (!inspectorOpen) return;
+  const inner = document.getElementById('insInner');
+  const sel = activeTagId;
+  if (typeof sel === 'string' && sel.startsWith('theme:') && themeById(sel.slice(6))) {
+    inner.innerHTML = themeEditorHtml(sel.slice(6));
+  } else if (sel && sel !== 'all' && tagById(sel)) {
+    inner.innerHTML = tagEditorHtml(sel);
+  } else {
+    inner.innerHTML = `<div class="ins-h">Editor<button class="ins-x" title="Hide editor" onclick="toggleInspector()">&times;</button></div>
+      <div class="ins-empty">Select a single code or theme on the left to edit its name, color, definition and grouping — or use <b>New code</b> / <b>New theme</b>.</div>`;
+  }
+  if (_pendingFocusTagId) {
+    const el = inner.querySelector('.ed-name');
+    if (el) { el.focus(); el.select(); }
+    _pendingFocusTagId = null;
+  }
+}
+
+function tagEditorHtml(id) {
+  const t = tagById(id); if (!t) return '';
+  const col = tagColor(t.color);
+  const opts = ['<option value="">No theme</option>'].concat(
+    (allData.themes || []).map(th => `<option value="${esc(th.id)}"${th.id === t.group_id ? ' selected' : ''}>${esc(th.name)}</option>`)).join('');
+  return `
+    <div class="ins-h">Code details<button class="ins-x" title="Hide editor" onclick="toggleInspector()">&times;</button></div>
+    <div class="ed-top">
+      <button class="ed-sw" style="background:${col}" title="Code color" onclick="openColor(this,'tag','${esc(id)}')"></button>
+      <input class="ed-name" value="${esc(t.name)}" onchange="edTagField('${esc(id)}','name',this.value)" />
+    </div>
+    <div class="ed-stats">
+      <div><div class="n">${t.count || 0}</div><div class="l">quotes</div></div>
+      <div><div class="n">${t.recording_count || 0}</div><div class="l">interviews</div></div>
+    </div>
+    <label class="fl">Definition — when does this code apply?</label>
+    <textarea class="fld" placeholder="Describe when to use this code…" onchange="edTagField('${esc(id)}','description',this.value)">${esc(t.description || '')}</textarea>
+    <label class="fl">Theme</label>
+    <select class="fld" onchange="edTagTheme('${esc(id)}',this.value)">${opts}</select>
+    <button class="ed-del" onclick="edTagDelete('${esc(id)}')">Delete code</button>`;
+}
+
+function themeEditorHtml(id) {
+  const th = themeById(id); if (!th) return '';
+  const col = tagColor(th.color);
+  const ts = (allData.tags || []).filter(t => t.group_id === id);
+  const q = ts.reduce((s, t) => s + (t.count || 0), 0);
+  const i = (allData.themes || []).findIndex(x => x.id === id);
+  const last = (allData.themes || []).length - 1;
+  const pills = ts.map(t => `<span class="ed-tag-pill"><span class="tag-dot" style="width:8px;height:8px;background:${tagColor(t.color)}"></span>${esc(t.name)}</span>`).join('')
+    || '<span class="ins-empty">No codes in this theme yet.</span>';
+  return `
+    <div class="ins-h">Theme details<button class="ins-x" title="Hide editor" onclick="toggleInspector()">&times;</button></div>
+    <div class="ed-top">
+      <button class="ed-sw" style="background:${col}" title="Theme color" onclick="openColor(this,'theme','${esc(id)}')"></button>
+      <input class="ed-name" value="${esc(th.name)}" onchange="edThemeField('${esc(id)}','name',this.value)" />
+      <div class="ed-mv">
+        <button class="mvb" ${i <= 0 ? 'disabled' : ''} title="Move up" onclick="edThemeMove('${esc(id)}',-1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="mvb" ${i >= last ? 'disabled' : ''} title="Move down" onclick="edThemeMove('${esc(id)}',1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>
+    <div class="ed-stats">
+      <div><div class="n">${ts.length}</div><div class="l">codes</div></div>
+      <div><div class="n">${q}</div><div class="l">quotes</div></div>
+    </div>
+    <label class="fl">Codes in this theme</label>
+    <div class="ed-tags-list">${pills}</div>
+    <button class="ed-del" onclick="edThemeDelete('${esc(id)}')">Delete theme</button>`;
+}
+
+/* ── persistence: PATCH then re-fetch /tags/quotes (keeps counts/denormalized quote data correct) ── */
+async function refreshData() {
+  try {
+    const res = await fetch(API + '/tags/quotes');
+    if (!res.ok) throw new Error('Server error');
+    allData = await res.json();
+  } catch (e) { toast('Failed to reload: ' + e.message, true); return; }
+  if (!selectionValid(activeTagId)) activeTagId = 'all';
+  renderSegFilter();
+  renderRecFilter();
+  renderTagList();
+  renderQuotes(activeTagId);
+  const q = document.getElementById('tagSearch') && document.getElementById('tagSearch').value;
+  if (q) filterTagList(q);
+}
+async function patchTags() {
+  try {
+    const r = await fetch(API + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: allData.tags }) });
+    if (!r.ok) throw new Error('Server error');
+    await refreshData();
+    showPageSaved('saved');
+  } catch (e) { showPageSaved('error'); toast('Couldn’t save: ' + e.message, true); refreshData(); }
+}
+async function patchThemes() {
+  try {
+    const r = await fetch(API + '/themes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ themes: allData.themes }) });
+    if (!r.ok) throw new Error('Server error');
+    await refreshData();
+    showPageSaved('saved');
+  } catch (e) { showPageSaved('error'); toast('Couldn’t save: ' + e.message, true); refreshData(); }
+}
+async function patchBoth() {
+  try {
+    const a = await fetch(API + '/tags', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags: allData.tags }) });
+    const b = await fetch(API + '/themes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ themes: allData.themes }) });
+    if (!a.ok || !b.ok) throw new Error('Server error');
+    await refreshData();
+    showPageSaved('saved');
+  } catch (e) { showPageSaved('error'); toast('Couldn’t save: ' + e.message, true); refreshData(); }
+}
+
+/* ── tag mutations ── */
+function edTagField(id, field, value) {
+  const t = tagById(id); if (!t) return;
+  const v = (value || '').trim();
+  if (field === 'name' && !v) { toast('Code name cannot be empty', true); renderInspector(); return; }
+  if ((t[field] || '') === v) return;
+  t[field] = v; patchTags();
+}
+function edTagTheme(id, groupId) { const t = tagById(id); if (!t) return; t.group_id = groupId || null; patchTags(); }
+function edTagColor(id, hex) { const t = tagById(id); if (!t) return; t.color = hex; patchTags(); }
+function edTagDelete(id) {
+  const t = tagById(id); if (!t) return;
+  if (!confirm(`Delete tag "${t.name}"? Quotes already tagged with it will no longer be grouped under it.`)) return;
+  allData.tags = allData.tags.filter(x => x.id !== id);
+  if (activeTagId === id) activeTagId = 'all';
+  patchTags();
+}
+function edAddTag(groupId) {
+  if (!allData) return;
+  const id = uniqueId('tag', 'New tag');
+  allData.tags.push({ id, name: 'New tag', color: 'fu', description: '', group_id: groupId || null, count: 0, recording_count: 0 });
+  activeTagId = id; inspectorOpen = true; _pendingFocusTagId = id;
+  patchTags();
+}
+
+/* ── theme mutations ── */
+function edThemeField(id, field, value) {
+  const t = themeById(id); if (!t) return;
+  const v = (value || '').trim();
+  if (field === 'name' && !v) { toast('Theme name cannot be empty', true); renderInspector(); return; }
+  if ((t[field] || '') === v) return;
+  t[field] = v; patchThemes();
+}
+function edThemeColor(id, hex) { const t = themeById(id); if (!t) return; t.color = hex; patchThemes(); }
+function edThemeMove(id, dir) {
+  const arr = allData.themes; const i = arr.findIndex(x => x.id === id); const j = i + dir;
+  if (i < 0 || j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  patchThemes();
+}
+function edThemeDelete(id) {
+  const t = themeById(id); if (!t) return;
+  const inTheme = (allData.tags || []).filter(x => x.group_id === id).length;
+  const msg = inTheme
+    ? `Delete theme "${t.name}"? Its ${inTheme} tag(s) move to Ungrouped (the tags are kept).`
+    : `Delete theme "${t.name}"?`;
+  if (!confirm(msg)) return;
+  allData.themes = allData.themes.filter(x => x.id !== id);
+  let touched = false;
+  (allData.tags || []).forEach(x => { if (x.group_id === id) { x.group_id = null; touched = true; } });
+  if (activeTagId === 'theme:' + id) activeTagId = 'all';
+  if (touched) patchBoth(); else patchThemes();
+}
+
+/* ── color popover ── */
+function edAddTheme() {
+  if (!allData) return;
+  const id = uniqueId('theme', 'New theme');
+  allData.themes.push({ id, name: 'New theme', color: 'fu' });
+  activeTagId = 'theme:' + id; inspectorOpen = true; _pendingFocusTagId = id;
+  patchThemes();
+}
+function openColor(anchor, kind, id) {
+  _colorTarget = { kind, id };
+  const pop = document.getElementById('colorPop');
+  const cur = kind === 'tag' ? (tagById(id) || {}).color : (themeById(id) || {}).color;
+  document.getElementById('colorGrid').innerHTML = TAG_PALETTE.map(h =>
+    `<button class="csw ${tagColor(cur) === h ? 'sel' : ''}" style="background:${h}" title="${h}" onclick="pickColor('${h}')"></button>`).join('');
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 170)) + 'px';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.classList.add('show');
+  setTimeout(() => { _colorPopCloseHandler = (e) => { if (!pop.contains(e.target) && e.target !== anchor) closeColor(); }; document.addEventListener('mousedown', _colorPopCloseHandler); }, 0);
+}
+function closeColor() {
+  document.getElementById('colorPop').classList.remove('show');
+  if (_colorPopCloseHandler) { document.removeEventListener('mousedown', _colorPopCloseHandler); _colorPopCloseHandler = null; }
+}
+function pickColor(hex) {
+  if (!_colorTarget) return;
+  const { kind, id } = _colorTarget;
+  closeColor();
+  if (kind === 'tag') edTagColor(id, hex); else edThemeColor(id, hex);
+}
+
+loadData();
+</script>
+<div class="toast" id="toast"></div>
+<a id="backToRecBtn" class="back-to-rec-btn" href="#" style="display:none">
+  <svg viewBox="0 0 13 13" fill="none" width="13" height="13"><path d="M8 2.5L4 6.5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  Back to recording
+</a>
+</body>
+</html>

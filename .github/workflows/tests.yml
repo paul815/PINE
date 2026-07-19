@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # Only base deps. Heavy ML packages (torch, whisperx, pyannote) are
+      # installed at runtime by model_manager.py during onboarding, so tests
+      # that need them are expected to be skipped rather than run here.
+      - name: Install base dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Run test suite
+        working-directory: backend
+        run: python -m pytest -q --tb=short
