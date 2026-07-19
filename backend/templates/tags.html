@@ -281,7 +281,7 @@ body { font-size: inherit; }
   height: 48px; flex-shrink: 0;
   background: var(--card); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; padding: 0 16px; gap: 0;
-  z-index: 100;
+  z-index: var(--z-sticky);
 }
 .tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
@@ -588,7 +588,7 @@ body { font-size: inherit; }
 .rec-filter.visible { display: flex; }
 
 /* ── Back to recording button ── */
-.back-to-rec-btn { position: fixed; bottom: 24px; right: 24px; z-index: 100; }
+.back-to-rec-btn { position: fixed; bottom: 24px; right: 24px; z-index: var(--z-sticky); }
 
 /* ── Left-header create actions ── */
 .lh-actions { display: flex; gap: 6px; margin-top: 8px; }
@@ -659,7 +659,7 @@ select.fld { appearance: none; -webkit-appearance: none; -moz-appearance: none; 
 
 /* ── Color popover ── */
 .color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: 600; }
+  border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: var(--z-popover); }
 .color-pop.show { display: block; }
 .color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
 .csw { width: 22px; height: 22px; border-radius: var(--radius); border: 2px solid transparent; cursor: pointer; padding: 0; }
