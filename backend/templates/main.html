@@ -3416,12 +3416,43 @@ async function clearProjectDefaultLang(pid) {
   }
 }
 
-const _LANG_PRESETS = [
-  ['en', 'English'], ['ru', 'Russian'], ['de', 'German'], ['fr', 'French'],
-  ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['uk', 'Ukrainian'],
-  ['pl', 'Polish'], ['nl', 'Dutch'], ['tr', 'Turkish'], ['ar', 'Arabic'],
-  ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['hi', 'Hindi'],
-];
+// Every language Whisper can report, keyed by the code it returns.
+const _LANG_NAMES = {
+  af: 'Afrikaans', am: 'Amharic', ar: 'Arabic', as: 'Assamese', az: 'Azerbaijani',
+  ba: 'Bashkir', be: 'Belarusian', bg: 'Bulgarian', bn: 'Bengali', bo: 'Tibetan',
+  br: 'Breton', bs: 'Bosnian', ca: 'Catalan', cs: 'Czech', cy: 'Welsh',
+  da: 'Danish', de: 'German', el: 'Greek', en: 'English', es: 'Spanish',
+  et: 'Estonian', eu: 'Basque', fa: 'Persian', fi: 'Finnish', fo: 'Faroese',
+  fr: 'French', gl: 'Galician', gu: 'Gujarati', ha: 'Hausa', haw: 'Hawaiian',
+  he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', ht: 'Haitian Creole', hu: 'Hungarian',
+  hy: 'Armenian', id: 'Indonesian', is: 'Icelandic', it: 'Italian', ja: 'Japanese',
+  jw: 'Javanese', ka: 'Georgian', kk: 'Kazakh', km: 'Khmer', kn: 'Kannada',
+  ko: 'Korean', la: 'Latin', lb: 'Luxembourgish', ln: 'Lingala', lo: 'Lao',
+  lt: 'Lithuanian', lv: 'Latvian', mg: 'Malagasy', mi: 'Maori', mk: 'Macedonian',
+  ml: 'Malayalam', mn: 'Mongolian', mr: 'Marathi', ms: 'Malay', mt: 'Maltese',
+  my: 'Burmese', ne: 'Nepali', nl: 'Dutch', nn: 'Norwegian Nynorsk', no: 'Norwegian',
+  oc: 'Occitan', pa: 'Punjabi', pl: 'Polish', ps: 'Pashto', pt: 'Portuguese',
+  ro: 'Romanian', ru: 'Russian', sa: 'Sanskrit', sd: 'Sindhi', si: 'Sinhala',
+  sk: 'Slovak', sl: 'Slovenian', sn: 'Shona', so: 'Somali', sq: 'Albanian',
+  sr: 'Serbian', su: 'Sundanese', sv: 'Swedish', sw: 'Swahili', ta: 'Tamil',
+  te: 'Telugu', tg: 'Tajik', th: 'Thai', tk: 'Turkmen', tl: 'Tagalog',
+  tr: 'Turkish', tt: 'Tatar', uk: 'Ukrainian', ur: 'Urdu', uz: 'Uzbek',
+  vi: 'Vietnamese', yi: 'Yiddish', yo: 'Yoruba', yue: 'Cantonese', zh: 'Chinese',
+};
+// Shown first in the picker; the rest follow alphabetically by name.
+const _LANG_COMMON = ['en', 'ru', 'de', 'fr', 'es', 'it', 'pt', 'uk', 'pl', 'nl', 'tr', 'ar', 'zh', 'ja', 'ko', 'hi'];
+
+// Falls back to the base code so regional tags like zh-CN still resolve.
+function _langName(code) {
+  const raw = String(code || '').trim().toLowerCase();
+  return _LANG_NAMES[raw] || _LANG_NAMES[raw.split(/[-_]/)[0]] || '';
+}
+
+// "Norwegian Nynorsk (nn)" when we know the code, bare "NN" when we don't.
+function _langLabel(code) {
+  const name = _langName(code);
+  return name ? (name + ' (' + code + ')') : String(code || '').toUpperCase();
+}
 let _langConfirmCtx = null;
 
 function _langConfirmShowStep(step) {
@@ -3490,9 +3521,9 @@ function openLangConfirmModal(data) {
   const conf = typeof data.language_confidence === 'number' ? data.language_confidence : -1;
   let guessLine = '';
   if (guess && conf >= 0 && conf <= 1) {
-    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + ' (about ' + Math.round(conf * 100) + '% confidence). ';
+    guessLine = 'Auto-detection suggests ' + _langLabel(guess) + ' (about ' + Math.round(conf * 100) + '% confidence). ';
   } else if (guess) {
-    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + '. ';
+    guessLine = 'Auto-detection suggests ' + _langLabel(guess) + '. ';
   }
   document.getElementById('langConfirmDesc').textContent =
     guessLine + 'Which language is spoken in this recording?';
@@ -3503,14 +3534,17 @@ function openLangConfirmModal(data) {
     if (o && o.code && !seen.has(o.code)) {
       seen.add(o.code);
       const pct = typeof o.probability === 'number' ? Math.round(o.probability * 100) : '';
-      const lab = pct !== '' ? (o.code + ' (' + pct + '%)') : String(o.code);
+      const lab = pct !== '' ? (_langLabel(o.code) + ' — ' + pct + '%') : _langLabel(o.code);
       sel.appendChild(new Option(lab, o.code));
     }
   });
-  _LANG_PRESETS.forEach(([code, name]) => {
+  const rest = Object.keys(_LANG_NAMES)
+    .filter(code => _LANG_COMMON.indexOf(code) === -1)
+    .sort((a, b) => _LANG_NAMES[a].localeCompare(_LANG_NAMES[b]));
+  _LANG_COMMON.concat(rest).forEach(code => {
     if (!seen.has(code)) {
       seen.add(code);
-      sel.appendChild(new Option(name + ' (' + code + ')', code));
+      sel.appendChild(new Option(_langLabel(code), code));
     }
   });
   const customEl = document.getElementById('langConfirmCustom');
@@ -3540,10 +3574,8 @@ async function submitLangConfirmModal() {
       body: JSON.stringify({ language: lang }),
     });
     _langConfirmCtx.chosenLang = lang;
-    const label = _LANG_PRESETS.find(x => x[0] === lang);
-    const namePart = label ? (' (' + label[1] + ')') : '';
     document.getElementById('langRememberDesc').textContent =
-      'Use ' + lang.toUpperCase() + namePart + ' for every new recording you add to this project? ' +
+      'Use ' + _langLabel(lang) + ' for every new recording you add to this project? ' +
       'New uploads will skip the language check while this default is set.';
     _langConfirmShowStep(2);
     toast('Language set — transcription continues…');
