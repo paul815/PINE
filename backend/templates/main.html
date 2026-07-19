@@ -86,7 +86,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
   --top-bar-h: 20px;
   --left-header-pad-y: 6px;
   --left-header-gap: 6px;
-  --btn-lg-h: 38px;
   --search-in-h: 28px;
 }
 
@@ -158,13 +157,13 @@ body { font-size: inherit; }
   text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
   padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
 .tb-logo:hover { background: var(--muted); }
-.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: var(--radius-sm); flex-shrink: 0; }
 .tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; }
 .tb-sep.compact { margin: 0 6px; }
 .tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
 .py-link-status {
-  width: 22px; height: 22px; border: 1px solid transparent; border-radius: 999px;
+  width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--radius-pill);
   background: transparent; color: #8f98aa; display: inline-flex; align-items: center;
   justify-content: center; padding: 0; cursor: default;
 }
@@ -239,7 +238,7 @@ body { font-size: inherit; }
 .archive-toggle-btn.collapsed svg { transform: rotate(-90deg); }
 .archive-badge {
   margin-left: auto; font-size: 0.769rem; background: var(--secondary);
-  padding: 1px 6px; border-radius: 10px; color: var(--muted-fg);
+  padding: 1px 6px; border-radius: var(--radius-pill); color: var(--muted-fg);
   font-family: var(--font-mono);
 }
 .archive-month-group { padding-top: 2px; }
@@ -423,13 +422,13 @@ body { font-size: inherit; }
   flex-shrink: 0;
 }
 .actions .btn-lg svg { width: 12px; height: 12px; }
-.actions .split-arrow { height: var(--btn-lg-h); width: 26px; }
+.actions .split-arrow { height: var(--btn-h-lg); width: 26px; }
 .actions .split-arrow svg { width: 10px; height: 10px; }
 
 /* archive + delete split button */
 .split-dropdown { position: relative; }
 .split-btn { display: flex; align-items: stretch; }
-.actions .split-btn { height: var(--btn-lg-h); }
+.actions .split-btn { height: var(--btn-h-lg); }
 .actions .split-btn .btn-outline.btn-lg,
 .actions .split-btn .split-arrow { height: 100%; }
 .split-btn .btn-outline { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
@@ -611,9 +610,9 @@ body { font-size: inherit; }
 .drop-zone.uploading { pointer-events: none; opacity: 0.6; }
 .spk-prompt-opts { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .spk-prompt-opt { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; cursor: pointer; }
-.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border-color, rgba(128,128,128,0.4)); border-radius: 6px; background: transparent; color: inherit; text-align: center; }
+.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: inherit; text-align: center; }
 .spk-prompt-opt input[type=number]:focus { outline: none; border-color: var(--accent); }
-.spk-prompt-go { padding: 9px 16px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: var(--font-body, inherit); }
+.spk-prompt-go { padding: 9px 16px; border: none; border-radius: var(--btn-radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: var(--font-body, inherit); }
 .spk-prompt-go:hover { filter: brightness(1.07); }
 
 .dz-wrap { position: relative; }
@@ -889,7 +888,7 @@ label.att-upload-zone.drop-zone { display: block; }
 .m-lbl { font-size: 1rem; color: var(--fg); }
 .m-lbl-with-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 44px); }
 .sw {
-  width: 30px; height: 17px; border-radius: 99px; background: var(--secondary);
+  width: 30px; height: 17px; border-radius: var(--radius-pill); background: var(--secondary);
   position: relative; cursor: pointer; flex-shrink: 0;
   border: 1px solid var(--border); transition: all 0.15s;
 }

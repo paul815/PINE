@@ -195,7 +195,7 @@ body { font-size: inherit; }
   background: var(--sunken);
 }
 .main::-webkit-scrollbar { width: 4px; }
-.main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.main::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 
 .panel {
   width: 100%; max-width: 580px;
@@ -277,7 +277,7 @@ body { font-size: inherit; }
 .mod-item.checked { border-color: var(--accent-bd); background: var(--accent-dim); }
 .mod-item.locked { cursor: default; }
 .chk {
-  width: 17px; height: 17px; border-radius: 4px;
+  width: 17px; height: 17px; border-radius: var(--radius-sm);
   border: 1.5px solid var(--border); background: var(--muted);
   flex-shrink: 0; margin-top: 2px;
   display: flex; align-items: center; justify-content: center;
@@ -323,8 +323,8 @@ body { font-size: inherit; }
   font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono);
   margin-top: 6px;
 }
-.disk-bar { flex: 1; max-width: 80px; height: 3px; background: var(--secondary); border-radius: 99px; overflow: hidden; }
-.disk-fill { height: 100%; border-radius: 99px; background: var(--accent); }
+.disk-bar { flex: 1; max-width: 80px; height: 3px; background: var(--secondary); border-radius: var(--radius-pill); overflow: hidden; }
+.disk-fill { height: 100%; border-radius: var(--radius-pill); background: var(--accent); }
 
 /* ── HuggingFace steps ── */
 .hf-steps { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
@@ -381,8 +381,8 @@ body { font-size: inherit; }
 }
 .dl-status.done { color: var(--accent); }
 .dl-status.active { color: var(--accent); }
-.dl-bar-wrap { height: 4px; background: var(--secondary); border-radius: 99px; overflow: hidden; }
-.dl-bar { height: 100%; border-radius: 99px; transition: width 0.4s ease; background: var(--accent); }
+.dl-bar-wrap { height: 4px; background: var(--secondary); border-radius: var(--radius-pill); overflow: hidden; }
+.dl-bar { height: 100%; border-radius: var(--radius-pill); transition: width 0.4s ease; background: var(--accent); }
 .dl-item.dl-done .dl-bar { background: var(--accent); width: 100% !important; }
 .dl-speed { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); margin-top: 5px; }
 

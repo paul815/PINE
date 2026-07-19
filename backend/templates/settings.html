@@ -236,7 +236,7 @@ body { font-size: inherit; }
   text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
   padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
 .tb-logo:hover { background: var(--muted); }
-.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: var(--radius-sm); flex-shrink: 0; }
 .tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; }
 .tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
@@ -332,7 +332,7 @@ body { font-size: inherit; }
 
 /* ── Toggle switch ── */
 .sw {
-  width: 36px; height: 20px; border-radius: 10px; background: var(--secondary); cursor: pointer;
+  width: 36px; height: 20px; border-radius: var(--radius-pill); background: var(--secondary); cursor: pointer;
   position: relative; transition: background 0.2s; flex-shrink: 0;
 }
 .sw::after {
