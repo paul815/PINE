@@ -67,4 +67,52 @@ ensure_venv() {
 ensure_venv
 
 cd "$BACKEND_DIR"
-"$VENV_DIR/bin/python3" supervisor.py
+
+PORT_FILE="$BACKEND_DIR/data/supervisor.port"
+rm -f "$PORT_FILE"
+
+echo "  Starting PINE..."
+nohup "$VENV_DIR/bin/python3" supervisor.py >>"$LAUNCHER_LOG" 2>&1 &
+
+# The supervisor shuts itself down once its startup grace passes with no browser
+# lease, so this window has to open the browser -- the job WIN_Install.bat does
+# on Windows. Wait for the backend to answer health before handing over the URL.
+BACKEND_PORT="$(
+  "$VENV_DIR/bin/python3" - "$PORT_FILE" <<'PY' || true
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+port_file = sys.argv[1]
+deadline = time.time() + 120
+while time.time() < deadline:
+    try:
+        with open(port_file, encoding='utf-8') as handle:
+            port = json.load(handle)['backend_port']
+    except (OSError, ValueError, KeyError):
+        time.sleep(0.5)
+        continue
+    try:
+        with urllib.request.urlopen(
+            f'http://127.0.0.1:{port}/api/health', timeout=2
+        ) as response:
+            if response.status == 200:
+                print(port)
+                break
+    except (urllib.error.URLError, OSError):
+        pass
+    time.sleep(0.5)
+PY
+)"
+
+if [[ -z "$BACKEND_PORT" ]]; then
+  echo "  PINE did not answer in time. Details: $LAUNCHER_LOG"
+  echo "  Open http://127.0.0.1:5000/ manually once it comes up."
+  exit 1
+fi
+
+echo "  Opening PINE at http://127.0.0.1:$BACKEND_PORT/"
+echo
+open "http://127.0.0.1:$BACKEND_PORT/"
