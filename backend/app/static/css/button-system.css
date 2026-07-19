@@ -668,7 +668,7 @@
 .archive-toggle-btn:hover:not(:disabled) {
   background: var(--muted);
   color: var(--fg);
-  border-color: #111827;
+  border-color: var(--border);
   box-shadow: none;
 }
 
