@@ -794,25 +794,26 @@ class TestMacModelChoice:
         assert 'mlx-whisper-large-v3' in ids
 
     @patch('app.services.model_manager.IS_MAC', True)
-    def test_normalize_allows_whisperx_on_mac(self):
+    def test_normalize_rewrites_whisperx_to_mlx_on_mac(self):
+        """WhisperX is never installed on Mac, so the ID must not survive."""
         from app.services.model_manager import normalize_stt_model_id
-        assert normalize_stt_model_id('whisperx-large-v3') == 'whisperx-large-v3'
+        assert normalize_stt_model_id('whisperx-large-v3') == 'mlx-whisper-large-v3'
         assert normalize_stt_model_id('mlx-whisper-large-v3') == 'mlx-whisper-large-v3'
 
+    @patch('app.services.model_manager.IS_MAC', False)
+    def test_normalize_rewrites_mlx_to_whisperx_off_mac(self):
+        from app.services.model_manager import normalize_stt_model_id
+        assert normalize_stt_model_id('mlx-whisper-large-v3') == 'whisperx-large-v3'
+        assert normalize_stt_model_id('whisperx-large-v3') == 'whisperx-large-v3'
+
     @patch('app.services.model_manager.IS_MAC', True)
-    @patch('app.services.model_manager._selected_stt_imports')
     @patch('app.services.model_manager._is_package_installed')
-    def test_check_ml_deps_includes_whisperx_when_selected_on_mac(
-            self, mock_is_installed, mock_selected_imports):
+    def test_check_ml_deps_never_asks_for_whisperx_on_mac(self, mock_is_installed):
         from app.services.model_manager import check_ml_deps
-        mock_selected_imports.return_value = [
-            ('whisperx', 'whisperx'),
-            ('faster_whisper', 'faster-whisper'),
-        ]
         mock_is_installed.return_value = False
         deps = check_ml_deps()
-        assert 'whisperx' in deps
-        assert 'faster-whisper' in deps
+        assert 'whisperx' not in deps
+        assert 'mlx-whisper' in deps
 
 
 class TestEngineSelection:

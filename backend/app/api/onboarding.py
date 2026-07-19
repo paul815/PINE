@@ -20,7 +20,6 @@ from ..services.model_manager import (
     normalize_stt_model_id,
     download_models,
     play_install_complete_sound,
-    STT_MODEL_QUALITY,
     IS_MAC,
 )
 
@@ -179,7 +178,7 @@ def set_modules():
     modules = data.get('modules', [])
     Setting.set('onboarding_modules', ','.join(modules))
 
-    stt_model_id = normalize_stt_model_id(Setting.get('stt_model_id', STT_MODEL_QUALITY))
+    stt_model_id = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
     Setting.set('stt_model_id', stt_model_id)
     model_ids = get_models_for_setup(modules)
     total = sum(

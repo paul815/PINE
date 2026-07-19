@@ -916,16 +916,17 @@ def get_default_stt_model():
 
 
 def normalize_stt_model_id(stt_model_id):
-    """Map legacy/invalid STT IDs to the single supported model for this platform."""
+    """Map legacy/invalid STT IDs to the single supported model for this platform.
+
+    Mac is mlx-only: ``whisperx-large-v3`` is never registered (see
+    ``_model_for_platform``) and WhisperX is never pip-installed there, so letting
+    that ID through only produces ``No module named 'whisperx'`` at transcribe time.
+    """
     model_id = (stt_model_id or '').strip()
     if model_id in LEGACY_STT_MODEL_ID_ALIASES:
         model_id = LEGACY_STT_MODEL_ID_ALIASES[model_id]
 
-    allowed = (
-        {MLX_STT_MODEL_QUALITY, STT_MODEL_QUALITY}
-        if IS_MAC else {STT_MODEL_QUALITY}
-    )
-    if model_id not in allowed:
+    if model_id != get_default_stt_model():
         return get_default_stt_model()
     return model_id
 
@@ -1029,45 +1030,21 @@ def _check_packages():
 
 
 # The subset of REQUIRED_PACKAGES that must be importable before transcription.
-if IS_MAC:
-    _TRANSCRIPTION_IMPORTS = [
-        ('torch',          'torch'),
-        ('mlx_whisper',    'mlx-whisper'),
-        ('pyannote.audio', 'pyannote-audio'),
-    ]
-else:
-    _TRANSCRIPTION_IMPORTS = [
-        ('torch',          'torch'),
-        ('whisperx',       'whisperx'),
-        ('pyannote.audio', 'pyannote-audio'),
-    ]
-
-
-def _selected_stt_imports():
-    """Return extra STT imports required by the user's selected model."""
-    if not IS_MAC:
-        return []
-    try:
-        from ..models.setting import Setting
-        model_id = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
-    except Exception:
-        model_id = get_default_stt_model()
-    if model_id == STT_MODEL_QUALITY:
-        return [
-            ('whisperx', 'whisperx'),
-            ('faster_whisper', 'faster-whisper'),
-            ('torchaudio', 'torchaudio'),
-        ]
-    return []
+_MAC_TRANSCRIPTION_IMPORTS = [
+    ('torch',          'torch'),
+    ('mlx_whisper',    'mlx-whisper'),
+    ('pyannote.audio', 'pyannote-audio'),
+]
+_TRANSCRIPTION_IMPORTS = [
+    ('torch',          'torch'),
+    ('whisperx',       'whisperx'),
+    ('pyannote.audio', 'pyannote-audio'),
+]
 
 
 def _transcription_imports():
-    """Base transcription imports plus any model-specific extras."""
-    imports = list(_TRANSCRIPTION_IMPORTS)
-    for item in _selected_stt_imports():
-        if item not in imports:
-            imports.append(item)
-    return imports
+    """Imports that must resolve before transcription can start on this platform."""
+    return list(_MAC_TRANSCRIPTION_IMPORTS if IS_MAC else _TRANSCRIPTION_IMPORTS)
 
 
 def check_ml_deps():
