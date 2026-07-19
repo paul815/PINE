@@ -25,9 +25,13 @@ def _module_available(name):
 # onboarding, not pinned in requirements.txt. A bare checkout (and CI) has no
 # torch, so the tests that exercise real tensor code are skipped rather than
 # failed — the mocked tests above them still run everywhere.
+# Requires both: these exercise real tensor code and its numpy interop, and a
+# torch present without numpy is a half-finished install rather than a usable
+# one — checking only torch lets such a state through and the tests then fail
+# on the numpy import instead of skipping.
 needs_torch = pytest.mark.skipif(
-    not _module_available('torch'),
-    reason='requires torch, installed during onboarding rather than from requirements.txt',
+    not (_module_available('torch') and _module_available('numpy')),
+    reason='requires the torch/numpy stack, installed during onboarding rather than from requirements.txt',
 )
 
 needs_numpy = pytest.mark.skipif(

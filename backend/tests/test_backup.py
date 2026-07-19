@@ -261,8 +261,16 @@ class TestRestore:
         with app.app_context():
             result = _create_backup_inner(app, include_audio=False)
 
-            # Delete both projects to simulate fresh restore
+            # Delete both projects to simulate fresh restore. delete_project
+            # rmtree's the folder as well as the row, so drop the directories
+            # too — leaving them behind would be a DB/disk desync, which the
+            # restore now treats as a conflict in its own right.
+            import shutil
+            from app.models.setting import Setting
+            projects_root = Setting.get('projects_path', app.config['DEFAULT_PROJECTS_PATH'])
             from app.models.recording import Recording
+            for proj in (proj1, proj2):
+                shutil.rmtree(os.path.join(projects_root, proj['folder_name']), ignore_errors=True)
             Recording.query.delete()
             Project.query.delete()
             db.session.commit()
@@ -274,6 +282,57 @@ class TestRestore:
             projects = Project.query.all()
             assert len(projects) == 1
             assert projects[0].name == 'Project A'
+
+    def test_restore_treats_untracked_folder_as_a_conflict(self, app, client):
+        """A folder with no DB row still blocks the target path.
+
+        Left unhandled this raised FileExistsError from the staging loop
+        instead of going through the chosen conflict strategy, which is the
+        one scenario a restore is most likely to meet: the DB was reset or
+        lost while the projects directory survived.
+        """
+        import shutil
+        from app.models.setting import Setting
+        from app.models.project import Project
+        from app.models.recording import Recording
+        from app.services.backup_service import _create_backup_inner, _restore_inner
+        from app.extensions import db
+
+        proj = _create_project(client, 'Orphan Proj')
+        _seed_project_files(app, proj)
+        _add_recording_to_db(app, proj['id'])
+
+        with app.app_context():
+            result = _create_backup_inner(app, include_audio=False)
+            projects_root = Setting.get('projects_path', app.config['DEFAULT_PROJECTS_PATH'])
+            project_dir = os.path.join(projects_root, proj['folder_name'])
+
+            # Drop only the rows: the folder stays behind, untracked.
+            Recording.query.delete()
+            Project.query.delete()
+            db.session.commit()
+            assert os.path.isdir(project_dir)
+
+            # 'skip' must decline rather than crash on the orphan.
+            skipped = _restore_inner(app, result['filename'],
+                                     [proj['folder_name']], False, 'skip')
+            assert skipped['projects_restored'] == 0
+            assert Project.query.count() == 0
+
+            # 'rename' restores alongside it, leaving the orphan untouched.
+            marker = os.path.join(project_dir, 'untracked.txt')
+            with open(marker, 'w') as fh:
+                fh.write('not in the database')
+
+            renamed = _restore_inner(app, result['filename'],
+                                     [proj['folder_name']], False, 'rename')
+            assert renamed['projects_restored'] == 1
+            assert os.path.isfile(marker), 'rename must not disturb the orphan'
+            restored = Project.query.one()
+            assert restored.folder_name != proj['folder_name']
+            assert os.path.isdir(os.path.join(projects_root, restored.folder_name))
+
+            shutil.rmtree(project_dir, ignore_errors=True)
 
     def test_restore_settings(self, app, client):
         """Restore settings from backup (excluding sensitive keys)."""

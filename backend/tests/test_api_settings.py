@@ -354,7 +354,15 @@ class TestSettingsAPI:
         assert data['desktop']['supported'] is True
         assert data['desktop']['added'] is False
 
-    def test_app_launch_defaults_to_not_added_until_user_explicitly_adds(self, client, monkeypatch, tmp_path):
+    def test_app_launch_reports_added_after_user_adds_each_entry(self, client, monkeypatch, tmp_path):
+        """Round-trip: nothing on disk reads as not added, POSTing add flips it.
+
+        `added` reports whether the shortcut file is actually present — the
+        Setting is a cache that re-syncs to the filesystem on every status
+        read (see test_app_launch_status_clears_stale_start_menu_flag_...).
+        So the honest "not added yet" state is an empty Start Menu / Desktop,
+        not a flag that lags behind a shortcut sitting there.
+        """
         from app.api import settings as settings_api
 
         launch_bat = tmp_path / 'Launch Pine.bat'
@@ -363,8 +371,6 @@ class TestSettingsAPI:
         desktop = tmp_path / 'Desktop' / 'Launch Pine.lnk'
         start_menu.parent.mkdir(parents=True, exist_ok=True)
         desktop.parent.mkdir(parents=True, exist_ok=True)
-        start_menu.write_text('existing shortcut', encoding='utf-8')
-        desktop.write_text('existing shortcut', encoding='utf-8')
 
         monkeypatch.setattr(settings_api, '_is_windows', lambda: True)
         monkeypatch.setattr(settings_api, '_is_macos', lambda: False)

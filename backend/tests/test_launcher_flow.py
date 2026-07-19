@@ -31,7 +31,6 @@ def test_generated_windows_launcher_uses_supervisor_handoff_flow():
     assert 'set "PINE_LAUNCHER_RUN_ID=%RANDOM%%RANDOM%"' in model_manager_source
     assert 'set "PINE_HIDDEN_CMD=%LOG_DIR%\\\\launcher-hidden-%PINE_LAUNCHER_RUN_ID%.cmd"' in model_manager_source
     assert 'set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\\\launcher-runner.log"' in model_manager_source
-    assert 'set "PINE_DIAGNOSTIC_CMD=%LOG_DIR%\\\\launcher-diagnostic-%PINE_LAUNCHER_RUN_ID%.cmd"' in model_manager_source
     assert 'call :run_diagnostic_launch' in model_manager_source
     assert 'call :print_log_paths' in model_manager_source
     assert 'call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"' in model_manager_source

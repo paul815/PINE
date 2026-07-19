@@ -76,7 +76,6 @@ set "PINE_STAGE_FILE=%LOG_DIR%\\launcher-stage.txt"
 set "PINE_LAUNCHER_LOG=%LOG_DIR%\\launcher.log"
 set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\launcher-runner.log"
 set "PINE_HIDDEN_CMD=%LOG_DIR%\\launcher-hidden-%PINE_LAUNCHER_RUN_ID%.cmd"
-set "PINE_DIAGNOSTIC_CMD=%LOG_DIR%\\launcher-diagnostic-%PINE_LAUNCHER_RUN_ID%.cmd"
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>nul
 if not exist "%VENV_DIR%\\Scripts\\activate.bat" goto :run_installer
@@ -328,17 +327,6 @@ call :log_launcher_event "backend ready; opening browser"
 call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"
 goto :eof
 
-:open_diagnostic_window
-call :log_launcher_event "opening diagnostic window"
-(
-    echo @echo off
-    echo setlocal
-    echo set "PINE_DIAGNOSTIC_LAUNCH=1"
-    echo call "%~f0"
-) > "%PINE_DIAGNOSTIC_CMD%"
-powershell -NoProfile -Command "Start-Process -WorkingDirectory '%~dp0' -FilePath '%PINE_DIAGNOSTIC_CMD%'" >nul
-goto :eof
-
 :run_diagnostic_launch
 title PINE - Startup Diagnostics
 echo.
@@ -444,7 +432,14 @@ def _promote_platform_launcher(repo_root=None):
     """Create or refresh the app launcher from the current platform installer."""
     root = _repo_root_path(repo_root)
     current_launchers, _ = _platform_launcher_sets()
-    target_path = root / INSTALLER_STORAGE_DIR / current_launchers[0]
+    if IS_MAC:
+        # macOS has no .lnk equivalent, so the .command file *is* what the user
+        # double-clicks and it belongs at the repo root. On Windows the
+        # generated .bat stays under backend/ and _ensure_root_windows_shortcut
+        # puts the user-facing shortcut at the root instead.
+        target_path = root / current_launchers[0]
+    else:
+        target_path = root / INSTALLER_STORAGE_DIR / current_launchers[0]
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if not IS_MAC and target_path.name == WIN_APP_LAUNCHER:
         try:
@@ -1102,6 +1097,13 @@ def _install_package_if_missing(import_name, pip_name):
     """Install pip package if not already installed. Returns True if installed or already present."""
     if _is_package_installed(import_name):
         return True
+    if os.environ.get('PINE_TESTING'):
+        # Reachable from the job runner via ensure_transcription_dependencies,
+        # so an unmocked test would shell out to pip and pull ~116 MB of torch
+        # into whatever interpreter is running the suite — slow, networked, and
+        # it mutates the developer's environment. Tests mock the install path.
+        log.warning('PINE_TESTING set — skipping pip install of %s', pip_name)
+        return False
     try:
         subprocess.run(
             [sys.executable, '-m', 'pip', 'install', '--no-input', pip_name],
@@ -1174,6 +1176,10 @@ def _run_torchruntime_install():
 
     if _is_package_installed('torch'):
         _install_emit('PyTorch installed but CUDA not available — running GPU detection to install correct variant...')
+
+    if os.environ.get('PINE_TESTING'):
+        log.warning('PINE_TESTING set — skipping torchruntime install')
+        return
 
     try:
         _install_emit('\n--- Detecting GPU and installing PyTorch variant ---')

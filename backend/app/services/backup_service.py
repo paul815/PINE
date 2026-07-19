@@ -619,6 +619,13 @@ def _restore_inner(app, filename, project_folders, restore_settings, conflict_st
                 folder = original_folder
                 existing = Project.query.filter_by(folder_name=folder).first()
                 final_dir = os.path.join(projects_root, folder)
+                # A folder can sit on disk with no DB row behind it: a project
+                # deleted from the UI whose files survived, a hand-copied
+                # folder, or the leftovers of an interrupted restore. That
+                # desync is exactly what a restore is run to repair, so it has
+                # to count as a conflict — otherwise no strategy applies and
+                # the staging loop below dies on FileExistsError.
+                orphan_dir = existing is None and os.path.isdir(final_dir)
                 pct = 10 + int((index + 1) / max(total, 1) * 85)
                 _emit('backup:restore_progress', {
                     'stage': 'projects',
@@ -626,12 +633,13 @@ def _restore_inner(app, filename, project_folders, restore_settings, conflict_st
                     'message': f'Staging {pdata["name"]}...',
                 })
 
-                if existing:
+                if existing or orphan_dir:
                     if conflict_strategy == 'skip':
                         continue
                     if conflict_strategy == 'overwrite':
-                        db.session.delete(existing)
-                        db.session.flush()
+                        if existing:
+                            db.session.delete(existing)
+                            db.session.flush()
                     elif conflict_strategy == 'rename':
                         counter = 1
                         candidate = f'{folder}_restored_{counter}'
@@ -731,8 +739,12 @@ def _restore_inner(app, filename, project_folders, restore_settings, conflict_st
                     'stage_dir': stage_dir,
                     'backup_existing_dir': None,
                     'existing_dir': os.path.join(projects_root, original_folder)
-                    if existing and conflict_strategy == 'overwrite'
+                    if (existing or orphan_dir) and conflict_strategy == 'overwrite'
                     else None,
+                    # Overwriting an orphan means replacing files no DB row
+                    # described, so the user never saw it in the conflict list.
+                    # Kept out of the post-commit delete below.
+                    'was_orphan': orphan_dir,
                 })
                 restored_count += 1
 
@@ -754,6 +766,16 @@ def _restore_inner(app, filename, project_folders, restore_settings, conflict_st
         for action in project_file_actions:
             backup_existing_dir = action.get('backup_existing_dir')
             if backup_existing_dir and os.path.isdir(backup_existing_dir):
+                if action.get('was_orphan'):
+                    # No DB row pointed at this folder, so it never appeared in
+                    # the conflict list and the user never knowingly chose to
+                    # replace it. Leave it on disk rather than deleting data
+                    # PINE cannot describe.
+                    log.warning(
+                        'Restore replaced an untracked project folder; previous '
+                        'contents kept at %s', backup_existing_dir,
+                    )
+                    continue
                 old_dirs_to_cleanup.append(backup_existing_dir)
 
         for old_dir in old_dirs_to_cleanup:
