@@ -392,8 +392,10 @@ body { font-size: inherit; }
   gap: 16px;
   flex-shrink: 0;
 }
-/* Flex row so the save status sits beside the title instead of wrapping below it. */
-.project-name-block { flex: 1; min-width: 0; display: flex; align-items: baseline; }
+/* Flex row so the save status sits beside the title instead of wrapping below it.
+   center, not baseline: on the baseline the small badge hangs at the bottom edge of
+   the 1.5rem title instead of reading as centred against it. */
+.project-name-block { flex: 1; min-width: 0; display: flex; align-items: center; }
 .project-name {
   font-size: 1.5rem; font-weight: 700; color: var(--fg);
   line-height: 1.2;

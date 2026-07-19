@@ -14,6 +14,7 @@
   'use strict';
 
   var SAVED_HOLD_MS = 1200;   // then a 0.25s CSS fade-out
+  var FADE_MS = 300;          // the fade above, plus a frame of slack
   var TOAST_MS = 2000;
   var TOAST_ERR_MS = 4000;
 
@@ -70,6 +71,7 @@
     else if (state === false) state = 'error';
 
     clearTimeout(span._hideTimer);
+    clearTimeout(span._clearTimer);
     span.className = 'save-status';
 
     if (state === 'saving') {
@@ -85,6 +87,14 @@
       span.classList.add('is-visible');
       span._hideTimer = setTimeout(function () {
         span.classList.remove('is-visible');
+        /* WebKit does not always run the fade when `transition` itself changes in the
+           same style recalc (.is-visible carries transition:none), which left "Saved"
+           on screen for good on macOS. Clearing the text after the fade window makes
+           the badge disappear regardless of whether the transition ran. */
+        span._clearTimer = setTimeout(function () {
+          if (!span.classList.contains('is-visible') &&
+              !span.classList.contains('is-error')) span.textContent = '';
+        }, FADE_MS);
       }, SAVED_HOLD_MS);
       return;
     }
