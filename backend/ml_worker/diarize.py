@@ -7,6 +7,11 @@ Two loading modes:
     speaker assignment (Apple Silicon path, avoids WhisperX diarization import).
 
 Both consume the unified segment format and return it with ``speaker`` filled.
+
+The work splits in two: ``compute`` needs only the audio, ``assign`` needs only
+the transcript plus what ``compute`` returned. ``run`` does both back to back;
+the pipeline calls them separately so the expensive half can overlap the STT
+stage it does not actually depend on.
 """
 
 import logging
@@ -21,7 +26,8 @@ from .constants import (
     DIARIZE_CHUNK_SIZE_SEC,
     DIARIZE_CHUNK_THRESHOLD_SEC,
 )
-from .engines.base import _noop_status
+from .engines.base import _noop_check_cancel, _noop_status
+from .errors import TranscriptionCancelled
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +51,33 @@ def speaker_kwargs(num_speakers=None):
     _min = int(os.environ.get('PINE_MIN_SPEAKERS', '2'))
     _max = int(os.environ.get('PINE_MAX_SPEAKERS', '4'))
     return {'min_speakers': _min, 'max_speakers': _max}
+
+
+def pipeline_hook_kwargs(pipeline, check_cancel):
+    """``hook=`` for pyannote, so a long diarization can be cancelled.
+
+    One call to pyannote is otherwise uninterruptible — it returns when it
+    returns. That was survivable while diarization ran last and cancelling
+    during it was rare; running it underneath transcription makes it the thing
+    a cancel most often lands in, and an abandoned run would hold the GPU into
+    the next job (the worker process is reused, not killed, on cancel).
+
+    pyannote calls the hook between internal steps and between batches, so
+    raising from it aborts within seconds. Returns {} when the installed
+    pyannote takes no hook, in which case cancellation waits it out.
+    """
+    try:
+        import inspect
+        if 'hook' not in inspect.signature(pipeline.apply).parameters:
+            return {}
+    except (AttributeError, TypeError, ValueError):
+        return {}
+
+    def hook(step_name, step_artifact=None, file=None, total=None,
+             completed=None):
+        check_cancel()
+
+    return {'hook': hook}
 
 
 def detect_diarize_device():
@@ -453,15 +486,58 @@ class Diarizer:
     def run(self, diarize_input, segments, recording_id,
             audio_path=None, total_duration=0, num_speakers=None,
             on_status=_noop_status):
-        """Run diarization with GPU-to-CPU fallback. Returns updated segments."""
-        if self.engine_kind == 'mlx':
-            return self._run_native(
-                diarize_input, segments, recording_id,
-                audio_path=audio_path, total_duration=total_duration,
-                num_speakers=num_speakers, on_status=on_status)
+        """Diarize and label ``segments`` in one pass. Returns the segments."""
+        result = self.compute(
+            diarize_input, recording_id, audio_path=audio_path,
+            total_duration=total_duration, num_speakers=num_speakers,
+            on_status=on_status)
+        return self.assign(result, segments)
 
-        import pandas as pd
+    def compute(self, diarize_input, recording_id, audio_path=None,
+                total_duration=0, num_speakers=None,
+                on_status=_noop_status, check_cancel=_noop_check_cancel):
+        """Work out who spoke when — the half of the job that needs only audio.
+
+        Kept separate from ``assign`` so the pipeline can start diarizing while
+        the engine is still transcribing: pyannote never reads the transcript,
+        only the speaker *assignment* does. Returns an opaque handle for
+        ``assign``, or None when diarization produced nothing usable.
+        """
+        if self.engine_kind == 'mlx':
+            return self._compute_native(
+                diarize_input, audio_path=audio_path,
+                total_duration=total_duration, num_speakers=num_speakers,
+                on_status=on_status, check_cancel=check_cancel)
+        return self._compute_whisperx(
+            diarize_input, num_speakers=num_speakers, on_status=on_status)
+
+    def assign(self, result, segments):
+        """Attach the speaker labels from ``compute`` to transcript segments."""
+        if result is None:
+            return segments
+
+        t0 = time.monotonic()
+        if self.engine_kind == 'mlx':
+            segments = assign_speakers_simple(result, segments)
+            log.info('PERF: speaker assignment (native) took %.1fs',
+                     time.monotonic() - t0)
+            return segments
+
         import whisperx
+        fill_nearest = os.environ.get('PINE_DIARIZE_FILL_NEAREST', '').strip() == '1'
+        transcript_result = whisperx.assign_word_speakers(
+            result,
+            {'segments': segments},
+            fill_nearest=fill_nearest,
+        )
+        segments = transcript_result.get('segments', segments)
+        log.info('PERF: speaker assignment took %.1fs', time.monotonic() - t0)
+        return segments
+
+    def _compute_whisperx(self, diarize_input, num_speakers=None,
+                          on_status=_noop_status):
+        """Windows/Linux: whisperx's DiarizationPipeline, as a DataFrame."""
+        import pandas as pd
 
         t0 = time.monotonic()
         diarize_input = normalize_diarize_audio_input(diarize_input)
@@ -503,38 +579,29 @@ class Diarizer:
                     diarize_segments, pd.DataFrame):
                 diarize_segments = annotation_to_dataframe(diarize_segments)
 
-        t2 = time.monotonic()
-        fill_nearest = os.environ.get('PINE_DIARIZE_FILL_NEAREST', '').strip() == '1'
-        transcript_result = whisperx.assign_word_speakers(
-            diarize_segments,
-            {'segments': segments},
-            fill_nearest=fill_nearest,
-        )
-        segments = transcript_result.get('segments', segments)
-        log.info('PERF: speaker assignment took %.1fs', time.monotonic() - t2)
+        return diarize_segments
 
-        return segments
-
-    def _run_native(self, diarize_input, segments, recording_id,
-                    audio_path=None, total_duration=0, num_speakers=None,
-                    on_status=_noop_status):
-        """Apple Silicon: pyannote diarization on MPS/CPU.
+    def _compute_native(self, diarize_input, audio_path=None, total_duration=0,
+                        num_speakers=None, on_status=_noop_status,
+                        check_cancel=_noop_check_cancel):
+        """Apple Silicon: pyannote diarization on MPS/CPU, as an Annotation.
 
         Uses ``exclusive_speaker_diarization`` (one speaker per time-step)
         for reliable alignment with Whisper segments in interview audio.
-        For long audio (>= DIARIZE_CHUNK_THRESHOLD_SEC), uses chunked
-        diarization to avoid O(n^2) clustering on the full file.
+        Very long audio falls back to chunking to stay inside memory — see
+        DIARIZE_CHUNK_THRESHOLD_SEC for why that is a last resort, not a
+        speed optimisation.
         """
         import torch
 
-        # Route long audio to chunked diarization
         if (total_duration >= DIARIZE_CHUNK_THRESHOLD_SEC
                 and audio_path and os.path.isfile(audio_path)):
-            log.info('Using chunked diarization (%.0f min, threshold %ds)',
+            log.info('Using chunked diarization (%.0f min, threshold %ds) — '
+                     'speaker labels may drift across chunk boundaries',
                      total_duration / 60, DIARIZE_CHUNK_THRESHOLD_SEC)
-            return self._run_chunked(
-                audio_path, segments, recording_id, total_duration,
-                num_speakers=num_speakers, on_status=on_status)
+            return self._compute_chunked(
+                audio_path, total_duration, num_speakers=num_speakers,
+                on_status=on_status, check_cancel=check_cancel)
 
         t0 = time.monotonic()
         diarize_input = normalize_diarize_audio_input(diarize_input)
@@ -542,10 +609,13 @@ class Diarizer:
         log.info('PERF: diarize audio prep took %.1fs', time.monotonic() - t0)
 
         _spk_kwargs = speaker_kwargs(num_speakers)
+        _spk_kwargs.update(pipeline_hook_kwargs(self.pipeline, check_cancel))
 
         t1 = time.monotonic()
         try:
             diar_raw = self.pipeline(py_in, **_spk_kwargs)
+        except TranscriptionCancelled:
+            raise
         except Exception as exc:
             if self.device != 'cpu':
                 log.warning(
@@ -572,24 +642,24 @@ class Diarizer:
             log.warning(
                 'Unexpected diarization type %s — skipping speaker labels',
                 type(annotation).__name__)
-            return segments
+            return None
+        return annotation
 
-        t2 = time.monotonic()
-        segments = assign_speakers_simple(annotation, segments)
-        log.info('PERF: speaker assignment (native) took %.1fs', time.monotonic() - t2)
-        return segments
+    def _compute_chunked(self, audio_path, total_duration, num_speakers=None,
+                         on_status=_noop_status, check_cancel=_noop_check_cancel):
+        """Chunked diarization, for files too long to hold in memory at once.
 
-    def _run_chunked(self, audio_path, segments, recording_id,
-                     total_duration, num_speakers=None, on_status=_noop_status):
-        """Chunked diarization for long audio files.
-
-        Splits audio into DIARIZE_CHUNK_SIZE_SEC chunks with overlap,
-        runs pyannote on each chunk, then merges speaker labels across
-        chunk boundaries using the overlap regions.
+        Splits audio into DIARIZE_CHUNK_SIZE_SEC chunks with overlap, runs
+        pyannote on each, then merges speaker labels across chunk boundaries
+        using the overlap regions. That merge is the weak point — it matches
+        speakers by temporal overlap, so a chunk seam where only one person
+        speaks can swap two identities for the rest of the file. Prefer
+        whole-file diarization wherever it fits.
         """
         import torch
 
         _spk_kwargs = speaker_kwargs(num_speakers)
+        _spk_kwargs.update(pipeline_hook_kwargs(self.pipeline, check_cancel))
 
         step = DIARIZE_CHUNK_SIZE_SEC - DIARIZE_CHUNK_OVERLAP_SEC
         chunk_starts = []
@@ -603,6 +673,7 @@ class Diarizer:
         t_total = time.monotonic()
 
         for i, offset in enumerate(chunk_starts):
+            check_cancel()
             duration = min(DIARIZE_CHUNK_SIZE_SEC, total_duration - offset)
             log.info('Diarize chunk %d/%d  offset=%.0fs  duration=%.0fs',
                      i + 1, total_chunks, offset, duration)
@@ -617,6 +688,8 @@ class Diarizer:
             t1 = time.monotonic()
             try:
                 diar_raw = self.pipeline(py_in, **_spk_kwargs)
+            except TranscriptionCancelled:
+                raise
             except Exception as exc:
                 if self.device != 'cpu':
                     log.warning('Diarize chunk %d on %s failed: %s — retrying CPU',
@@ -646,7 +719,7 @@ class Diarizer:
 
         if not all_turns:
             log.warning('Chunked diarization produced no turns — skipping speaker labels')
-            return segments
+            return None
 
         # Merge speaker identities across chunk boundaries
         all_turns = merge_chunk_speakers(
@@ -657,8 +730,4 @@ class Diarizer:
         merged_annotation = Annotation()
         for start, end, spk in all_turns:
             merged_annotation[Segment(start, end)] = spk
-
-        t2 = time.monotonic()
-        segments = assign_speakers_simple(merged_annotation, segments)
-        log.info('PERF: speaker assignment (chunked) took %.1fs', time.monotonic() - t2)
-        return segments
+        return merged_annotation

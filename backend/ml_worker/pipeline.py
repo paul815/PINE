@@ -1,4 +1,4 @@
-"""MLPipeline — probe → transcribe → diarize → clean/map, no Flask, no DB.
+"""MLPipeline — probe → transcribe ∥ diarize → clean/map, no Flask, no DB.
 
 The caller (worker ``__main__`` or the in-process fallback) supplies a JobEnv
 (paths and model choices resolved from settings), a JobRequest (one recording)
@@ -9,15 +9,17 @@ PINE has always written.
 
 import logging
 import sys
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from . import compat
 from .audio import get_duration_secs, load_audio_range
-from .constants import SPEAKER_LABELS
+from .constants import PARALLEL_STAGES, SPEAKER_LABELS
 from .diarize import Diarizer, detect_diarize_device
 from .engines import TranscribeContext, create_engine, engine_kind_for_model
 from .errors import TranscriptionCancelled
+from .progress import ProgressMapper
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +133,91 @@ def clean_transcript_segments(segments):
     return clean_segments
 
 
+def _log_diarization_failure(exc):
+    """Diarization is best-effort: a failure costs speaker labels, not the job."""
+    cause = exc
+    for _ in range(3):
+        nxt = getattr(cause, '__cause__', None) or getattr(cause, '__context__', None)
+        if nxt is None:
+            break
+        cause = nxt
+    try:
+        msg = str(cause)[:300]
+    except Exception:
+        msg = type(cause).__name__
+    log.warning('Diarization failed: %s - skipping speaker labels', msg)
+
+
+class _DiarizeTask:
+    """The audio-only half of diarization, optionally run under the STT stage.
+
+    Owns the thread so the pipeline never leaves one behind: the ML worker
+    process is reused between jobs rather than killed, so a diarization still
+    running after its job ended would compete with the next one for the GPU.
+    Every exit path joins.
+
+    Errors are held rather than raised in the thread, and handed back on
+    ``result()``, which keeps diarization best-effort exactly as it was when
+    it ran inline — except cancellation, which is the job ending and must
+    propagate.
+    """
+
+    def __init__(self, diarizer, job, total_duration, check_cancel):
+        self._diarizer = diarizer
+        self._job = job
+        self._total_duration = total_duration
+        self._check_cancel = check_cancel
+        self._thread = None
+        self._result = None
+        self._error = None
+        self.elapsed = 0.0
+
+    @property
+    def started(self):
+        return self._thread is not None
+
+    def start(self):
+        self._thread = threading.Thread(
+            target=self._work, name='diarize', daemon=True)
+        self._thread.start()
+
+    def run(self, diarize_input=None, on_status=_noop_status):
+        """Run it here and now — the serial path."""
+        self._work(diarize_input, on_status=on_status)
+
+    def _work(self, diarize_input=None, on_status=_noop_status):
+        t0 = time.monotonic()
+        try:
+            self._result = self._diarizer.compute(
+                diarize_input if diarize_input is not None else self._job.audio_path,
+                self._job.recording_id,
+                audio_path=self._job.audio_path,
+                total_duration=self._total_duration,
+                num_speakers=self._job.num_speakers,
+                on_status=on_status,
+                check_cancel=self._check_cancel)
+        except BaseException as exc:      # noqa: BLE001 — re-raised in result()
+            self._error = exc
+        finally:
+            self.elapsed = time.monotonic() - t0
+
+    def join(self):
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join()
+
+    def result(self):
+        """Join and return the diarization, or None if it did not produce one."""
+        self.join()
+        log.info('PERF: diarization took %.1fs', self.elapsed)
+        if self._error is not None:
+            if isinstance(self._error, TranscriptionCancelled):
+                raise self._error
+            _log_diarization_failure(self._error)
+            return None
+        return self._result
+
+
 class MLPipeline:
     """Holds loaded models between jobs and runs the full pipeline per job."""
 
@@ -199,68 +286,94 @@ class MLPipeline:
 
     def run(self, env: JobEnv, job: JobRequest, events: PipelineEvents) -> dict:
         """Run the full pipeline for one recording; returns the transcript payload."""
-        recording_id = job.recording_id
         compat.apply_hf_offline(env.hf_offline)
 
-        events.status(stage='loading')
         pipeline_t0 = time.monotonic()
-
         total_duration = get_duration_secs(job.audio_path)
+
+        # Everything downstream reports its own local 0→100; the mapper folds
+        # those into the single scale the UI shows. Nothing below this line
+        # should emit a percent of its own.
+        progress = ProgressMapper(total_duration, events.status,
+                                  parallel=PARALLEL_STAGES).start()
+        events = replace(events, status=progress)
+        events.status(stage='loading')
+
+        try:
+            return self._run(env, job, events, progress,
+                             pipeline_t0, total_duration)
+        finally:
+            progress.stop()
+
+    def _run(self, env, job, events, progress, pipeline_t0, total_duration):
+        recording_id = job.recording_id
 
         self._ensure_models(env)
         log.info('PERF: model loading took %.1fs', time.monotonic() - pipeline_t0)
 
-        forced_lang = self._resolve_language(env, job, events, total_duration)
+        # The language prompt blocks on the user — their thinking time is not
+        # the job being slow, so keep it out of the ETA.
+        progress.pause()
+        try:
+            forced_lang = self._resolve_language(env, job, events, total_duration)
+        finally:
+            progress.resume()
 
         ctx = TranscribeContext(
             on_status=events.status,
             check_cancel=events.check_cancel,
         )
-        out = self._engine.transcribe(
-            job.audio_path, total_duration, forced_lang, ctx)
-        total_duration = out.duration_seconds
-        detected_lang = out.language
 
-        stt_elapsed = time.monotonic() - pipeline_t0
-        log.info('PERF: STT (%s) took %.1fs', self._engine.id, stt_elapsed)
+        diarize = _DiarizeTask(self._diarizer, job, total_duration,
+                               events.check_cancel)
+        if PARALLEL_STAGES:
+            # Started before transcription rather than after it: pyannote reads
+            # only the audio. Its progress is deliberately not reported while it
+            # runs underneath the STT stage — ProgressMapper gives each stage a
+            # disjoint band and clamps monotonically, so two stages reporting at
+            # once would pin the bar to the diarize band and silently swallow
+            # transcription's progress.
+            diarize.start()
 
-        events.check_cancel()
+        try:
+            out = self._engine.transcribe(
+                job.audio_path, total_duration, forced_lang, ctx)
+            total_duration = out.duration_seconds
+            detected_lang = out.language
 
-        diarize_t0 = time.monotonic()
-        events.status(stage='diarizing', message='Identifying speakers...')
+            stt_elapsed = time.monotonic() - pipeline_t0
+            log.info('PERF: STT (%s) took %.1fs', self._engine.id, stt_elapsed)
+
+            events.check_cancel()
+
+            diarize_t0 = time.monotonic()
+            events.status(stage='diarizing', message='Identifying speakers...')
+
+            if not diarize.started:
+                # Serial path: hand it the waveform the engine already decoded.
+                diarize.run(out.audio, on_status=events.status)
+            diarization = diarize.result()
+            log.info('PERF: waited %.1fs for diarization after STT',
+                     time.monotonic() - diarize_t0)
+        finally:
+            diarize.join()
 
         segments = out.segments
-        try:
-            diarize_input = out.audio if out.audio is not None else job.audio_path
-            segments = self._diarizer.run(
-                diarize_input, segments, recording_id,
-                audio_path=job.audio_path, total_duration=total_duration,
-                num_speakers=job.num_speakers,
-                on_status=events.status)
-        except TranscriptionCancelled:
-            raise
-        except Exception as exc:
-            cause = exc
-            for _ in range(3):
-                nxt = getattr(cause, '__cause__', None) or getattr(cause, '__context__', None)
-                if nxt is None:
-                    break
-                cause = nxt
+        if diarization is not None:
             try:
-                msg = str(cause)[:300]
-            except Exception:
-                msg = type(cause).__name__
-            log.warning('Diarization failed: %s - skipping speaker labels', msg)
+                segments = self._diarizer.assign(diarization, segments)
+            except Exception as exc:      # noqa: BLE001 — best-effort labels
+                _log_diarization_failure(exc)
 
         if out.audio is not None:
             out.audio = None
             import gc
             gc.collect()
 
-        log.info('PERF: diarization total took %.1fs', time.monotonic() - diarize_t0)
-
+        events.status(stage='finalizing', message='Finishing up...')
         speaker_map = map_speakers(segments)
         clean_segments = clean_transcript_segments(segments)
+        progress.finish()
 
         elapsed_total = time.monotonic() - pipeline_t0
         log.info('PERF: total pipeline took %.1fs for %.0fs audio (%.2fx realtime)',
