@@ -208,9 +208,10 @@ class TestSettingsAPI:
         assert called['scheduled'] == [os.path.join(root_dir, '.venv')]
         assert called['shutdown'] is True
 
-    def test_reset_removes_start_menu_and_desktop_shortcuts(self, client, monkeypatch, tmp_path):
+    def test_reset_removes_start_menu_and_desktop_shortcuts(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
         from app.models import Setting
+        from app.extensions import db
 
         start_menu = tmp_path / 'Programs' / 'PINE.lnk'
         desktop = tmp_path / 'Desktop' / 'Launch Pine.lnk'
@@ -230,8 +231,10 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [str(legacy_desktop)])
         monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [str(legacy_desktop_bat)])
 
-        Setting.set(settings_api.START_MENU_ENABLED_KEY, 'true')
-        Setting.set(settings_api.DESKTOP_ENABLED_KEY, 'true')
+        with app.app_context():
+            Setting.set(settings_api.START_MENU_ENABLED_KEY, 'true')
+            Setting.set(settings_api.DESKTOP_ENABLED_KEY, 'true')
+            db.session.commit()
 
         r = client.post('/api/settings/reset', json={'confirm': 'Yes'})
 
@@ -241,8 +244,9 @@ class TestSettingsAPI:
         assert not legacy_start_menu.exists()
         assert not legacy_desktop.exists()
         assert not legacy_desktop_bat.exists()
-        assert Setting.get(settings_api.START_MENU_ENABLED_KEY, 'true') == 'false'
-        assert Setting.get(settings_api.DESKTOP_ENABLED_KEY, 'true') == 'false'
+        with app.app_context():
+            assert Setting.get(settings_api.START_MENU_ENABLED_KEY, 'true') == 'false'
+            assert Setting.get(settings_api.DESKTOP_ENABLED_KEY, 'true') == 'false'
 
     def test_start_menu_status_and_toggle(self, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
@@ -397,9 +401,10 @@ class TestSettingsAPI:
         assert data3['start_menu']['added'] is True
         assert data3['desktop']['added'] is True
 
-    def test_app_launch_status_clears_stale_start_menu_flag_when_shortcut_missing(self, client, monkeypatch, tmp_path):
+    def test_app_launch_status_clears_stale_start_menu_flag_when_shortcut_missing(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
         from app.models import Setting
+        from app.extensions import db
 
         launch_bat = tmp_path / 'Launch Pine.bat'
         launch_bat.write_text('@echo off\n', encoding='utf-8')
@@ -414,15 +419,20 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
         monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [])
 
-        Setting.set(settings_api.START_MENU_ENABLED_KEY, 'true')
+        # Setting touches the DB, so it needs an app context of its own —
+        # the `client` fixture only pushes one for the duration of a request.
+        with app.app_context():
+            Setting.set(settings_api.START_MENU_ENABLED_KEY, 'true')
+            db.session.commit()
 
         r = client.get('/api/settings/app-launch')
 
         assert r.status_code == 200
         assert r.get_json()['start_menu']['added'] is False
-        assert Setting.get(settings_api.START_MENU_ENABLED_KEY) == 'false'
+        with app.app_context():
+            assert Setting.get(settings_api.START_MENU_ENABLED_KEY) == 'false'
 
-    def test_start_menu_add_returns_500_when_shortcut_file_is_not_created(self, client, monkeypatch, tmp_path):
+    def test_start_menu_add_returns_500_when_shortcut_file_is_not_created(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
         from app.models import Setting
 
@@ -443,7 +453,8 @@ class TestSettingsAPI:
 
         assert r.status_code == 500
         assert 'error' in r.get_json()
-        assert Setting.get(settings_api.START_MENU_ENABLED_KEY, 'false') == 'false'
+        with app.app_context():
+            assert Setting.get(settings_api.START_MENU_ENABLED_KEY, 'false') == 'false'
 
     def test_launch_win_bat_path_falls_back_to_backend_installer(self, monkeypatch, tmp_path):
         from app.api import settings as settings_api

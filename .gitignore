@@ -33,6 +33,11 @@ backend/pytest-cache-files-*/
 pytest-of-*/
 pytest-api-quit-*/
 _codex_*/
+
+# pip unpacks wheels into the working directory during ML installs; a stray
+# torch wheel here is ~116 MB.
+pip-metadata-*/
+pip-unpack-*/
 /tmp*/
 /tmp*.odt
 /tmp*.zip

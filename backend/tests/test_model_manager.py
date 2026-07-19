@@ -63,9 +63,15 @@ def test_promote_platform_launcher_on_windows(tmp_path, monkeypatch):
     launcher_text = launcher.read_text(encoding='utf-8')
     assert 'if not exist "%BACKEND_DIR%run.py" set "BACKEND_DIR=%SCRIPT_DIR%backend\\"' in launcher_text
     assert 'call "%BACKEND_DIR%WIN_Install.bat"' in launcher_text
-    assert "data.get^('supervisor_running'^) and data.get^('backend_ready'^)" in launcher_text
+    # Readiness is probed by PowerShell first, with a Python one-liner as
+    # fallback. Assert the gate exists on both paths rather than pinning the
+    # exact fallback expression, which now keys off the browser lease count.
+    assert '$data.supervisor_running -and $data.backend_ready' in launcher_text
+    assert "data.get^('supervisor_running'^)" in launcher_text
     assert 'call :wait_for_background_launch_and_open' in launcher_text
-    assert 'call :open_diagnostic_window' in launcher_text
+    # Diagnostics now re-run startup visibly in the same window via
+    # :run_diagnostic_launch instead of spawning a separate one.
+    assert 'call :run_diagnostic_launch' in launcher_text
     assert 'set "PINE_LAUNCHER_RUN_ID=%RANDOM%%RANDOM%"' in launcher_text
     assert 'set "PINE_HIDDEN_CMD=%LOG_DIR%\\launcher-hidden-%PINE_LAUNCHER_RUN_ID%.cmd"' in launcher_text
     assert 'set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\launcher-runner.log"' in launcher_text

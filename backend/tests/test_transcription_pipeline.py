@@ -13,6 +13,29 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def _module_available(name):
+    import importlib.util
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+# Heavy ML packages are installed dynamically by model_manager.py during
+# onboarding, not pinned in requirements.txt. A bare checkout (and CI) has no
+# torch, so the tests that exercise real tensor code are skipped rather than
+# failed — the mocked tests above them still run everywhere.
+needs_torch = pytest.mark.skipif(
+    not _module_available('torch'),
+    reason='requires torch, installed during onboarding rather than from requirements.txt',
+)
+
+needs_numpy = pytest.mark.skipif(
+    not _module_available('numpy'),
+    reason='requires numpy, pulled in with the ML stack during onboarding',
+)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -435,6 +458,7 @@ class TestRequeueInterrupted:
 class TestDiarizeCPUFallback:
     """Tests for Diarizer.run MPS-to-CPU fallback retry (Mac native pyannote path)."""
 
+    @needs_torch
     def test_mps_fallback_to_cpu(self):
         """If diarization fails on MPS, retry on CPU and assign speakers."""
         annotation = FakeDiarization([
@@ -471,6 +495,7 @@ class TestDiarizeCPUFallback:
         assert result[0]['speaker'] == 'SPEAKER_00'
         assert result[1]['speaker'] == 'SPEAKER_01'
 
+    @needs_torch
     def test_cpu_failure_no_retry(self):
         """If already on CPU, failure should propagate (no infinite retry)."""
 
@@ -489,6 +514,7 @@ class TestDiarizeCPUFallback:
         with pytest.raises(RuntimeError, match='Diarization broken'):
             d.run(dummy_audio, [], 1)
 
+    @needs_torch
     def test_mps_success_no_fallback(self):
         """If MPS works, no fallback to CPU should happen."""
         annotation = FakeDiarization([
@@ -596,6 +622,7 @@ class TestStubTorchcodec:
             "real torchcodec should not be replaced by the shim"
         self._clean()
 
+    @needs_torch
     def test_audio_decoder_loads_wav(self, tmp_path):
         """The shim AudioDecoder should load audio via ffmpeg."""
         import struct, wave
@@ -643,6 +670,7 @@ class TestStubTorchcodec:
 class TestDiarizeOutputUnwrap:
     """Ensure the native Diarizer.run unwraps DiarizeOutput-style pyannote results."""
 
+    @needs_numpy
     def test_unwraps_diarize_output(self):
         """Pipeline returning DiarizeOutput should feed assign_speakers_simple."""
         from dataclasses import dataclass
@@ -703,6 +731,7 @@ class TestSpeakerCountThreading:
 
         return _make_diarizer(engine_kind='mlx', device='cpu', pipeline=CapturePipe())
 
+    @needs_torch
     def test_num_speakers_passed_to_pipeline(self):
         captured = {}
         d = self._capture_pipe_diarizer(captured)
@@ -713,6 +742,7 @@ class TestSpeakerCountThreading:
         d.run(dummy_audio, segments, 1, num_speakers=2)
         assert captured == {'num_speakers': 2}
 
+    @needs_torch
     def test_no_count_falls_back_to_min_max(self):
         captured = {}
         d = self._capture_pipe_diarizer(captured)
@@ -825,6 +855,7 @@ class TestEngineSelection:
 class TestWriteWav:
     """Test the _write_wav helper produces valid WAV files."""
 
+    @needs_numpy
     def test_write_and_read_wav(self, tmp_path):
         import numpy as np
         from app.services.transcription import _write_wav

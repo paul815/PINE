@@ -203,8 +203,12 @@ class TestGPUDetection:
         mock_torch.cuda.is_available.return_value = False
         mock_torch.backends.mps.is_available.return_value = False
 
+        # _detect_cuda_toolkit must be stubbed too: with the toolkit present the
+        # code reports 'warn' (torchruntime repairs the mismatch during setup),
+        # so leaving it unstubbed makes the result depend on the host machine.
         with patch.dict('sys.modules', {'torch': mock_torch}), \
-             patch('app.services.system_check._detect_nvidia_gpu', return_value='NVIDIA GeForce RTX 3080'):
+             patch('app.services.system_check._detect_nvidia_gpu', return_value='NVIDIA GeForce RTX 3080'), \
+             patch('app.services.system_check._detect_cuda_toolkit', return_value=False):
             checks = run_system_check()
 
         gpu = next(c for c in checks if 'CUDA' in c.get('name', '') or 'GPU' in c.get('name', ''))

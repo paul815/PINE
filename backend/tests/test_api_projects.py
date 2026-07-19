@@ -866,7 +866,11 @@ class TestManageTagsPage:
         pid = client.post('/api/projects', json={'name': 'Tags Page'}).get_json()['id']
         r = client.get(f'/project/{pid}/tags')
         assert r.status_code == 200
-        assert b'Edit details' in r.data  # integrated editor present
+        # Integrated editor present: the toggle button and the inspector panel
+        # it reveals. Anchored on ids rather than the visible label, which the
+        # UI review renamed from "Edit details" to "Editor".
+        assert b'id="editToggle"' in r.data
+        assert b'toggleInspector()' in r.data
 
 
 class TestStreamMedia:

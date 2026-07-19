@@ -467,7 +467,11 @@ class TestUploadBackup:
             for name in src.namelist():
                 data = src.read(name)
                 if name == 'db/projects.json':
-                    data = b'[{"tampered": true}]'
+                    # Corrupt in place, preserving byte length: the manifest
+                    # size check is cheaper and runs first, so a length change
+                    # would trip that instead and the checksum comparison
+                    # this test exists for would never run.
+                    data = data[::-1]
                 dst.writestr(name, data)
 
         with open(tampered_path, 'rb') as fh:
