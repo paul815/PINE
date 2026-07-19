@@ -86,7 +86,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
   --top-bar-h: 20px;
   --left-header-pad-y: 6px;
   --left-header-gap: 6px;
-  --btn-lg-h: 38px;
   --search-in-h: 28px;
 }
 
@@ -158,13 +157,13 @@ body { font-size: inherit; }
   text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
   padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
 .tb-logo:hover { background: var(--muted); }
-.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: var(--radius-sm); flex-shrink: 0; }
 .tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; }
 .tb-sep.compact { margin: 0 6px; }
 .tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
 .py-link-status {
-  width: 22px; height: 22px; border: 1px solid transparent; border-radius: 999px;
+  width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--radius-pill);
   background: transparent; color: #8f98aa; display: inline-flex; align-items: center;
   justify-content: center; padding: 0; cursor: default;
 }
@@ -239,7 +238,7 @@ body { font-size: inherit; }
 .archive-toggle-btn.collapsed svg { transform: rotate(-90deg); }
 .archive-badge {
   margin-left: auto; font-size: 0.769rem; background: var(--secondary);
-  padding: 1px 6px; border-radius: 10px; color: var(--muted-fg);
+  padding: 1px 6px; border-radius: var(--radius-pill); color: var(--muted-fg);
   font-family: var(--font-mono);
 }
 .archive-month-group { padding-top: 2px; }
@@ -393,9 +392,13 @@ body { font-size: inherit; }
   flex-shrink: 0;
 }
 /* Flex row so the save status sits beside the title instead of wrapping below it.
-   center, not baseline: on the baseline the small badge hangs at the bottom edge of
-   the 1.5rem title instead of reading as centred against it. */
+   Centred, not baseline: .project-name is overflow:hidden (for the ellipsis), so it
+   exposes its bottom margin edge as the flex baseline instead of its text baseline —
+   the badge then hangs low, and by how much depends on the platform's font metrics. */
 .project-name-block { flex: 1; min-width: 0; display: flex; align-items: center; }
+/* The title carries 1px padding + a 2px transparent border at the bottom (the rename
+   underline), so the row's centre sits 1.5px above the title's optical centre. */
+.project-name-block .save-status { margin-top: 3px; }
 .project-name {
   font-size: 1.5rem; font-weight: 700; color: var(--fg);
   line-height: 1.2;
@@ -425,13 +428,13 @@ body { font-size: inherit; }
   flex-shrink: 0;
 }
 .actions .btn-lg svg { width: 12px; height: 12px; }
-.actions .split-arrow { height: var(--btn-lg-h); width: 26px; }
+.actions .split-arrow { height: var(--btn-h-lg); width: 26px; }
 .actions .split-arrow svg { width: 10px; height: 10px; }
 
 /* archive + delete split button */
 .split-dropdown { position: relative; }
 .split-btn { display: flex; align-items: stretch; }
-.actions .split-btn { height: var(--btn-lg-h); }
+.actions .split-btn { height: var(--btn-h-lg); }
 .actions .split-btn .btn-outline.btn-lg,
 .actions .split-btn .split-arrow { height: 100%; }
 .split-btn .btn-outline { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
@@ -613,9 +616,9 @@ body { font-size: inherit; }
 .drop-zone.uploading { pointer-events: none; opacity: 0.6; }
 .spk-prompt-opts { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .spk-prompt-opt { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; cursor: pointer; }
-.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border-color, rgba(128,128,128,0.4)); border-radius: 6px; background: transparent; color: inherit; text-align: center; }
+.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: inherit; text-align: center; }
 .spk-prompt-opt input[type=number]:focus { outline: none; border-color: var(--accent); }
-.spk-prompt-go { padding: 9px 16px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: var(--font-body, inherit); }
+.spk-prompt-go { padding: 9px 16px; border: none; border-radius: var(--btn-radius); background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-family: var(--font-body, inherit); }
 .spk-prompt-go:hover { filter: brightness(1.07); }
 
 .dz-wrap { position: relative; }
@@ -891,7 +894,7 @@ label.att-upload-zone.drop-zone { display: block; }
 .m-lbl { font-size: 1rem; color: var(--fg); }
 .m-lbl-with-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 44px); }
 .sw {
-  width: 30px; height: 17px; border-radius: 99px; background: var(--secondary);
+  width: 30px; height: 17px; border-radius: var(--radius-pill); background: var(--secondary);
   position: relative; cursor: pointer; flex-shrink: 0;
   border: 1px solid var(--border); transition: all 0.15s;
 }
@@ -3413,12 +3416,43 @@ async function clearProjectDefaultLang(pid) {
   }
 }
 
-const _LANG_PRESETS = [
-  ['en', 'English'], ['ru', 'Russian'], ['de', 'German'], ['fr', 'French'],
-  ['es', 'Spanish'], ['it', 'Italian'], ['pt', 'Portuguese'], ['uk', 'Ukrainian'],
-  ['pl', 'Polish'], ['nl', 'Dutch'], ['tr', 'Turkish'], ['ar', 'Arabic'],
-  ['zh', 'Chinese'], ['ja', 'Japanese'], ['ko', 'Korean'], ['hi', 'Hindi'],
-];
+// Every language Whisper can report, keyed by the code it returns.
+const _LANG_NAMES = {
+  af: 'Afrikaans', am: 'Amharic', ar: 'Arabic', as: 'Assamese', az: 'Azerbaijani',
+  ba: 'Bashkir', be: 'Belarusian', bg: 'Bulgarian', bn: 'Bengali', bo: 'Tibetan',
+  br: 'Breton', bs: 'Bosnian', ca: 'Catalan', cs: 'Czech', cy: 'Welsh',
+  da: 'Danish', de: 'German', el: 'Greek', en: 'English', es: 'Spanish',
+  et: 'Estonian', eu: 'Basque', fa: 'Persian', fi: 'Finnish', fo: 'Faroese',
+  fr: 'French', gl: 'Galician', gu: 'Gujarati', ha: 'Hausa', haw: 'Hawaiian',
+  he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', ht: 'Haitian Creole', hu: 'Hungarian',
+  hy: 'Armenian', id: 'Indonesian', is: 'Icelandic', it: 'Italian', ja: 'Japanese',
+  jw: 'Javanese', ka: 'Georgian', kk: 'Kazakh', km: 'Khmer', kn: 'Kannada',
+  ko: 'Korean', la: 'Latin', lb: 'Luxembourgish', ln: 'Lingala', lo: 'Lao',
+  lt: 'Lithuanian', lv: 'Latvian', mg: 'Malagasy', mi: 'Maori', mk: 'Macedonian',
+  ml: 'Malayalam', mn: 'Mongolian', mr: 'Marathi', ms: 'Malay', mt: 'Maltese',
+  my: 'Burmese', ne: 'Nepali', nl: 'Dutch', nn: 'Norwegian Nynorsk', no: 'Norwegian',
+  oc: 'Occitan', pa: 'Punjabi', pl: 'Polish', ps: 'Pashto', pt: 'Portuguese',
+  ro: 'Romanian', ru: 'Russian', sa: 'Sanskrit', sd: 'Sindhi', si: 'Sinhala',
+  sk: 'Slovak', sl: 'Slovenian', sn: 'Shona', so: 'Somali', sq: 'Albanian',
+  sr: 'Serbian', su: 'Sundanese', sv: 'Swedish', sw: 'Swahili', ta: 'Tamil',
+  te: 'Telugu', tg: 'Tajik', th: 'Thai', tk: 'Turkmen', tl: 'Tagalog',
+  tr: 'Turkish', tt: 'Tatar', uk: 'Ukrainian', ur: 'Urdu', uz: 'Uzbek',
+  vi: 'Vietnamese', yi: 'Yiddish', yo: 'Yoruba', yue: 'Cantonese', zh: 'Chinese',
+};
+// Shown first in the picker; the rest follow alphabetically by name.
+const _LANG_COMMON = ['en', 'ru', 'de', 'fr', 'es', 'it', 'pt', 'uk', 'pl', 'nl', 'tr', 'ar', 'zh', 'ja', 'ko', 'hi'];
+
+// Falls back to the base code so regional tags like zh-CN still resolve.
+function _langName(code) {
+  const raw = String(code || '').trim().toLowerCase();
+  return _LANG_NAMES[raw] || _LANG_NAMES[raw.split(/[-_]/)[0]] || '';
+}
+
+// "Norwegian Nynorsk (nn)" when we know the code, bare "NN" when we don't.
+function _langLabel(code) {
+  const name = _langName(code);
+  return name ? (name + ' (' + code + ')') : String(code || '').toUpperCase();
+}
 let _langConfirmCtx = null;
 
 function _langConfirmShowStep(step) {
@@ -3487,9 +3521,9 @@ function openLangConfirmModal(data) {
   const conf = typeof data.language_confidence === 'number' ? data.language_confidence : -1;
   let guessLine = '';
   if (guess && conf >= 0 && conf <= 1) {
-    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + ' (about ' + Math.round(conf * 100) + '% confidence). ';
+    guessLine = 'Auto-detection suggests ' + _langLabel(guess) + ' (about ' + Math.round(conf * 100) + '% confidence). ';
   } else if (guess) {
-    guessLine = 'Auto-detection suggests ' + guess.toUpperCase() + '. ';
+    guessLine = 'Auto-detection suggests ' + _langLabel(guess) + '. ';
   }
   document.getElementById('langConfirmDesc').textContent =
     guessLine + 'Which language is spoken in this recording?';
@@ -3500,14 +3534,17 @@ function openLangConfirmModal(data) {
     if (o && o.code && !seen.has(o.code)) {
       seen.add(o.code);
       const pct = typeof o.probability === 'number' ? Math.round(o.probability * 100) : '';
-      const lab = pct !== '' ? (o.code + ' (' + pct + '%)') : String(o.code);
+      const lab = pct !== '' ? (_langLabel(o.code) + ' — ' + pct + '%') : _langLabel(o.code);
       sel.appendChild(new Option(lab, o.code));
     }
   });
-  _LANG_PRESETS.forEach(([code, name]) => {
+  const rest = Object.keys(_LANG_NAMES)
+    .filter(code => _LANG_COMMON.indexOf(code) === -1)
+    .sort((a, b) => _LANG_NAMES[a].localeCompare(_LANG_NAMES[b]));
+  _LANG_COMMON.concat(rest).forEach(code => {
     if (!seen.has(code)) {
       seen.add(code);
-      sel.appendChild(new Option(name + ' (' + code + ')', code));
+      sel.appendChild(new Option(_langLabel(code), code));
     }
   });
   const customEl = document.getElementById('langConfirmCustom');
@@ -3537,10 +3574,8 @@ async function submitLangConfirmModal() {
       body: JSON.stringify({ language: lang }),
     });
     _langConfirmCtx.chosenLang = lang;
-    const label = _LANG_PRESETS.find(x => x[0] === lang);
-    const namePart = label ? (' (' + label[1] + ')') : '';
     document.getElementById('langRememberDesc').textContent =
-      'Use ' + lang.toUpperCase() + namePart + ' for every new recording you add to this project? ' +
+      'Use ' + _langLabel(lang) + ' for every new recording you add to this project? ' +
       'New uploads will skip the language check while this default is set.';
     _langConfirmShowStep(2);
     toast('Language set — transcription continues…');
