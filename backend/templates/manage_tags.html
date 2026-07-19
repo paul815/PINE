@@ -182,7 +182,7 @@ body { font-size: inherit; overflow: hidden; }
 @font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 /* Top bar */
-.top-bar { height: 48px; flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; z-index: 100; }
+.top-bar { height: 48px; flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; z-index: var(--z-sticky); }
 .tb-logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   text-decoration: none; color: inherit; min-height: var(--btn-h-md, 34px);
   padding: 0 8px; margin: 0 -8px; border-radius: var(--radius); transition: background .15s; }
@@ -277,7 +277,7 @@ body { font-size: inherit; overflow: hidden; }
 .empty p { max-width: 320px; margin: 6px auto 0; line-height: 1.6; }
 
 /* Color popover */
-.color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: 500; }
+.color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: var(--z-popover); }
 .color-pop.show { display: block; }
 .color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
 .color-swatch { width: 22px; height: 22px; border-radius: var(--radius); border: 2px solid transparent; cursor: pointer; padding: 0; }

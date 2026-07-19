@@ -147,7 +147,7 @@ body { font-size: inherit; }
   content: '';
   position: absolute; left: 19px; top: calc(100% - 1px);
   width: 1px; height: calc(100% - 8px);
-  background: var(--border); z-index: 0;
+  background: var(--border); z-index: var(--z-base);
 }
 
 .step-dot {
@@ -155,7 +155,7 @@ body { font-size: inherit; }
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 600; font-family: var(--font-mono);
   border: 1.5px solid var(--border); color: var(--muted-fg); background: var(--card);
-  transition: all 0.2s; z-index: 1; position: relative;
+  transition: all 0.2s; z-index: var(--z-raised); position: relative;
 }
 .step-item.active .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
 .step-item.done .step-dot { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); }
@@ -554,7 +554,7 @@ body { font-size: inherit; }
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
 </head>
 <body>
-<div id="socketBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;
+<div id="socketBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:var(--z-toast);
      padding:6px 16px;background:var(--warn-dim,#fef3cd);color:var(--warn,#856404);
      border-bottom:1px solid var(--warn-bd,#ffc107);font-size:0.923rem;text-align:center;
      align-items:center;justify-content:center;gap:6px;">
