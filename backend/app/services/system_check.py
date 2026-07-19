@@ -56,6 +56,52 @@ def _detect_cuda_toolkit():
     return False
 
 
+def _detect_apple_silicon():
+    """Return the Apple Silicon chip name, or None on Intel Macs.
+
+    Deliberately does not import torch: this runs on the first onboarding screen,
+    before setup installs anything, and MPS support is a property of the hardware
+    and OS -- not of whether PyTorch happens to be present yet. sysctl is used
+    instead of platform.machine() because a Python running under Rosetta reports
+    x86_64 on an Apple Silicon machine.
+    """
+    try:
+        r = subprocess.run(
+            ['sysctl', '-n', 'hw.optional.arm64'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0 or r.stdout.strip() != '1':
+            return None
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+    try:
+        r = subprocess.run(
+            ['sysctl', '-n', 'machdep.cpu.brand_string'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return 'Apple Silicon'
+
+
+def _mac_version_supports_mps():
+    """MPS requires macOS 12.3+. Unknown versions are treated as supported."""
+    import platform
+    ver = platform.mac_ver()[0]
+    if not ver:
+        return True
+    try:
+        parts = [int(p) for p in ver.split('.')[:2]]
+    except ValueError:
+        return True
+    while len(parts) < 2:
+        parts.append(0)
+    return tuple(parts) >= (12, 3)
+
+
 def _existing_ancestor(path):
     """Return the nearest existing ancestor of path (or path itself if it exists)."""
     p = os.path.abspath(path)
@@ -107,30 +153,37 @@ def run_system_check(models_path=None):
 
     if IS_MAC:
         # macOS: check for Metal (MPS) only — CUDA / NVIDIA are not relevant
+        # The verdict comes from the hardware, not from torch: on a supported Mac
+        # this screen must read "ok" on the very first run, before setup installs
+        # anything. Flagging a capable machine amber only because torch is not
+        # there yet is noise the user cannot act on.
+        chip = _detect_apple_silicon()
         try:
             import torch
-            torch_ver = torch.__version__
-            if getattr(torch.backends.mps, 'is_available', lambda: False)():
-                checks.append({
-                    'name': 'GPU acceleration',
-                    'status': 'ok',
-                    'detail': 'Apple Silicon (MPS) \u00b7 Metal acceleration via mlx-whisper',
-                    'version': f'PyTorch {torch_ver}',
-                })
-            else:
-                checks.append({
-                    'name': 'GPU acceleration',
-                    'status': 'warn',
-                    'detail': f'Metal acceleration not available \u00b7 CPU mode (PyTorch {torch_ver})',
-                    'version': f'PyTorch {torch_ver}',
-                })
+            torch_ver = f'PyTorch {torch.__version__}'
         except ImportError:
+            torch_ver = None
+
+        if chip and _mac_version_supports_mps():
+            checks.append({
+                'name': 'GPU acceleration',
+                'status': 'ok',
+                'detail': f'{chip} \u00b7 Metal (MPS) acceleration via mlx-whisper',
+                'version': torch_ver,
+            })
+        elif chip:
             checks.append({
                 'name': 'GPU acceleration',
                 'status': 'warn',
-                'detail': 'PyTorch not installed \u00b7 will be installed during setup',
-                'version': None,
-                'recheckable': True,
+                'detail': f'{chip} \u00b7 Metal acceleration requires macOS 12.3+ \u00b7 CPU mode',
+                'version': torch_ver,
+            })
+        else:
+            checks.append({
+                'name': 'GPU acceleration',
+                'status': 'warn',
+                'detail': 'Intel Mac \u00b7 no Metal acceleration \u00b7 CPU mode',
+                'version': torch_ver,
             })
     else:
         # Windows / Linux: check for CUDA and NVIDIA GPU

@@ -218,6 +218,33 @@ class TestGPUDetection:
         assert gpu['recheckable'] is True
         assert 'download_url' in gpu
 
+    def test_system_check_mac_apple_silicon_ok_without_torch(self):
+        """Apple Silicon reports 'ok' on first run, before setup installs torch."""
+        import app.services.system_check as sc
+
+        with patch.object(sc, 'IS_MAC', True), \
+             patch.object(sc, '_detect_apple_silicon', return_value='Apple M1 Pro'), \
+             patch.object(sc, '_mac_version_supports_mps', return_value=True), \
+             patch.dict('sys.modules', {'torch': None}):
+            checks = sc.run_system_check()
+
+        gpu = next(c for c in checks if c['name'] == 'GPU acceleration')
+        assert gpu['status'] == 'ok'
+        assert 'Apple M1 Pro' in gpu['detail']
+
+    def test_system_check_mac_intel_warns(self):
+        """Intel Macs have no Metal path → warn, regardless of torch."""
+        import app.services.system_check as sc
+
+        with patch.object(sc, 'IS_MAC', True), \
+             patch.object(sc, '_detect_apple_silicon', return_value=None), \
+             patch.dict('sys.modules', {'torch': None}):
+            checks = sc.run_system_check()
+
+        gpu = next(c for c in checks if c['name'] == 'GPU acceleration')
+        assert gpu['status'] == 'warn'
+        assert 'Intel Mac' in gpu['detail']
+
     def test_system_check_no_gpu_cpu_only(self):
         """No NVIDIA GPU, not Mac → cpu_opt_in_required with time comparison."""
         from app.services.system_check import run_system_check
