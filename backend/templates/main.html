@@ -392,13 +392,16 @@ body { font-size: inherit; }
   flex-shrink: 0;
 }
 /* Flex row so the save status sits beside the title instead of wrapping below it.
-   Centred, not baseline: .project-name is overflow:hidden (for the ellipsis), so it
-   exposes its bottom margin edge as the flex baseline instead of its text baseline —
-   the badge then hangs low, and by how much depends on the platform's font metrics. */
+   Centred, not baseline: .project-name is overflow:hidden (for the ellipsis), which
+   makes it hand the flex container its bottom margin edge instead of its text
+   baseline, dropping the badge well below the title.
+   Centring alone still reads as low, because two type sizes sharing a baseline do not
+   share an optical centre: the badge's cap-height centre lands ~(cap_title −
+   cap_badge)/2 under the title's. The nudge corrects exactly that, in rem so it holds
+   at any UI scale (html font-size is user-set) — measured to within 0.3px for the
+   1.5rem/0.769rem pair here. */
 .project-name-block { flex: 1; min-width: 0; display: flex; align-items: center; }
-/* The title carries 1px padding + a 2px transparent border at the bottom (the rename
-   underline), so the row's centre sits 1.5px above the title's optical centre. */
-.project-name-block .save-status { margin-top: 3px; }
+.project-name-block .save-status { position: relative; top: -0.25rem; }
 .project-name {
   font-size: 1.5rem; font-weight: 700; color: var(--fg);
   line-height: 1.2;
