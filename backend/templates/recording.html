@@ -846,10 +846,10 @@ mark.pending-selection-highlight {
 
 <div class="overlay" id="importTagsOverlay" onclick="if(event.target===this)closeImportTags()">
   <div class="modal" style="width:440px">
-    <div class="modal-title" id="importModalTitle">Import codes from other project</div>
+    <div class="modal-title" id="importModalTitle">Import codes from another project</div>
     <div class="m-sub" id="importModalSub">Select another project to import codes from.</div>
     <div id="importStep1">
-      <div class="import-proj-search-wrap">
+      <div class="import-proj-search-wrap" id="importProjSearchWrap">
         <svg class="import-s-ico" viewBox="0 0 13 13" fill="none" aria-hidden="true">
           <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.2"/>
           <path d="M9 9l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -1395,7 +1395,7 @@ function renderTagsPane(tags, tagSpans, segments) {
     return `<span class="chip chip-clickable" style="background:${col}22;color:${col};border-color:${col}" data-tag-id="${esc(t.id)}" data-tag-name="${esc(t.name)}" title="${esc(t.description || '')}" onclick="openTagChipPopover(this, event)"><div class="dot" style="background:${col}"></div>${esc(t.name)} <span class="n">${n}</span></span>`;
   }).join('')
     + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" onclick="showNewTagForm()">+ New code</span>`
-    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" title="Copy codes from another project" onclick="openImportTagsModal()">&rarr; Import from other project</span>`;
+    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" title="Copy codes from another project" onclick="openImportTagsModal()">&rarr; Import from another project</span>`;
   const quotes = [];
   tagSpans.forEach(sp => {
     const seg = segments[sp.segment_idx];
@@ -2287,7 +2287,7 @@ async function openImportTagsModal() {
   const overlay = document.getElementById('importTagsOverlay');
   document.getElementById('importStep1').style.display = '';
   document.getElementById('importStep2').style.display = 'none';
-  document.getElementById('importModalTitle').textContent = 'Import codes from other project';
+  document.getElementById('importModalTitle').textContent = 'Import codes from another project';
   document.getElementById('importModalSub').textContent = 'Select another project to import codes from.';
   document.getElementById('importActions').innerHTML = '<button class="import-back-btn" onclick="closeImportTags()">Cancel</button>';
   const searchEl = document.getElementById('importProjSearch');
@@ -2310,6 +2310,10 @@ async function openImportTagsModal() {
     active = await enrichImportProjectTags(active);
     archived = await enrichImportProjectTags(archived);
     _importProjectsCache = { active, archived };
+    // Hide the search box when the whole app holds three projects or fewer
+    // (the two others plus this one) — the list is short enough to scan.
+    const searchWrap = document.getElementById('importProjSearchWrap');
+    if (searchWrap) searchWrap.style.display = (active.length + archived.length) <= 2 ? 'none' : '';
     if (!active.length && !archived.length) {
       body.innerHTML = '<div class="import-empty">No other projects found.</div>';
       return;
@@ -2362,7 +2366,7 @@ function showImportStep2(projName) {
 function importTagsGoBack() {
   document.getElementById('importStep1').style.display = '';
   document.getElementById('importStep2').style.display = 'none';
-  document.getElementById('importModalTitle').textContent = 'Import codes from other project';
+  document.getElementById('importModalTitle').textContent = 'Import codes from another project';
   document.getElementById('importModalSub').textContent = 'Select another project to import codes from.';
   document.getElementById('importActions').innerHTML = '<button class="import-back-btn" onclick="closeImportTags()">Cancel</button>';
 }

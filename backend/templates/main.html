@@ -1276,10 +1276,12 @@ function fmtEtaShort(secs) {
 }
 function progressText(d) {
   if (d.status === 'transcribing') {
-    let t = (typeof d.percent === 'number') ? d.percent + '%' : '';
+    // One scale for the whole job — the worker already folded per-stage
+    // progress into it, so never show a stage name instead of a number.
+    if (typeof d.percent !== 'number') return '…';
+    let t = d.percent + '%';
     const eta = fmtEtaShort(d.eta_secs);
-    if (eta) t += (t ? ' · ' : '') + '~' + eta;
-    if (!t) t = ({ loading: 'loading…', aligning: 'aligning…', diarizing: 'diarizing…' })[d.stage] || '';
+    if (eta) t += ' · ~' + eta;
     return t;
   }
   if (d.status === 'pending' && d.queue_total) return `#${d.queue_position} of ${d.queue_total}`;

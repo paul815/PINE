@@ -64,9 +64,18 @@ def _read_stale_pid() -> int | None:
 PORT_FILE_PATH = _DATA_DIR / "supervisor.port"
 
 
-def _find_free_port(preferred: int, host: str = "127.0.0.1") -> int:
-    """Return *preferred* if free, otherwise scan upward for the next available port."""
+def _find_free_port(preferred: int, host: str = "127.0.0.1",
+                    exclude: frozenset = frozenset()) -> int:
+    """Return *preferred* if free, otherwise scan upward for the next available port.
+
+    The probe socket is closed before returning, so a port this hands out is
+    free again until whoever asked for it actually binds. Callers picking more
+    than one port have to pass the earlier answers in *exclude*, or they will
+    be handed the same port twice.
+    """
     for port in range(preferred, preferred + 100):
+        if port in exclude:
+            continue
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -584,7 +593,7 @@ def main() -> int:
     _cleanup_old_log_folders()
 
     supervisor_port = _find_free_port(PORT)
-    backend_port = _find_free_port(BACKEND_PORT)
+    backend_port = _find_free_port(BACKEND_PORT, exclude=frozenset({supervisor_port}))
     if supervisor_port != PORT:
         LOG.info("Default supervisor port %s busy; using %s", PORT, supervisor_port)
     if backend_port != BACKEND_PORT:

@@ -9,6 +9,7 @@ shopt -s nullglob
 ROOT_PRESERVE=(
   ".editorconfig"
   ".gitattributes"
+  ".github"
   ".gitignore"
   ".git"
   ".pre-commit-config.yaml"
@@ -17,6 +18,7 @@ ROOT_PRESERVE=(
   "Documentation"
   "LICENSE"
   "MAC_Install.command"
+  "README.md"
   "WIN_Install.bat"
   "backend"
   "models"

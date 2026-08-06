@@ -53,7 +53,7 @@ set FAIL=0
 for /f "delims=" %%I in ('dir /b /a ".."') do (
     set "NAME=%%~I"
     set "KEEP=0"
-    for %%K in (".editorconfig" ".gitattributes" ".gitignore" ".git" ".pre-commit-config.yaml" ".python-version" "AGENTS.md" "Documentation" "LICENSE" "MAC_Install.command" "WIN_Install.bat" "backend" "models") do (
+    for %%K in (".editorconfig" ".gitattributes" ".github" ".gitignore" ".git" ".pre-commit-config.yaml" ".python-version" "AGENTS.md" "Documentation" "LICENSE" "MAC_Install.command" "README.md" "WIN_Install.bat" "backend" "models") do (
         if /I "!NAME!"=="%%~K" set "KEEP=1"
     )
     if "!KEEP!"=="0" (
