@@ -19,7 +19,7 @@ class TestCorruptedAnnotationJson:
             f.write('{{{invalid json!!!}}}')
 
         result = get_annotations(project_dir, 'bad.mp3')
-        assert result == {'tag_spans': [], 'comments': [], 'speaker_labels': {}}
+        assert result == {'tag_spans': [], 'comments': [], 'speaker_labels': {}, 'speaker_colors': {}}
 
     def test_empty_file_returns_defaults(self, project_dir):
         from app.services.annotations import get_annotations
@@ -29,7 +29,7 @@ class TestCorruptedAnnotationJson:
             f.write('')
 
         result = get_annotations(project_dir, 'empty.mp3')
-        assert result == {'tag_spans': [], 'comments': [], 'speaker_labels': {}}
+        assert result == {'tag_spans': [], 'comments': [], 'speaker_labels': {}, 'speaker_colors': {}}
 
     def test_corrupted_project_tags_returns_empty(self, project_dir):
         from app.services.annotations import get_project_tags

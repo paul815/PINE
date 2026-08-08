@@ -41,6 +41,7 @@ All JSON responses use `Content-Type: application/json`. Errors return `{ "error
 |--------|----------|-------------|
 | POST | `/<id>/recordings` | Upload file (multipart `file`) |
 | POST | `/<id>/recordings/link` | Link external file; body `{ "path": "/absolute/path" }` |
+| POST | `/<id>/recordings/multitrack` | Register material with one track per speaker; body `{ "folder": "/path/to/zoom/meeting" }` or `{ "path": "/file/with/one/channel/per/speaker" }`. Never copies — paths are stored as-is. Diarization is skipped for these. |
 | GET | `/<id>/recordings/<rid>` | Recording + transcript + tags + annotations |
 | PATCH | `/<id>/recordings/<rid>` | Update recording; body `{ "segment_id", "participant_notes", "original_name" }` |
 | DELETE | `/<id>/recordings/<rid>` | Delete recording and files |
@@ -116,6 +117,10 @@ All JSON responses use `Content-Type: application/json`. Errors return `{ "error
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/quit` | Graceful server shutdown |
+| POST | `/api/utils/pick-file` | Native file picker; returns `{ "path" }` |
+| POST | `/api/utils/pick-files` | Native multi-file picker; returns `{ "paths" }` |
+| POST | `/api/utils/pick-folder` | Native folder picker; returns `{ "path" }` |
+| POST | `/api/utils/inspect-multitrack` | Report per-speaker tracks without importing; body `{ "folder" }` or `{ "path" }`, returns `{ "kind", "tracks": [{ "path", "speaker_name", "channel"? }], "media" }` |
 
 ---
 

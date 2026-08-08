@@ -206,6 +206,8 @@ def _default_annotations():
         'tag_spans': [],
         'comments': [],
         'speaker_labels': {},
+        # Display name -> speaker colour class chosen in the speaker popover.
+        'speaker_colors': {},
     }
 
 

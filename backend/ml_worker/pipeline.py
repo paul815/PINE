@@ -19,9 +19,15 @@ from .constants import PARALLEL_STAGES, SPEAKER_LABELS
 from .diarize import Diarizer, detect_diarize_device
 from .engines import TranscribeContext, create_engine, engine_kind_for_model
 from .errors import TranscriptionCancelled
+from .multitrack import run_multitrack
 from .progress import ProgressMapper
 
 log = logging.getLogger(__name__)
+
+# Key the measured pace travels under inside the transcript payload. Underscored
+# because it is not part of the transcript — ``_finalize`` pops it before the
+# file is written.
+PROGRESS_SCALE_KEY = '_progress_scale'
 
 
 @dataclass
@@ -33,6 +39,19 @@ class JobEnv:
     pyannote_cache: str
     hf_token: str = ''
     hf_offline: bool = False
+    # How far off the shipped cost model this machine has been measured
+    # running, for this model and mode. 1.0 = never measured; the pipeline
+    # reports a fresh figure back on every job it finishes.
+    progress_scale: float = 1.0
+
+
+@dataclass
+class TrackSpec:
+    """One speaker's own audio, for a multi-track recording."""
+    index: int
+    path: str
+    speaker_name: str = ''
+    channel: int | None = None      # set when the track is a channel of `path`
 
 
 @dataclass
@@ -43,6 +62,26 @@ class JobRequest:
     num_speakers: int | None = None
     forced_language: str | None = None   # project preset; skips probing
     confirm_language: bool = True        # False → auto-detect, never ask
+    # When set, every speaker already has their own track: each is transcribed
+    # on its own and diarization is skipped. Empty → the single-file path, with
+    # pyannote, exactly as before.
+    tracks: list | None = None
+
+    def track_specs(self):
+        """``tracks`` as TrackSpec objects — they arrive as dicts over the wire."""
+        out = []
+        for i, raw in enumerate(self.tracks or []):
+            if isinstance(raw, TrackSpec):
+                out.append(raw)
+                continue
+            out.append(TrackSpec(
+                index=int(raw.get('index', i)),
+                path=raw.get('path', ''),
+                speaker_name=raw.get('speaker_name', '') or '',
+                channel=raw.get('channel'),
+            ))
+        out.sort(key=lambda t: t.index)
+        return out
 
 
 def _noop_status(**kwargs):
@@ -71,15 +110,31 @@ class PipelineEvents:
     check_cancel: callable = _noop_check_cancel
 
 
-def map_speakers(raw_segments):
-    """Map SPEAKER_XX labels to Moderator / Participant N."""
+def map_speakers(raw_segments, names=None):
+    """Map raw speaker ids to display labels, in order of first appearance.
+
+    ``names`` supplies real names where they are known — multi-track recordings
+    carry the participant in the filename, so there is no reason to show
+    "Participant 1" for someone the recording already named. Anything not in
+    ``names`` falls back to the positional label, which is the whole of the
+    single-file behaviour.
+    """
+    names = names or {}
     seen = {}
     mapping = {}
+    used = set()
     for seg in raw_segments:
         spk = seg.get('speaker')
         if spk and spk not in seen:
             idx = len(seen)
-            label = SPEAKER_LABELS[idx] if idx < len(SPEAKER_LABELS) else f'Speaker {idx + 1}'
+            label = names.get(spk) or (
+                SPEAKER_LABELS[idx] if idx < len(SPEAKER_LABELS)
+                else f'Speaker {idx + 1}')
+            # Two tracks can parse to the same name; labels have to stay
+            # distinct or the transcript merges two people into one.
+            if label in used:
+                label = f'{label} ({idx + 1})'
+            used.add(label)
             seen[spk] = label
             mapping[spk] = label
 
@@ -227,7 +282,7 @@ class MLPipeline:
         self._diarizer = None
         self._diarizer_key = None     # (engine_kind, diarize_dir)
 
-    def _ensure_models(self, env: JobEnv):
+    def _ensure_models(self, env: JobEnv, need_diarizer=True):
         compat.patch_torch_load_for_trusted_checkpoints()
 
         engine_kind = engine_kind_for_model(env.stt_model_id)
@@ -241,6 +296,12 @@ class MLPipeline:
             self._engine_key = engine_key
         else:
             self._engine.env = env
+
+        if not need_diarizer:
+            # Multi-track recordings answer the speaker question themselves.
+            # Loading pyannote anyway would cost seconds and a GPU allocation
+            # for a model that is never called.
+            return
 
         diarizer_key = (engine_kind, env.diarize_dir)
         if self._diarizer is None or self._diarizer_key != diarizer_key:
@@ -294,8 +355,11 @@ class MLPipeline:
         # Everything downstream reports its own local 0→100; the mapper folds
         # those into the single scale the UI shows. Nothing below this line
         # should emit a percent of its own.
+        multitrack = bool(job.tracks)
         progress = ProgressMapper(total_duration, events.status,
-                                  parallel=PARALLEL_STAGES).start()
+                                  parallel=PARALLEL_STAGES and not multitrack,
+                                  multitrack=multitrack,
+                                  scale=env.progress_scale).start()
         events = replace(events, status=progress)
         events.status(stage='loading')
 
@@ -307,8 +371,9 @@ class MLPipeline:
 
     def _run(self, env, job, events, progress, pipeline_t0, total_duration):
         recording_id = job.recording_id
+        specs = job.track_specs()
 
-        self._ensure_models(env)
+        self._ensure_models(env, need_diarizer=not specs)
         log.info('PERF: model loading took %.1fs', time.monotonic() - pipeline_t0)
 
         # The language prompt blocks on the user — their thinking time is not
@@ -319,6 +384,44 @@ class MLPipeline:
         finally:
             progress.resume()
 
+        if specs:
+            segments, speaker_names, detected_lang = run_multitrack(
+                self._engine, specs, forced_lang, events)
+        else:
+            segments, detected_lang, total_duration = self._transcribe_single(
+                job, events, forced_lang, pipeline_t0, total_duration)
+            speaker_names = None
+
+        events.status(stage='finalizing', message='Finishing up...')
+        speaker_map = map_speakers(segments, speaker_names)
+        clean_segments = clean_transcript_segments(segments)
+        progress.finish()
+
+        elapsed_total = time.monotonic() - pipeline_t0
+        log.info('PERF: total pipeline took %.1fs for %.0fs audio (%.2fx realtime)',
+                 elapsed_total, total_duration, elapsed_total / max(total_duration, 1))
+
+        payload = {
+            'recording_id': recording_id,
+            'language': detected_lang,
+            'duration_seconds': total_duration,
+            'speakers': speaker_map,
+            'segments': clean_segments,
+        }
+        # How this job actually compared to the plan, for the next one to start
+        # from. Rides along in the payload so both execution paths carry it
+        # without a protocol change; the Flask side pops it before the
+        # transcript is written, leaving the file's shape untouched.
+        measured = progress.observed_scale()
+        if measured is not None:
+            payload[PROGRESS_SCALE_KEY] = measured
+            log.info('PERF: progress plan was off by %.2fx (was %.2fx)',
+                     measured, env.progress_scale)
+        return payload
+
+    def _transcribe_single(self, job, events, forced_lang, pipeline_t0,
+                           total_duration):
+        """One file, speakers told apart afterwards by pyannote."""
         ctx = TranscribeContext(
             on_status=events.status,
             check_cancel=events.check_cancel,
@@ -370,19 +473,4 @@ class MLPipeline:
             import gc
             gc.collect()
 
-        events.status(stage='finalizing', message='Finishing up...')
-        speaker_map = map_speakers(segments)
-        clean_segments = clean_transcript_segments(segments)
-        progress.finish()
-
-        elapsed_total = time.monotonic() - pipeline_t0
-        log.info('PERF: total pipeline took %.1fs for %.0fs audio (%.2fx realtime)',
-                 elapsed_total, total_duration, elapsed_total / max(total_duration, 1))
-
-        return {
-            'recording_id': recording_id,
-            'language': detected_lang,
-            'duration_seconds': total_duration,
-            'speakers': speaker_map,
-            'segments': clean_segments,
-        }
+        return segments, detected_lang, total_duration

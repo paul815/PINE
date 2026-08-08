@@ -2,6 +2,31 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
+REM --- Options ---------------------------------------------------------------
+REM --keep-venv   DEV ONLY. Keeps backend\.venv, so the multi-gigabyte ML stack
+REM               (torch/torchaudio/whisperx/pyannote, installed by
+REM               model_manager.py during onboarding - not by the installer)
+REM               survives the reset and onboarding reuses it. Turns a
+REM               minutes-long cycle into a seconds-long one.
+REM               Because WIN_Install.bat runs its first-time setup only when
+REM               .venv is missing, this ALSO skips the install-time file layout
+REM               move - so it does not exercise the installer.
+REM               Must be OFF for release verification. See Documentation\TODO.md,
+REM               section "Before release - dev-only test shortcuts".
+set "KEEP_VENV="
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--keep-venv" goto arg_keep_venv
+echo.
+echo   Unknown option: %~1
+echo   Usage: reset_win.bat [--keep-venv]
+exit /b 2
+:arg_keep_venv
+set "KEEP_VENV=1"
+shift
+goto parse_args
+:args_done
+
 echo.
 echo ============================================================
 echo   WARNING: This will PERMANENTLY remove ALL project data.
@@ -9,6 +34,12 @@ echo   All projects, recordings, transcripts, and annotations
 echo   will be deleted. This cannot be undone.
 echo ============================================================
 echo.
+if defined KEEP_VENV (
+    echo   DEV MODE ^(--keep-venv^): backend\.venv will be PRESERVED.
+    echo   The installer will skip first-time setup, so the install-time
+    echo   file layout is NOT re-tested by this run.
+    echo.
+)
 set /p CONFIRM="Type Yes and press Enter to proceed: "
 if /i not "%CONFIRM%"=="Yes" (
     echo Reset cancelled.
@@ -17,7 +48,9 @@ if /i not "%CONFIRM%"=="Yes" (
 echo.
 
 REM Stop ONLY PINE's own Python processes. Never blanket-kill python.exe /
-REM pythonw.exe by image name — that would also terminate the user's unrelated
+REM pythonw.exe by image name - that would also terminate the user's unrelated
+REM (keep this file pure ASCII: under chcp 65001 a single multi-byte character
+REM makes cmd.exe lose its place in the file and run the wrong branch)
 REM Python (Jupyter, other apps). We scope the kill two ways:
 REM   1) the supervisor PID we recorded in data\supervisor.pid (plus its child
 REM      backend/worker processes via /t), and
@@ -81,6 +114,7 @@ for /f "delims=" %%I in ('dir /b /a "."') do (
     for %%K in ("app" "ml_worker" "design-audit.js" "package-lock.json" "package.json" "pytest.ini" "requirements-lock.txt" "requirements.txt" "reset.command" "reset_win.bat" "run.py" "scripts" "supervisor.py" "templates" "tests" "tools" "MAC_Install.command" "WIN_Install.bat") do (
         if /I "!NAME!"=="%%~K" set "KEEP=1"
     )
+    if defined KEEP_VENV if /I "!NAME!"==".venv" set "KEEP=1"
     if "!KEEP!"=="0" (
         if exist ".\%%~I\" (
             echo Removing backend\!NAME!...
@@ -101,10 +135,24 @@ for /f "delims=" %%I in ('dir /b /a "."') do (
 )
 
 REM Purge Python bytecode and test caches so reset returns a pristine source tree.
+REM With --keep-venv the sweep is scoped to the source folders: recursing through
+REM a preserved .venv would churn thousands of site-packages caches for no gain
+REM and spend exactly the time the flag exists to save.
 echo Removing Python caches...
-for /d /r "." %%D in (__pycache__ .pytest_cache) do if exist "%%~D" rd /s /q "%%~D" >nul 2>nul
-del /s /q ".\*.pyc" >nul 2>nul
-del /s /q ".\*.pyo" >nul 2>nul
+if defined KEEP_VENV (
+    REM FOR /R will not take a FOR variable as its root - it fails to parse - so
+    REM each source folder is swept in a subroutine where the root is a plain
+    REM parameter.
+    for %%S in (app ml_worker scripts templates tests tools) do if exist "%%S\" call :purge_caches "%%S"
+    if exist "__pycache__" rd /s /q "__pycache__" >nul 2>nul
+    if exist ".pytest_cache" rd /s /q ".pytest_cache" >nul 2>nul
+    del /q ".\*.pyc" >nul 2>nul
+    del /q ".\*.pyo" >nul 2>nul
+) else (
+    for /d /r "." %%D in (__pycache__ .pytest_cache) do if exist "%%~D" rd /s /q "%%~D" >nul 2>nul
+    del /s /q ".\*.pyc" >nul 2>nul
+    del /s /q ".\*.pyo" >nul 2>nul
+)
 
 echo.
 if %FAIL%==1 (
@@ -112,5 +160,20 @@ if %FAIL%==1 (
     echo Close all apps and terminals, then try again.
     exit /b 1
 )
-echo Reset complete. Models folder preserved.
+if defined KEEP_VENV (
+    echo Reset complete. Models folder and backend\.venv preserved.
+    echo Onboarding will reuse the ML packages already in the venv.
+    echo This is a DEV shortcut - run without --keep-venv before a release.
+) else (
+    echo Reset complete. Models folder preserved.
+)
 endlocal
+exit /b 0
+
+REM Sweep __pycache__/.pytest_cache and stray bytecode under one source folder.
+REM Only reached via CALL from the --keep-venv purge branch above.
+:purge_caches
+for /d /r "%~1" %%D in (__pycache__ .pytest_cache) do if exist "%%~D" rd /s /q "%%~D" >nul 2>nul
+del /s /q "%~1\*.pyc" >nul 2>nul
+del /s /q "%~1\*.pyo" >nul 2>nul
+exit /b 0

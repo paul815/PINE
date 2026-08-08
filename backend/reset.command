@@ -1,10 +1,38 @@
 #!/usr/bin/env bash
 # PINE reset — clears project data but keeps downloaded models
 # Run from repo root: backend/reset.command  OR  chmod +x backend/reset.command && ./backend/reset.command
+#
+# Options:
+#   --keep-venv   DEV ONLY. Keeps backend/.venv, so the multi-gigabyte ML stack
+#                 (torch/torchaudio/mlx-whisper/pyannote, installed by
+#                 model_manager.py during onboarding — not by the installer)
+#                 survives the reset and onboarding reuses it. Turns a
+#                 minutes-long cycle into a seconds-long one.
+#                 Because MAC_Install.command runs its first-time setup only
+#                 when .venv is missing, this ALSO skips the install-time file
+#                 layout move — so it does not exercise the installer.
+#                 Must be OFF for release verification. See Documentation/TODO.md,
+#                 section "Before release — dev-only test shortcuts".
 
 set -e
 cd "$(dirname "$0")"
 shopt -s nullglob
+
+KEEP_VENV=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --keep-venv)
+            KEEP_VENV=1
+            ;;
+        *)
+            echo ""
+            echo "  Unknown option: $1"
+            echo "  Usage: backend/reset.command [--keep-venv]"
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 ROOT_PRESERVE=(
   ".editorconfig"
@@ -45,6 +73,10 @@ BACKEND_PRESERVE=(
   "WIN_Install.bat"
 )
 
+if [ "$KEEP_VENV" = "1" ]; then
+    BACKEND_PRESERVE+=(".venv")
+fi
+
 should_keep() {
     local name="$1"
     shift
@@ -82,6 +114,12 @@ echo "  ============================================================"
 echo ""
 echo "  Close the app before running."
 echo ""
+if [ "$KEEP_VENV" = "1" ]; then
+    echo "  DEV MODE (--keep-venv): backend/.venv will be PRESERVED."
+    echo "  The installer will skip first-time setup, so the install-time"
+    echo "  file layout is NOT re-tested by this run."
+    echo ""
+fi
 read -r -p "  Type Yes and press Enter to proceed: " CONFIRM
 if [ "$CONFIRM" != "Yes" ]; then
     echo "  Reset cancelled."
@@ -112,13 +150,27 @@ remove_unpreserved_children .. "${ROOT_PRESERVE[@]}"
 remove_unpreserved_children . "${BACKEND_PRESERVE[@]}"
 
 # Purge Python bytecode and test caches so reset returns a pristine source tree.
-# cwd is backend/ (all Python lives here); models/, .git/ and .venv/ are left alone.
-find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-find . -type d -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null || true
-find . -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyc.*' \) -delete 2>/dev/null || true
+# cwd is backend/ (all Python lives here); models/ and .git/ are left alone.
+# With --keep-venv the preserved .venv is pruned: recursing through site-packages
+# would churn thousands of caches for no gain and spend exactly the time the flag
+# exists to save. rm -f is used instead of -delete because -delete implies -depth,
+# which silently disables -prune.
+PURGE_PRUNE=()
+if [ "$KEEP_VENV" = "1" ]; then
+    PURGE_PRUNE=(-path ./.venv -prune -o)
+fi
+find . "${PURGE_PRUNE[@]}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find . "${PURGE_PRUNE[@]}" -type d -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null || true
+find . "${PURGE_PRUNE[@]}" -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.pyc.*' \) -exec rm -f {} + 2>/dev/null || true
 
 shopt -u nullglob
 
 echo ""
-echo "  Reset complete. Models folder preserved."
+if [ "$KEEP_VENV" = "1" ]; then
+    echo "  Reset complete. Models folder and backend/.venv preserved."
+    echo "  Onboarding will reuse the ML packages already in the venv."
+    echo "  This is a DEV shortcut — run without --keep-venv before a release."
+else
+    echo "  Reset complete. Models folder preserved."
+fi
 echo ""

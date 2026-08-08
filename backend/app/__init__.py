@@ -145,6 +145,7 @@ def _migrate_db(db_path):
         ('recordings', 'participant_notes', 'TEXT DEFAULT ""'),
         ('recordings', 'is_linked', 'INTEGER DEFAULT 0'),
         ('recordings', 'num_speakers', 'INTEGER'),
+        ('recordings', 'source_kind', 'TEXT DEFAULT "single"'),
         ('projects', 'results_recommendations', 'TEXT DEFAULT ""'),
         ('projects', 'further_steps', 'TEXT DEFAULT ""'),
         ('projects', 'stakeholders', 'TEXT DEFAULT "[]"'),
@@ -194,6 +195,7 @@ def _migrate_db(db_path):
         'CREATE INDEX IF NOT EXISTS ix_recordings_project_id ON recordings (project_id)',
         'CREATE INDEX IF NOT EXISTS ix_recordings_transcription_status ON recordings (transcription_status)',
         'CREATE INDEX IF NOT EXISTS ix_segments_project_id ON segments (project_id)',
+        'CREATE INDEX IF NOT EXISTS ix_recording_tracks_recording_id ON recording_tracks (recording_id)',
     ):
         try:
             cursor.execute(stmt)

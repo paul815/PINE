@@ -38,6 +38,48 @@ def _inprocess_mode():
     return os.environ.get('PINE_ML_INPROCESS', '').strip() == '1'
 
 
+# ── learned pace (how far off the shipped cost model this machine runs) ──
+
+def _progress_scale_key(stt_model_id, multitrack):
+    """Settings key for one machine/model/mode combination.
+
+    Keyed on the model because a large model and a small one are not the same
+    job, and on the mode because a multi-track recording transcribes only the
+    speech it found while a single file goes through end to end — measuring
+    them together would average two unrelated paces.
+    """
+    return f'progress_scale:{stt_model_id}:{"multi" if multitrack else "single"}'
+
+
+def _stored_progress_scale(stt_model_id, multitrack):
+    """Last learned pace for this combination; 1.0 until something is measured."""
+    raw = Setting.get(_progress_scale_key(stt_model_id, multitrack), '')
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 1.0
+    return value if value > 0 else 1.0
+
+
+def _learn_progress_scale(stt_model_id, multitrack, measured):
+    """Fold a finished job's measured pace into the stored one."""
+    from ml_worker.constants import PROGRESS_SCALE_SMOOTHING
+
+    key = _progress_scale_key(stt_model_id, multitrack)
+    previous = _stored_progress_scale(stt_model_id, multitrack)
+    raw = Setting.get(key, '')
+    if not raw:
+        # Nothing learned yet: take the first measurement whole rather than
+        # averaging it against a 1.0 that was never observed.
+        updated = measured
+    else:
+        updated = (previous * (1.0 - PROGRESS_SCALE_SMOOTHING)
+                   + measured * PROGRESS_SCALE_SMOOTHING)
+    Setting.set(key, f'{updated:.4f}')
+    log.info('Progress pace for %s: measured %.2fx, now using %.2fx',
+             key, measured, updated)
+
+
 # ── job resolution (all DB access happens here, before the worker starts) ──
 
 def _resolve_job(app, recording_id):
@@ -61,11 +103,26 @@ def _resolve_job(app, recording_id):
             return None
 
         projects_path = Setting.get('projects_path', app.config['DEFAULT_PROJECTS_PATH'])
+        project_dir = os.path.join(projects_path, project.folder_name)
         if recording.is_linked:
             audio_path = recording.stored_name
         else:
-            audio_path = os.path.join(
-                projects_path, project.folder_name, recording.stored_name)
+            audio_path = os.path.join(project_dir, recording.stored_name)
+
+        # Per-speaker tracks, when this recording has them. Same convention as
+        # stored_name: linked material keeps absolute paths, copied material is
+        # relative to the project folder.
+        tracks = []
+        for track in recording.tracks or []:
+            path = track.source_path
+            if not os.path.isabs(path):
+                path = os.path.join(project_dir, path)
+            tracks.append({
+                'index': track.track_index,
+                'path': path,
+                'speaker_name': track.speaker_name or '',
+                'channel': track.channel_index,
+            })
 
         forced_language = None
         if not skip_confirm:
@@ -91,6 +148,7 @@ def _resolve_job(app, recording_id):
             diarize_dir = cand
 
         num_speakers = recording.num_speakers
+        progress_scale = _stored_progress_scale(stt_model_id, bool(tracks))
 
         recording.transcription_status = 'transcribing'
         db.session.commit()
@@ -102,6 +160,7 @@ def _resolve_job(app, recording_id):
         'pyannote_cache': pyannote_hub_cache_root(models_path),
         'hf_token': hf_token,
         'hf_offline': onboarding_complete,
+        'progress_scale': progress_scale,
     }
     job = {
         'recording_id': recording_id,
@@ -109,6 +168,7 @@ def _resolve_job(app, recording_id):
         'num_speakers': num_speakers,
         'forced_language': forced_language,
         'confirm_language': not skip_confirm,
+        'tracks': tracks,
     }
     return env, job
 
@@ -274,6 +334,11 @@ def _run_inprocess(app, recording_id, env_dict, job_dict):
 
 def _finalize(app, recording_id, transcript):
     """Write the transcript JSON, update the DB row, refresh the project README."""
+    from ml_worker.pipeline import PROGRESS_SCALE_KEY
+
+    # Rode along in the payload so both execution paths could carry it; it is
+    # not part of the transcript, so take it out before anything is written.
+    measured_scale = transcript.pop(PROGRESS_SCALE_KEY, None)
     detected_lang = transcript.get('language', 'en')
 
     play_tx_sound = False
@@ -292,6 +357,14 @@ def _finalize(app, recording_id, transcript):
         recording.language = detected_lang
         recording.transcript_path = transcript_filename
         recording.error_message = ''
+
+        if measured_scale:
+            from ..model_manager import get_default_stt_model, normalize_stt_model_id
+            model_id = normalize_stt_model_id(
+                Setting.get('stt_model_id', get_default_stt_model()))
+            _learn_progress_scale(
+                model_id, bool(recording.tracks), float(measured_scale))
+
         db.session.commit()
 
         from ...api.projects import _write_project_readme

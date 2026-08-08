@@ -51,14 +51,60 @@ PARALLEL_STAGES = os.environ.get('PINE_PARALLEL_STAGES', '1').strip() != '0'
 # only for pacing: ProgressMapper re-derives the job's pace from its own
 # milestones, so the plan is a starting prior, not the ETA. Retuning them per
 # platform is a separate change, and would want more than one machine.
+#
+# These stay as shipped. What corrects them is measurement: every finished job
+# reports how far off the plan was for this machine, model and mode, and the
+# next job starts from that instead (see ProgressMapper.observed_scale and
+# `progress_scale:*` in Settings). So the numbers below only have to be a
+# sensible starting point for the very first recording — the alternative,
+# hand-tuning them per platform, needs a machine of every kind and goes stale
+# the moment anyone changes model.
 PROGRESS_RTF_TRANSCRIBE = float(os.environ.get('PINE_PROGRESS_RTF_TRANSCRIBE', '0.045'))
 PROGRESS_RTF_ALIGN = float(os.environ.get('PINE_PROGRESS_RTF_ALIGN', '0.010'))
 PROGRESS_RTF_DIARIZE = float(os.environ.get('PINE_PROGRESS_RTF_DIARIZE', '0.019'))
+# Bounds on the learned correction, so one pathological run (a machine that
+# went to sleep mid-job) cannot poison the estimate for every job after it.
+PROGRESS_SCALE_MIN = float(os.environ.get('PINE_PROGRESS_SCALE_MIN', '0.2'))
+PROGRESS_SCALE_MAX = float(os.environ.get('PINE_PROGRESS_SCALE_MAX', '5.0'))
+# Weight of the newest measurement against the running one.
+PROGRESS_SCALE_SMOOTHING = float(os.environ.get('PINE_PROGRESS_SCALE_SMOOTHING', '0.4'))
+# Below this much audio the flat costs dominate and the ratio measures disk
+# cache rather than transcription speed, so nothing is learned from it.
+PROGRESS_LEARN_MIN_SEC = float(os.environ.get('PINE_PROGRESS_LEARN_MIN_SEC', '120'))
 # Flat costs that don't scale with audio length.
 PROGRESS_LOAD_SEC = float(os.environ.get('PINE_PROGRESS_LOAD_SEC', '10'))
 PROGRESS_FINALIZE_SEC = 2.0
 # How often the interpolating ticker refreshes between real milestones.
 PROGRESS_TICK_SEC = float(os.environ.get('PINE_PROGRESS_TICK_SEC', '2'))
+
+# ── Per-speaker tracks (see tracks.py) ──
+#
+# Voice activity detection on one speaker's own track, used to cut the pauses
+# out before transcription. Tuned for interviews rather than for a general VAD:
+# the thing most easily lost here is back-channel — "угу", "да", "понятно" —
+# which runs 0.3-0.8s and would be dropped by the 0.5s minimum a general-purpose
+# gate uses. Losing it costs the moderator's half of the conversation, so the
+# minimum sits at 0.2s and short gaps are closed before anything is discarded.
+VAD_FRAME_SEC = float(os.environ.get('PINE_VAD_FRAME_SEC', '0.02'))
+VAD_MIN_SPEECH_SEC = float(os.environ.get('PINE_VAD_MIN_SPEECH_SEC', '0.2'))
+VAD_MERGE_GAP_SEC = float(os.environ.get('PINE_VAD_MERGE_GAP_SEC', '0.5'))
+VAD_PAD_SEC = float(os.environ.get('PINE_VAD_PAD_SEC', '0.25'))
+# Thresholds are a fraction of each track's own quiet-to-loud range, so tracks
+# recorded at different levels are each measured against themselves.
+VAD_OPEN_FRACTION = float(os.environ.get('PINE_VAD_OPEN_FRACTION', '0.35'))
+VAD_CLOSE_FRACTION = float(os.environ.get('PINE_VAD_CLOSE_FRACTION', '0.20'))
+VAD_MIN_MARGIN_DB = float(os.environ.get('PINE_VAD_MIN_MARGIN_DB', '6.0'))
+# Digital silence is -inf dB; without a floor the range is unbounded and every
+# threshold derived from it collapses. Also the level below which a track with
+# no loud/quiet structure is read as empty rather than as speech throughout.
+VAD_SILENCE_FLOOR_DB = float(os.environ.get('PINE_VAD_SILENCE_FLOOR_DB', '-80.0'))
+VAD_MIN_DYNAMIC_DB = float(os.environ.get('PINE_VAD_MIN_DYNAMIC_DB', '6.0'))
+# How far one track must lead the others to be given a frame outright. Only
+# bites on multi-channel recordings where the mics hear each other.
+VAD_DOMINANCE_DB = float(os.environ.get('PINE_VAD_DOMINANCE_DB', '6.0'))
+# Silence inserted between two spliced-together regions, so the model does not
+# run a turn from minute 3 into a turn from minute 40.
+VAD_COMPACT_GAP_SEC = float(os.environ.get('PINE_VAD_COMPACT_GAP_SEC', '0.2'))
 
 SPEAKER_LABELS = [
     'Moderator',

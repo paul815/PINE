@@ -93,6 +93,7 @@ class TestAnnotations:
             'tag_spans': [],
             'comments': [],
             'speaker_labels': {},
+            'speaker_colors': {},
         }
 
     def test_save_and_get(self, project_dir):
@@ -100,6 +101,7 @@ class TestAnnotations:
             'tag_spans': [{'segment_idx': 0, 'start_char': 0, 'end_char': 5, 'tag_id': 'pain'}],
             'comments': [{'segment_idx': 0, 'text': 'Interesting'}],
             'speaker_labels': {'SPEAKER_00': 'Moderator'},
+            'speaker_colors': {'Moderator': 'mod'},
         }
         save_annotations(project_dir, 'rec.mp3', data)
         loaded = get_annotations(project_dir, 'rec.mp3')
@@ -115,6 +117,7 @@ class TestAnnotations:
             'tag_spans': [],
             'comments': [],
             'speaker_labels': {},
+            'speaker_colors': {},
         }
 
     def test_unicode_preserved(self, project_dir):
@@ -126,3 +129,95 @@ class TestAnnotations:
         save_annotations(project_dir, 'u.mp3', data)
         loaded = get_annotations(project_dir, 'u.mp3')
         assert loaded['comments'][0]['text'] == 'Комментарий 日本語'
+
+
+class TestSpeakerColorsRoundTrip:
+    """speaker_colors must survive a PATCH -> reload, like speaker_labels.
+
+    The recording page applies ``ann.speaker_colors`` on load, so a colour the
+    user picks in the speaker popover is only sticky if the PATCH whitelist in
+    the annotations endpoint lets the field through.
+    """
+
+    def test_patch_speaker_colors_is_persisted_and_returned_by_get(self, client, app):
+        with app.app_context():
+            from app.extensions import db
+            from app.models.project import Project
+            from app.models.recording import Recording
+            from app.models.setting import Setting
+
+            projects_path = app.config['DEFAULT_PROJECTS_PATH']
+            os.makedirs(projects_path, exist_ok=True)
+            Setting.set('projects_path', projects_path)
+
+            proj = Project(name='Colours', folder_name='speaker_colours')
+            db.session.add(proj)
+            db.session.flush()
+            rec = Recording(
+                project_id=proj.id,
+                original_name='interview.mp3',
+                stored_name='interview.mp3',
+                transcription_status='completed',
+            )
+            db.session.add(rec)
+            db.session.commit()
+            pid, rid = proj.id, rec.id
+
+            os.makedirs(os.path.join(projects_path, proj.folder_name), exist_ok=True)
+
+        # Rename a speaker and pick a colour for the new name, as the popover does.
+        patch = client.patch(
+            f'/api/projects/{pid}/recordings/{rid}/annotations',
+            json={
+                'speaker_labels': {'SPEAKER_00': 'Пётр'},
+                'speaker_colors': {'Пётр': 'p3'},
+            },
+        )
+        assert patch.status_code == 200
+        assert patch.get_json()['speaker_colors'] == {'Пётр': 'p3'}
+
+        # What the page sees on reload.
+        got = client.get(f'/api/projects/{pid}/recordings/{rid}/annotations')
+        assert got.status_code == 200
+        data = got.get_json()
+        assert data['speaker_labels'] == {'SPEAKER_00': 'Пётр'}
+        assert data['speaker_colors'] == {'Пётр': 'p3'}
+
+    def test_patching_other_fields_leaves_speaker_colors_intact(self, client, app):
+        with app.app_context():
+            from app.extensions import db
+            from app.models.project import Project
+            from app.models.recording import Recording
+            from app.models.setting import Setting
+
+            projects_path = app.config['DEFAULT_PROJECTS_PATH']
+            os.makedirs(projects_path, exist_ok=True)
+            Setting.set('projects_path', projects_path)
+
+            proj = Project(name='Colours 2', folder_name='speaker_colours_2')
+            db.session.add(proj)
+            db.session.flush()
+            rec = Recording(
+                project_id=proj.id,
+                original_name='interview.mp3',
+                stored_name='interview.mp3',
+                transcription_status='completed',
+            )
+            db.session.add(rec)
+            db.session.commit()
+            pid, rid = proj.id, rec.id
+
+            os.makedirs(os.path.join(projects_path, proj.folder_name), exist_ok=True)
+
+        client.patch(
+            f'/api/projects/{pid}/recordings/{rid}/annotations',
+            json={'speaker_colors': {'Moderator': 'mod'}},
+        )
+        client.patch(
+            f'/api/projects/{pid}/recordings/{rid}/annotations',
+            json={'comments': [{'segment_idx': 0, 'text': 'Note'}]},
+        )
+
+        data = client.get(f'/api/projects/{pid}/recordings/{rid}/annotations').get_json()
+        assert data['speaker_colors'] == {'Moderator': 'mod'}
+        assert data['comments'] == [{'segment_idx': 0, 'text': 'Note'}]

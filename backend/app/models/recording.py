@@ -24,7 +24,17 @@ class Recording(db.Model):
     participant_notes = db.Column(db.Text, default='')
     num_speakers = db.Column(db.Integer, nullable=True)
     is_linked = db.Column(db.Boolean, default=False)
+    # 'single' — one file, speakers told apart by pyannote. 'multitrack' — every
+    # speaker has their own track (see RecordingTrack), so there is nothing to
+    # infer and diarization is skipped entirely.
+    source_kind = db.Column(db.String(20), default='single')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    tracks = db.relationship(
+        'RecordingTrack', backref='recording', lazy='select',
+        cascade='all, delete-orphan',
+        order_by='RecordingTrack.track_index',
+    )
 
     def to_dict(self):
         return {
@@ -43,5 +53,7 @@ class Recording(db.Model):
             'participant_notes': self.participant_notes or '',
             'num_speakers': self.num_speakers,
             'is_linked': bool(self.is_linked),
+            'source_kind': self.source_kind or 'single',
+            'track_count': len(self.tracks or []),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

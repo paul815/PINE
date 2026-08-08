@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 utils_bp = Blueprint('utils', __name__)
 
@@ -79,10 +79,41 @@ def _tk_pick_files(multiple=False):
     return paths
 
 
+def _mac_pick_folder():
+    """Use osascript to open the native Finder folder-picker on macOS."""
+    script = (
+        'set theFolder to choose folder with prompt "Select a recording folder"\n'
+        'return POSIX path of theFolder'
+    )
+    result = subprocess.run(
+        ['osascript', '-e', script], capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _tk_pick_folder():
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    path = filedialog.askdirectory(title='Select a recording folder')
+    root.destroy()
+    return path or None
+
+
 def _pick_files(multiple=False):
     if _IS_MAC:
         return _mac_pick_files(multiple=multiple)
     return _tk_pick_files(multiple=multiple)
+
+
+def _pick_folder():
+    if _IS_MAC:
+        return _mac_pick_folder()
+    return _tk_pick_folder()
 
 
 @utils_bp.route('/pick-file', methods=['POST'])
@@ -111,6 +142,58 @@ def pick_files():
         return jsonify({'paths': paths})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@utils_bp.route('/pick-folder', methods=['POST'])
+def pick_folder():
+    """Open the native OS folder picker; used to point PINE at a Zoom folder.
+
+    Returns: { path: str } or { path: null } if the user cancelled.
+    """
+    try:
+        return jsonify({'path': _pick_folder()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@utils_bp.route('/inspect-multitrack', methods=['POST'])
+def inspect_multitrack():
+    """Report what per-speaker tracks a folder or file holds, without importing.
+
+    Lets the UI show what was recognised — and whose name landed on which track
+    — before anything is added to a project.
+
+    Body: { folder: str } for a Zoom meeting folder, or
+          { path: str } for one file whose channels are the speakers.
+    Returns: { kind, tracks: [{path, speaker_name, channel?}], media, error? }
+    """
+    from ..services.multitrack_ingest import describe_multichannel, detect_zoom_folder
+
+    data = request.get_json(force=True, silent=True) or {}
+    folder = (data.get('folder') or '').strip()
+    path = (data.get('path') or '').strip()
+
+    try:
+        if folder:
+            found = detect_zoom_folder(folder)
+            kind = 'zoom_folder'
+        elif path:
+            found = describe_multichannel(path)
+            kind = 'channels'
+        else:
+            return jsonify({'error': 'folder or path is required'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    if not found:
+        return jsonify({
+            'kind': None, 'tracks': [], 'media': None,
+            'error': ('No per-participant tracks found in this folder'
+                      if folder else 'This file has only one audio channel'),
+        })
+
+    return jsonify({'kind': kind, 'tracks': found['tracks'],
+                    'media': found['media']})
 
 
 @utils_bp.route('/runtime-status', methods=['GET'])

@@ -315,10 +315,10 @@ class TestExportRecordingMarkdown:
             os.makedirs(proj_dir, exist_ok=True)
             transcript = {
                 'segments': [
-                    {'start': 0, 'end': 2, 'text': 'Hello', 'speaker': 'Participant 1'},
-                    {'start': 2, 'end': 4, 'text': 'How are you', 'speaker': 'Participant 1'},
-                    {'start': 4, 'end': 6, 'text': 'Good thanks', 'speaker': 'Moderator'},
-                    {'start': 6, 'end': 8, 'text': "I'm fine", 'speaker': 'Participant 1'},
+                    {'start': 0, 'end': 2, 'text': 'Hello.', 'speaker': 'Participant 1'},
+                    {'start': 2, 'end': 4, 'text': 'How are you?', 'speaker': 'Participant 1'},
+                    {'start': 4, 'end': 6, 'text': 'Good thanks.', 'speaker': 'Moderator'},
+                    {'start': 6, 'end': 8, 'text': "I'm fine.", 'speaker': 'Participant 1'},
                 ],
                 'duration_seconds': 8,
             }
@@ -332,9 +332,9 @@ class TestExportRecordingMarkdown:
         transcript_section = content.split('(Transcript)')[1].split('---')[0]
         assert '**Participant 1**' in transcript_section
         assert '**Moderator**' in transcript_section
-        assert 'Hello How are you' in transcript_section
-        assert 'Good thanks' in transcript_section
-        assert "I'm fine" in transcript_section
+        assert 'Hello. How are you?' in transcript_section
+        assert 'Good thanks.' in transcript_section
+        assert "I'm fine." in transcript_section
         # Participant 1 must appear before Moderator (first block)
         p1_pos = transcript_section.find('**Participant 1**')
         mod_pos = transcript_section.find('**Moderator**')
@@ -409,22 +409,52 @@ class TestMergeConsecutiveSpeakers:
 
     def test_merge_same_speaker(self):
         segments = [
-            {'speaker': 'P1', 'text': 'A', 'start': 0, 'end': 1},
-            {'speaker': 'P1', 'text': 'B', 'start': 1, 'end': 2},
-            {'speaker': 'Mod', 'text': 'C', 'start': 2, 'end': 3},
-            {'speaker': 'P1', 'text': 'D', 'start': 3, 'end': 4},
+            {'speaker': 'P1', 'text': 'A.', 'start': 0, 'end': 1},
+            {'speaker': 'P1', 'text': 'B.', 'start': 1, 'end': 2},
+            {'speaker': 'Mod', 'text': 'C.', 'start': 2, 'end': 3},
+            {'speaker': 'P1', 'text': 'D.', 'start': 3, 'end': 4},
         ]
         merged = _merge_consecutive_speakers(segments)
         assert len(merged) == 3
         assert merged[0]['speaker'] == 'P1'
-        assert merged[0]['text'] == 'A B'
+        assert merged[0]['text'] == 'A. B.'
         assert merged[0]['indices'] == [0, 1]
         assert merged[1]['speaker'] == 'Mod'
-        assert merged[1]['text'] == 'C'
+        assert merged[1]['text'] == 'C.'
         assert merged[1]['indices'] == [2]
         assert merged[2]['speaker'] == 'P1'
-        assert merged[2]['text'] == 'D'
+        assert merged[2]['text'] == 'D.'
         assert merged[2]['indices'] == [3]
+
+    def test_interjection_does_not_split_a_sentence(self):
+        """P1 is cut off mid-sentence: the turn resumes in the block it opened."""
+        segments = [
+            {'speaker': 'P1', 'text': 'How long have you', 'start': 0, 'end': 2},
+            {'speaker': 'Mod', 'text': 'Mhm.', 'start': 2, 'end': 3},
+            {'speaker': 'P1', 'text': 'worked here?', 'start': 3, 'end': 4},
+            {'speaker': 'P1', 'text': 'And before that?', 'start': 4, 'end': 5},
+        ]
+        merged = _merge_consecutive_speakers(segments)
+        assert [m['speaker'] for m in merged] == ['P1', 'Mod', 'P1']
+        assert merged[0]['text'] == 'How long have you worked here?'
+        assert merged[0]['indices'] == [0, 2]
+        assert merged[1]['text'] == 'Mhm.'
+        # The sentence that was interrupted goes home; the next one does not,
+        # or it would read above the interjection it came after.
+        assert merged[2]['text'] == 'And before that?'
+
+    def test_interjector_does_not_reopen_a_finished_block(self):
+        """Mod's later answer is its own block, not glued to the earlier 'Mhm.'."""
+        segments = [
+            {'speaker': 'P1', 'text': 'How long have you', 'start': 0, 'end': 2},
+            {'speaker': 'Mod', 'text': 'Mhm.', 'start': 2, 'end': 3},
+            {'speaker': 'P1', 'text': 'worked here?', 'start': 3, 'end': 4},
+            {'speaker': 'Mod', 'text': 'Seven months.', 'start': 4, 'end': 5},
+        ]
+        merged = _merge_consecutive_speakers(segments)
+        assert [m['text'] for m in merged] == [
+            'How long have you worked here?', 'Mhm.', 'Seven months.']
+        assert [m['indices'] for m in merged] == [[0, 2], [1], [3]]
 
 
 class TestRenderTranscriptBlocks:

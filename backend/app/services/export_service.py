@@ -165,6 +165,7 @@ from ..models.project import Project
 from ..models.recording import Recording
 from ..models.segment import Segment
 from ..models.setting import Setting
+from .speaker_blocks import merge_speaker_blocks
 
 
 def _projects_root(app):
@@ -195,26 +196,14 @@ def _segment_export_line(segment):
 
 
 def _merge_consecutive_speakers(segments):
-    """Merge consecutive segments from the same speaker into blocks (chronological order).
-    Returns list of dicts: speaker, start, text, indices (original segment indices).
+    """Speaker turns for export, in reading order. See ``speaker_blocks``.
+
+    Returns list of dicts: speaker, start, end, text, indices (original segment
+    indices). An unnamed speaker exports as ``Speaker`` rather than a blank.
     """
-    merged = []
-    for i, seg in enumerate(segments):
-        spk = (seg.get('speaker') or '').strip()
-        txt = (seg.get('text') or '').strip()
-        prev = merged[-1] if merged else None
-        if prev and (prev['speaker'] or '').strip() == spk:
-            prev['text'] = (prev['text'] or '').strip() + ' ' + txt
-            prev['end'] = seg.get('end', prev.get('end', 0))
-            prev['indices'].append(i)
-        else:
-            merged.append({
-                'speaker': spk or 'Speaker',
-                'start': seg.get('start', 0),
-                'end': seg.get('end', 0),
-                'text': txt,
-                'indices': [i],
-            })
+    merged = merge_speaker_blocks(segments)
+    for block in merged:
+        block['speaker'] = block['speaker'] or 'Speaker'
     return merged
 
 

@@ -1,0 +1,165 @@
+represent per page.
+So like each string represents whatever is on an entire page.
+And then the last page that the user looked at, this would just be some integer and this would be an index into this list of strings.
+So I would have to remember that this, you know, there might be an off by one error here.
+because in Python we start at zero, but like naturally when we're reading a book we might start at one.
+Yep.
+Now for this library, for this collection of books, okay, well, so for this active book, you could either use a Boolean where you set one book to active and the rest to inactive, but I think that that would be kind of excessive because every single time we toggle a book as active, we have to toggle everything else as inactive, right?
+You can't have two active books.
+Yeah, yeah.
+Okay.
+Yeah, that makes sense.
+Okay.
+Okay, so then I think in that case instead what I would rather do is have some sort of a string or some sort of like an ID matching system where we have like one variable that's set to the active book and that might be the title or the ID of a certain book in the library.
+So maybe we can just add ID here.
+And maybe I can make that.
+also a string or an integer or something.
+And I'm going to add a question mark to kind of just say like, maybe we could implement that, but I'm not sure if we'd want to right now.
+So this would correspond to ID.
+So this would just be some variable.
+And then this collection of books.
+I guess like when we display this page in an active book, I actually, so I think that this might have an advantage being like some sort of a lookup table because we have a certain sense of an ID, right?
+And I think what could make sense here is having the ID correspond to the book object that we define up here.
+So this could This could be a book object, right?
+And so we don't really need this ID.
+I think that if all the titles are unique, then we don't need this ID.
+We can just use the titles as the IDs.
+But in some cases in the real world, not all titles are unique.
+And so that's when an ID might come in handy.
+And so I'll leave that like...
+What are our assumptions here?
+Can we assume that the titles are unique or should I be using this ID structure?
+I think I like the ID structure because yeah, we're not necessarily going to know that everything's unique, so I think this is a little bit more robust.
+Okay, awesome.
+So I think this representation looks good to me, so I'm just going to go through the requirements again just to make sure that I've covered all my bases.
+So here I want all books.
+Okay, so I want a library of books that I can add to or remove from.
+And so here I have a library and anytime I want to add to this library, I can just add an ID, I can add the book.
+If I want to remove from the library, then I can just simply delete the key item pair or the key, whatever pair, key value pair.
+I can set a book from their library as active and so here I have this active book and we could always say like if there is no active book then we set this to none or something like that.
+The reading application remembers where a user left off.
+So we have that here, right?
+The last page that the user looked at and not just in the active book.
+And then displaying one page of text at a time in the active book.
+So we have the active book.
+We can get the book object from that.
+And then we can go to the page that the user last looked at by indexing this value into this list.
+So I think we've covered all the basics here.
+Cool.
+Let's do a couple things.
+I guess I think as a starting point, and this doesn't have to get too crazy, but I would love to just see some, you know, Python pseudocode or even some Python kind of code just to like maybe flesh out one of these classes.
+I just want to, you know, look at that a little bit and how you would actually start writing this code.
+Yeah, sure.
+So for example, here I let's start with the book.
+And when we define a class, let's initialize this.
+So when we initialize a book, we definitely should pass in the title and then the content, right?
+I'm assuming that when we add a book, these things have to be given to us.
+And then I'm assuming that when we add a book, we don't have a last page that the user has looked at.
+Is that an okay assumption?
+Yeah, I like that assumption.
+Okay.
+So we can set the title of this book just equal to whatever the title is, the content of this book.
+And I'm going to assume that these are given to us in the formatting that we want.
+So the title is a string and the content is a list of strings that correspond to the pages.
+And I'm going to create a variable last page and I'm going to set that equal to just zero.
+I could also probably set it equal to negative one or something, but I think zero makes sense because that would be the beginning, right?
+Yep.
+And then we need to come up with some sort of an ID.
+So typically, maybe we would have some sort of function that takes in the title and the content, or maybe the author or something, and returns a unique ID.
+But I think maybe something that we can do here just very simply is have some sort of counter in the library, and then every single time we like add a new book we can just associate that counter with that book and so then we know that they're all unique and and they all have their own IDs would that make sense yeah that that makes sense okay so then I would have to pass in the ID yeah and so what I'm actually going to do self.id equals ID and then yeah and so then, for example, we might want like a display page right in this book.
+And so for that, then we just want to return whatever is at the last page of the content.
+And I guess let's build on this a little bit.
+Another useful function, you know, obviously you want to start at the last page, but let's say we're starting to turn the page.
+What might that look like?
+Right, and so...
+And so if we're turning the page, then all we want to do is increment the last page, right?
+And so we might do self.lastpage, and we just increment that by one.
+And then we could call display page after that.
+If we assume that...
+Like we could if we assume that these two go together.
+So if we assume that when we turn the page we want to display that page then I would just return display page yep like that and then actually I'm just going to go ahead and code up this library as well so this library we have this collection of books and then also the active book so Rather than initializing the library with books, I think let's just add them to this.
+So initially, this collection might just be an empty dictionary and then the active book might be none.
+So then when we want to add stuff, so add to collection, book, What I'm going to do so there's either the user could like or our API could like return a book with the with the title and the content etc but since we're we said that we would pass the ID through like the library because we might have like a counter Like some sort of ID counter.
+I mean, this is not the best way to do it, but I think this is like a fine hack for right now.
+just to make all the IDs unique.
+What we can do here is we can also when we want to add a book just pass in the title and the content and so then our new book is going to be a book as we've defined above with the ID and the title and the content.
+And then after we create this new book we want to increment the ID counter and then we also want to add this new book into the collection right so I'm going to add self.collection and I'm going to make the ID whatever the ID of the book is so actually I'm just going to call newbook.id because I think that's a bit cleaner and this is going to be the new book and then we increment the counter by one so this is us adding to the collection um so of course we want to remove from the collection and so we want we said that we wanted to remove based on the id so all we have to do is i think there's this delete in python i'm not sure if there's a remove do you know keith okay Is there a remove?
+I think that there is, I mean, it should autocomplete here in the coder pad.
+Oh, isn't it Dell?
+Isn't there a Dell?
+I mean, I think the biggest thing is, is it going to be happening in place or is it going to be happening in creating a copy?
+I understand.
+Yeah, so we want it in place for the collection.
+I understand what you're trying to do, so the exact details is not super, super important to me.
+Okay.
+Yeah, so anyways, this is removedoving from the collection.
+And when we set active book, again, we want to do this based on the ID.
+So I'm going to make self.active book equal to whatever that ID is.
+Let's see.
+So the user has a library of books they can add or remove from.
+We did that.
+Setting a book as active.
+Okay.
+And then remember.ing where user left off.
+So we've actually taken care of that already implicitly in our book class.
+And then the reading application only displays a page of text at a time.
+All right, so then here we can say define display page.
+And actually we don't even need the the ID of the book because we already have the active book ID, right?
+And so what I'm going to do is I'm going gonna get the active book like this.
+So...
+Yep.
+Blah, blah.
+And I'm gonna click or I'm gonna do dot display.
+Okay.
+And then of course we also have this turn page that I could just put up as well.
+Yep.
+So you get the idea, but...
+So we want to...
+Oops.
+Turn that page.
+I do think that some drawbacks here are that...
+Okay, so one thing that we could have done is instead of...
+this active book instead of saving the id we could have saved the book itself and i think from a pythonic standpoint that might make sense but then in the future if we're using some sort of database or something, an ID would make more sense because that's easier to store in like a table.
+And if, and okay, also for this display page, you might see that we've called this display page and turn page up here in the book.
+And the reason why I did that, rather than, rather than just call like self.book.content last page, like book.last page or something, was because I think that like for example this should be independent of how we implement the book right so we want to keep those as kind of block like separate blocks as possible and so here what this allows me to do is when I go back to my book like if I decide to scrap this implementation implement something else I know that I would just have to implement the methods display page and turn page for that to work and like these functions could work.
+This looks good to me.
+I like the start.
+I think that this definitely lays out the foundation of what I was looking for with the requirements of this application.
+So nice work with this.
+A couple of quick follow-up questions before we kind of branch into more of an algorithms type question as the follow-up here.
+One question is, let's say you have an older reader and their vision isn't as great, so they need to make the size of the file.
+the size of the font bigger.
+So kind of keeping that in mind that you might have this variable font size, how might you, I guess, refactor or change or modify your current structure?
+And you don't have to actually write code here.
+Let's just discuss this to account for that increase in size.
+Yeah.
+Yeah.
+So when we increase something in size, like I'm just thinking about intuitively on our phone screens or something, that tends to shift the content, right?
+So like some page that might hold 100 words or 100 characters at, you know, a small font size might only hold 50 if one doubled that font size.
+So for the book, instead of having this list, what I might do is I might just save the entire book as a string.
+And based, so I would, let me just edit this in here because I think it's easier to visualize what I'm saying but so I would might I might have like a font size equal to I guess we could just use like the traditional like 12 point font or like whatever but when we have this font size we could come up with some sort of characters per page calculation Right, and so that would be based off the font size.
+So calculate so this is going to be pseudocode now this calculate doesn't actually exist but calculate based on that font size and I'm commenting it out so it doesn't have any errors but then when we do calculate that then what we can do in order to get our in order to get this display page thing would be instead of indexing into this content which is now just a long string of characters what we can do here is we can return we would have to do some sort of calculation right so we would need to we have this characters per page and we can multiply that by whatever the last page is and So this would give us like kind of the starting index of this long string of characters to start.
+the content of that page.
+Start index would be this.
+And then what we would want to do is what we want to do is then return the self.content from that start index until the start index plus the number of characters on that page.
+So that would be our end index.
+So actually let me just write that out to make things a little bit more clear.
+So now essentially what I've done is we have this variable font size which we can calculate characters per page depending on that font size.
+So that might be more characters or less characters depending on how big the font size is.
+And then our content instead of a list of strings is now just a really long string of characters.
+And I guess some assumptions that I'm making here are that this This would just be approximate.
+So for example, if we had a backslash N, which is like a line break, right?
+That might just end up counting as a character or two characters.
+But the assumption is that that would be approximate per page, or maybe that we're using some sort of like monospaced font or something like that.
+But essentially...
+Now that we have the characters per page and then just a long string of characters that represents the content, we can index into that content depending on like based on the last page that we know.
+And so what's really cool here is that when we do turn the page, we can just end up calling this.
+So this is kind of that granularity that I was talking about.
+Yeah, that makes a lot of sense to me and definitely you see the advantage of having that function that you can change by having to implement something different.
+One last quick, I guess, follow up and then we'll move on to the algorithms portion of this interview.
+I'm just trying to think, at a high level, let's say that we wanted we had multiple users in this system and they all shared books.
+They might all share the Harry Potter books or something like that.
+Books are common among all of them.
+How might you modify this given that some of these qualities of a book might be shared between users because they're all trying to access that same book?
+Does that make sense?
+Yeah, so yeah, yeah, for sure.

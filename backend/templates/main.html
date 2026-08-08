@@ -631,6 +631,18 @@ body { font-size: inherit; }
   text-align: center;
 }
 .dz-mode-txt { line-height: 1.4; max-width: 100%; }
+.dz-multitrack {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 8px; flex-wrap: wrap;
+}
+.dz-mt-btn {
+  padding: 5px 11px; border-radius: var(--btn-radius);
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted-fg); font-size: 0.846rem; cursor: pointer;
+  font-family: var(--font-body, inherit);
+}
+.dz-mt-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-subtle, var(--border)); }
+.dz-mt-btn:disabled { opacity: 0.55; cursor: default; }
 .dz-hint-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
 .dz-hint-pop {
   display: none;
@@ -1534,6 +1546,11 @@ function renderDetail(p) {
     const segId = r.segment_id ? String(r.segment_id) : 'unassigned';
     const displayName = (r.original_name || 'Recording').replace(/\.[^.]+$/, '');
     const origName = r.original_name || 'Recording';
+    // Worth showing: it is what tells the user this recording gets its speakers
+    // from its tracks rather than from the guesswork the others go through.
+    const trackBadge = r.source_kind === 'multitrack'
+      ? `<span class="rec-sep" aria-hidden="true">·</span><span class="rec-meta" title="Speakers come from the separate tracks">${r.track_count} tracks</span>`
+      : '';
     return `<div class="recording-row${canOpen ? ' clickable' : ''}" data-rec-id="${r.id}" data-segment-id="${segId}" data-project-id="${p.id}" ${canOpen ? `onclick="if(!this.dataset.editing) window.location.href='${recUrl}'"` : ''}>
       ${recStatusHTML(r.transcription_status, r.error_message || '', p.id, r.id)}
       <span class="rec-progress" data-rec-progress="${r.id}">${esc(initialProgressText(r))}</span>
@@ -1544,7 +1561,7 @@ function renderDetail(p) {
         <span class="rec-name" data-original-name="${esc(origName)}">${esc(displayName)}</span>
         <button class="rec-edit" onclick="event.stopPropagation();beginRenameRecording(this)" title="Rename recording">${SVG_PENCIL}</button>
       </div>
-      <span class="rec-duration">${fmtDuration(r.duration_seconds)}</span>
+      <span class="rec-duration">${fmtDuration(r.duration_seconds)}</span>${trackBadge}
       <span class="rec-sep">·</span>
       <span class="rec-meta">${timeAgo(r.created_at)}</span>
       <button class="rec-del" onclick="event.stopPropagation();deleteRecording(${p.id},${r.id})" title="Delete recording">${SVG_DELETE}</button>
@@ -1663,6 +1680,13 @@ function renderDetail(p) {
                 <button type="button" class="hint-tip dz-hint-btn" id="dzHintBtn-${p.id}" aria-expanded="false" aria-controls="dzHintPop-${p.id}" aria-label="About how recordings are stored">?</button>
                 <div class="dz-hint-pop" id="dzHintPop-${p.id}" role="tooltip" hidden>${dzHintInner}</div>
               </span>
+            </div>
+            <!-- Material where the speakers are already on separate tracks. Both
+                 pickers are native because we need a real path on disk: the
+                 tracks are read where they lie rather than copied in. -->
+            <div class="dz-multitrack">
+              <button type="button" class="dz-mt-btn" id="dzZoomBtn-${p.id}" onclick="openZoomFolderPick(${p.id})">Add Zoom folder</button>
+              <button type="button" class="dz-mt-btn" id="dzChanBtn-${p.id}" onclick="openChannelTrackPick(${p.id})">Add file with a channel per speaker</button>
             </div>
             <input type="file" id="fileInput-${p.id}" style="display:none" accept=".mp3,.mp4,.m4a,.wav,.mkv,.webm,.ogg,.flac" multiple />
           </div>
@@ -1987,6 +2011,117 @@ async function linkPaths(pid, paths, numSpeakers) {
     if (dz) dz.classList.remove('uploading');
     setTitle(projectDzIdleTitle());
   }
+}
+
+// ── Recordings where each speaker has their own track ──
+//
+// These skip the speaker-count prompt on purpose: the tracks *are* the
+// speakers, so there is nothing to estimate. They are always registered by
+// path — the material stays where it is, and for a Zoom meeting that folder can
+// be several gigabytes.
+
+async function _addMultitrack(pid, body, btnId) {
+  const btn = document.getElementById(btnId);
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  try {
+    const res = await fetch(API + '/' + pid + '/recordings/multitrack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not add the recording');
+    await selectProject(pid);
+    return data;
+  } catch (e) {
+    toast(e.message, true);
+    return null;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+async function _inspectMultitrack(body) {
+  const res = await fetch('/api/utils/inspect-multitrack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not read that selection');
+  return data;
+}
+
+function _trackSummary(tracks) {
+  const named = tracks.map((t, i) => t.speaker_name || ('Track ' + (i + 1)));
+  return named.join(', ');
+}
+
+async function openZoomFolderPick(pid) {
+  const btnId = 'dzZoomBtn-' + pid;
+  const btn = document.getElementById(btnId);
+  let folder = null;
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/utils/pick-folder', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not open the folder picker');
+    folder = data.path;
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  if (!folder) return;
+
+  let found;
+  try {
+    found = await _inspectMultitrack({ folder });
+  } catch (e) {
+    toast(e.message, true);
+    return;
+  }
+  if (!found.kind) {
+    toast(found.error || 'No per-participant tracks in that folder. In Zoom, turn on “Record a separate audio file for each participant” before the meeting.', true);
+    return;
+  }
+
+  const added = await _addMultitrack(pid, { folder }, btnId);
+  if (added) toast('Added ' + found.tracks.length + ' tracks: ' + _trackSummary(found.tracks));
+}
+
+async function openChannelTrackPick(pid) {
+  const btnId = 'dzChanBtn-' + pid;
+  const btn = document.getElementById(btnId);
+  let path = null;
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/utils/pick-file', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not open the file picker');
+    path = data.path;
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  if (!path) return;
+
+  let found;
+  try {
+    found = await _inspectMultitrack({ path });
+  } catch (e) {
+    toast(e.message, true);
+    return;
+  }
+  if (!found.kind) {
+    toast(found.error || 'That file has only one audio channel, so there are no separate speakers to read. Add it the usual way instead.', true);
+    return;
+  }
+
+  const added = await _addMultitrack(pid, { path }, btnId);
+  if (added) toast('Added ' + found.tracks.length + ' channels as separate speakers');
 }
 
 // ── Mandatory speaker-count prompt (shown before every add) ──

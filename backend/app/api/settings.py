@@ -1015,6 +1015,10 @@ def reset_all_data():
     # Delete all DB records: clear segment refs, then segments, recordings, then projects
     Recording.query.update({Recording.segment_id: None})
     Segment.query.delete()
+    # Bulk deletes skip the ORM cascade, so the per-speaker tracks have to go
+    # explicitly or they outlive the recordings they belong to.
+    from ..models.recording_track import RecordingTrack
+    RecordingTrack.query.delete()
     Recording.query.delete()
     Project.query.delete()
     db.session.commit()

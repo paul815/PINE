@@ -5,6 +5,9 @@ key; worker → parent messages carry an ``ev`` key.
 
 Parent → worker:
     {"op": "job", "env": {...JobEnv...}, "job": {...JobRequest...}}
+        JobRequest carries an optional "tracks" list for multi-track recordings:
+        [{"index": int, "path": str, "speaker_name": str, "channel": int?}]
+        Absent or empty means the single-file path with diarization.
     {"op": "language", "recording_id": N, "code": "ru"}
     {"op": "cancel", "recording_id": N}
     {"op": "ping"}

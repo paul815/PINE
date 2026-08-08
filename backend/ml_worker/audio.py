@@ -31,6 +31,40 @@ def load_audio_range(audio_path, offset, duration):
     return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
 
 
+def load_audio_file(audio_path, channel=None):
+    """Load a whole file as 16 kHz float32 mono numpy array.
+
+    ``channel`` selects one channel instead of downmixing all of them, which is
+    what makes a channel-per-speaker recording usable: the default ``-ac 1``
+    averages the speakers together, which is precisely what must not happen
+    here.
+    """
+    import numpy as np
+    cmd = ['ffmpeg', '-nostdin', '-threads', '0', '-i', audio_path]
+    if channel is None:
+        cmd += ['-ac', '1']
+    else:
+        cmd += ['-filter_complex', f'[0:a]pan=mono|c0=c{int(channel)}[a]',
+                '-map', '[a]']
+    cmd += ['-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-']
+    out = subprocess.run(cmd, capture_output=True, check=True).stdout
+    return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0
+
+
+def count_channels(audio_path):
+    """Channels in the file's default audio stream; 0 when it has no audio."""
+    try:
+        out = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'a:0',
+             '-show_entries', 'stream=channels',
+             '-of', 'default=noprint_wrappers=1:nokey=1', audio_path],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        return int(out.splitlines()[0])
+    except Exception:
+        return 0
+
+
 def write_wav(path, audio_f32, sample_rate=16000):
     """Write float32 mono audio array to a 16-bit PCM WAV file."""
     import numpy as np

@@ -76,6 +76,38 @@ projects/<folder_name>/
 - **Progress:** SocketIO emits `transcription_progress` events
 - **Chunking:** Files >30 min use 30-min chunks with 30s overlap
 - **Recovery:** `requeue_interrupted()` on startup for stuck `transcribing` recordings
+- **ETA:** `ml_worker/progress.py` folds every stage into one 0–100 scale. The
+  shipped cost model in `constants.py` is only the first guess — each finished
+  job reports how far off it was, and the figure is stored per model and mode
+  under `progress_scale:<model>:<single|multi>` in Settings for the next job to
+  start from (`_learn_progress_scale` in `services/transcription/job_runner.py`)
+
+### Per-speaker tracks (multi-track recordings)
+
+A recording whose speakers each have their own track skips diarization entirely
+— pyannote is not even loaded. Two sources qualify: a Zoom meeting folder with
+an `Audio Record` subfolder (one file per participant), and a single file whose
+channels are the speakers. Both are recognised by
+`services/multitrack_ingest.py` and stored as `RecordingTrack` rows against a
+recording with `source_kind = 'multitrack'`.
+
+- **Nothing is mixed.** Each track is transcribed on its own; only the resulting
+  segments are merged, so simultaneous speech survives instead of being
+  arbitrated. A mixdown is built only when the folder has nothing playable, and
+  it is used for the player alone.
+- **Silence is cut first.** `ml_worker/tracks.py` finds the speech, splices it
+  into a short file, and maps the returned timestamps back to the original
+  timeline. Without this, N tracks would cost N full passes and Whisper would
+  invent text over the long silences on a listener's track. VAD thresholds are
+  tuned for interview back-channel ("угу", "да") — see the constants in
+  `ml_worker/constants.py`.
+- **Names come from the files.** Zoom puts the participant in the filename;
+  `speaker_name_from_filename()` recovers it, so the transcript shows real names
+  instead of "Participant 1". Renaming afterwards works as it always did.
+- **Never copied.** Multi-track material is registered by absolute path — a Zoom
+  meeting folder can be several gigabytes.
+
+The single-file path is untouched: no tracks means the pyannote flow, unchanged.
 
 ### Model Management
 

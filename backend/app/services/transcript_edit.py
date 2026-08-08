@@ -14,6 +14,8 @@ comments stay anchored to the same words.
 
 import re
 
+from .speaker_blocks import block_offsets
+
 
 def _build_mapper(edits):
     """Return f(old_offset, is_end) -> new_offset for one segment's edits.
@@ -41,24 +43,10 @@ def _build_mapper(edits):
 def _block_offsets(segments):
     """Char offset of each segment within its merged speaker-turn block.
 
-    Mirrors the client's merge (consecutive same-speaker segments joined with a
-    single space) so cached ``merged_*`` offsets can be rebuilt consistently.
+    Mirrors the client's merge so cached ``merged_*`` offsets can be rebuilt
+    consistently. See ``services.speaker_blocks``.
     """
-    offsets = {}
-    prev_speaker = None
-    running = 0
-    first = True
-    for i, seg in enumerate(segments):
-        speaker = (seg.get('speaker') or '').strip()
-        if not first and speaker == prev_speaker:
-            offsets[i] = running
-        else:
-            running = 0
-            offsets[i] = 0
-        running += len((seg.get('text') or '').strip()) + 1
-        prev_speaker = speaker
-        first = False
-    return offsets
+    return block_offsets(segments)
 
 
 def _compile(find, match_case, whole_word):

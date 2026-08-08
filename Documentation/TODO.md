@@ -110,6 +110,27 @@ Python code is cross-platform (`os.path.join`, `sys.platform` checks). Gap is se
 - [ ] Tags view: filter by tag, jump to recording
 - [ ] Multiple projects: 5+ projects, list/search works
 
+### Before release — dev-only test shortcuts
+
+These exist purely to make the local test loop fast. **They must be off for
+release verification**, because each one skips something a real user goes
+through. This file survives a reset, so the reminder survives with it.
+
+| Shortcut | What it skips |
+|---|---|
+| `backend/reset_win.bat --keep-venv` / `backend/reset.command --keep-venv` | Preserves `.venv`, so onboarding reuses the installed ML stack instead of pip-installing torch/whisperx/pyannote. Also skips the installer's first-time setup block entirely (it only runs when `.venv` is missing) — including the move of dev files into `Documentation/dev-config` and `finalize_install_layout`. |
+| `backend/tools/dev_reset.bat` / `dev_reset.command` | Clears only `data/` and `projects/`. Never touches the venv, models or the installed file layout, so nothing about install/reset behaviour is exercised. |
+
+- [ ] Run a full `reset` with **no flags**, then a fresh install from a clean
+      checkout — on both platforms. This is the only path that exercises venv
+      creation, the ML install during onboarding, and the file layout move.
+- [ ] Verify the post-reset tree matches the preserve lists: nothing extra
+      deleted (a bug here already ate `README.md` and `.github` once), nothing
+      stale left behind.
+- [ ] Decide whether `dev_reset.*` ships. If it does, it stays in
+      `backend/tools/` (preserved by reset); if not, delete both files and drop
+      the `--keep-venv` blocks from the two reset scripts.
+
 ---
 
 ## 3. What's missing for a great app

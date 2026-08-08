@@ -1021,6 +1021,101 @@ function fmtTimeLong(secs) {
 
 const _SPK_CLASSES = ['p1', 'p2', 'p3', 'p4', 'mod'];
 let _speakerClassMap = {};
+
+// Sentence enders, plus any closing quote or bracket riding along after them.
+const SENTENCE_END_RE = /[.!?…:;]["'»”’)\]]*$/;
+
+function endsSentence(text) {
+  const t = (text || '').trim();
+  return !t || SENTENCE_END_RE.test(t);
+}
+
+/**
+ * Fold segments into the speaker turns the transcript is read as.
+ *
+ * Two people talking take the floor from each other mid-sentence, and per-track
+ * transcription surfaces every bit of that: a "хорошо" dropped into a question
+ * arrives as its own segment, timestamped inside the question it interrupted.
+ * Breaking on every speaker change would cut that question in half, which is
+ * what the reader notices first and what nobody says happened.
+ *
+ * So a speaker cut off *mid-sentence* keeps the floor: the interjection becomes
+ * its own block, and when the interrupted speaker resumes, the words go back
+ * into the block they started in. A speaker interrupted after finishing a
+ * sentence has no claim on the floor — the next thing they say opens a block.
+ *
+ * Mirrored server-side in services/speaker_blocks.py; a boundary that differs
+ * between the two is an annotation landing on the wrong words.
+ */
+function mergeSpeakerBlocks(segments) {
+  const blocks = [];
+  // The block that last took words, which is not always the last one in reading
+  // order: an interrupted turn resumes above the interruption.
+  let cur = -1;
+  // The block whose speaker was cut off mid-sentence and can still resume.
+  let hold = -1;
+
+  const appendTo = (idx, seg, i) => {
+    const block = blocks[idx];
+    block.text = (block.text + ' ' + (seg.text || '').trim()).trim();
+    block.end = Math.max(block.end || 0, seg.end || 0);
+    block.indices.push(i);
+  };
+
+  for (let i = 0; i < (segments || []).length; i++) {
+    const seg = segments[i];
+    const spk = (seg.speaker || '').trim();
+    const current = cur >= 0 ? blocks[cur] : null;
+
+    // The same speaker carrying on. A block that has been overtaken in reading
+    // order takes only the rest of its unfinished sentence: append a *new*
+    // sentence to it and the reader gets words dated later than the block below
+    // them.
+    if (current && (current.speaker || '').trim() === spk
+        && (cur === blocks.length - 1 || !endsSentence(current.text))) {
+      appendTo(cur, seg, i);
+      continue;
+    }
+
+    // The interrupted speaker resuming, into the block they opened.
+    if (hold >= 0 && (blocks[hold].speaker || '').trim() === spk
+        && !endsSentence(blocks[hold].text)) {
+      // Whoever just held the floor may themselves have been cut off.
+      const resumed = hold;
+      hold = endsSentence(current.text) ? -1 : cur;
+      cur = resumed;
+      appendTo(cur, seg, i);
+      continue;
+    }
+
+    // Opening a block hands the floor to whoever just got cut off, if they were
+    // cut off. Anyone else's claim expires here.
+    hold = (current && !endsSentence(current.text)) ? cur : -1;
+    blocks.push({
+      speaker: spk,
+      start: seg.start,
+      end: seg.end,
+      text: (seg.text || '').trim(),
+      indices: [i],
+    });
+    cur = blocks.length - 1;
+  }
+
+  return blocks;
+}
+
+function seedSpeakerColors(speakers) {
+  // `speakers` maps the pipeline's raw ids to display labels, in speaker order.
+  // Names that came off a Zoom filename match none of the rules in
+  // speakerClass(), so without this they would be coloured by whoever the
+  // transcript happened to reach first.
+  Object.values(speakers || {}).forEach((label, i) => {
+    if (label && !_speakerClassMap[label]) {
+      _speakerClassMap[label] = _SPK_CLASSES[i % _SPK_CLASSES.length];
+    }
+  });
+}
+
 function speakerClass(speaker) {
   if (!speaker) return 'p1';
   const s = (speaker + '').toLowerCase();
@@ -1124,6 +1219,17 @@ function render() {
   const ann = data.annotations || {};
   const tags = data.tags || [];
 
+  // Speaker colours are settled once, here, on load. renderTranscript used to
+  // clear the map on every call, which meant each of its dozen callers — a tag
+  // edit, a rename, a comment — silently threw the colours away and rebuilt
+  // them from whatever order the segments happened to be in.
+  _speakerClassMap = {};
+  // Seed from the transcript's own speaker order. For a multi-track recording
+  // that order is the track order, which is stable; leaving it to first
+  // appearance would colour the same interview differently depending on who
+  // happened to speak first.
+  seedSpeakerColors(tx.speakers);
+
   // Apply stored speaker label renames
   const speakerLabels = ann.speaker_labels || {};
   if (Object.keys(speakerLabels).length) {
@@ -1223,29 +1329,10 @@ function buildProjectDetailsRows(proj) {
 function renderTranscript(segments, tagSpans, comments) {
   selectionHighlightMarks = [];
   clearPendingSelectionCssHighlight();
-  _speakerClassMap = {};
   const panel = document.getElementById('txPanel');
   const tagMap = {}; (data.tags || []).forEach(t => tagMap[t.id] = t);
 
-  // Merge consecutive segments from the same speaker into one block per speaker turn
-  const merged = [];
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const prev = merged[merged.length - 1];
-    if (prev && (prev.speaker || '').trim() === (seg.speaker || '').trim()) {
-      prev.text = (prev.text || '').trim() + ' ' + (seg.text || '').trim();
-      prev.end = seg.end;
-      prev.indices.push(i);
-    } else {
-      merged.push({
-        start: seg.start,
-        end: seg.end,
-        text: seg.text || '',
-        speaker: seg.speaker || '',
-        indices: [i],
-      });
-    }
-  }
+  const merged = mergeSpeakerBlocks(segments);
 
   panel.innerHTML = merged.map((m, i) => {
     const cls = speakerClass(m.speaker);
@@ -1774,22 +1861,7 @@ function commitTagSearch() {
 
 /** Merged speaker turns (same rules as renderTranscript) for transcript-only anchor text. */
 function mergedSpeakerBlocksForAnchor(segments) {
-  const merged = [];
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const prev = merged[merged.length - 1];
-    if (prev && (prev.speaker || '').trim() === (seg.speaker || '').trim()) {
-      prev.text = ((prev.text || '').trim() + ' ' + (seg.text || '').trim()).trim();
-      prev.indices.push(i);
-    } else {
-      merged.push({
-        speaker: seg.speaker || '',
-        indices: [i],
-        text: (seg.text || '').trim(),
-      });
-    }
-  }
-  return merged;
+  return mergeSpeakerBlocks(segments);
 }
 
 /**

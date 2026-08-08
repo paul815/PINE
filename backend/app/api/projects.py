@@ -24,6 +24,7 @@ from ..services.annotations import (
     annotation_recording_ref,
 )
 from ..services.file_utils import atomic_write_text
+from ..services.speaker_blocks import merge_speaker_blocks
 
 projects_bp = Blueprint('projects', __name__)
 
@@ -196,6 +197,12 @@ def _mp4_faststart(filepath):
                 os.remove(tmp)
             except OSError:
                 pass
+
+
+def _ext_of(filepath):
+    """Lowercase extension without the dot, or '' when there is none."""
+    name = os.path.basename(filepath or '')
+    return name.rsplit('.', 1)[-1].lower() if '.' in name else ''
 
 
 def _probe_duration(filepath):
@@ -721,6 +728,100 @@ def link_recording(project_id):
     return jsonify(recording.to_dict()), 201
 
 
+# ── Register a multi-track recording (Zoom folder, or channels of one file) ──
+
+@projects_bp.route('/<int:project_id>/recordings/multitrack', methods=['POST'])
+def create_multitrack_recording(project_id):
+    """Add a recording whose speakers already have their own tracks.
+
+    Nothing is copied: like the link flow, the material stays where it is and
+    PINE stores absolute paths. The recording itself points at whatever should
+    play — the Zoom video, the mixed audio Zoom also writes, or a mixdown built
+    here when the folder holds neither.
+
+    Body: { folder: str }  — a Zoom meeting folder, or
+          { path: str }    — one file whose channels are the speakers.
+    """
+    from ..models.recording_track import RecordingTrack
+    from ..services.multitrack_ingest import (
+        build_mixdown,
+        describe_multichannel,
+        detect_zoom_folder,
+        meeting_name_from_folder,
+    )
+
+    project = db.session.get(Project, project_id)
+    if not project:
+        return jsonify({'error': 'Project not found'}), 404
+
+    data = request.get_json(force=True, silent=True) or {}
+    folder = (data.get('folder') or '').strip()
+    path = (data.get('path') or '').strip()
+
+    project_dir = os.path.join(_projects_root(), project.folder_name)
+    os.makedirs(project_dir, exist_ok=True)
+
+    if folder:
+        found = detect_zoom_folder(folder)
+        if not found:
+            return jsonify({'error': 'No per-participant tracks in this folder'}), 400
+        original_name = meeting_name_from_folder(folder)
+        media = found['media']
+        if not media:
+            media = build_mixdown(
+                [t['path'] for t in found['tracks']],
+                os.path.join(project_dir, f'{secure_filename(original_name)}_mixdown.m4a'))
+            if not media:
+                return jsonify({'error': 'Could not build a playable mixdown'}), 500
+    elif path:
+        found = describe_multichannel(path)
+        if not found:
+            return jsonify({'error': 'This file has only one audio channel'}), 400
+        original_name = os.path.basename(path)
+        media = found['media']
+    else:
+        return jsonify({'error': 'folder or path is required'}), 400
+
+    ext = _ext_of(media)
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({'error': f'Unsupported format: .{ext}'}), 400
+
+    recording = Recording(
+        project_id=project.id,
+        original_name=original_name,
+        stored_name=media,              # absolute path, as for linked recordings
+        file_format=ext,
+        file_size_bytes=os.path.getsize(media) if os.path.isfile(media) else 0,
+        duration_seconds=_probe_duration(media),
+        transcription_status='pending',
+        is_linked=True,
+        source_kind='multitrack',
+        # The tracks are the speakers — there is nothing left to estimate.
+        num_speakers=len(found['tracks']),
+    )
+    db.session.add(recording)
+    db.session.flush()
+
+    for i, track in enumerate(found['tracks']):
+        db.session.add(RecordingTrack(
+            recording_id=recording.id,
+            track_index=i,
+            source_path=track['path'],
+            speaker_name=track.get('speaker_name') or '',
+            channel_index=track.get('channel'),
+            duration_seconds=_probe_duration(track['path']),
+        ))
+
+    _touch_project(project)
+    db.session.commit()
+
+    from ..services.transcription import enqueue
+    enqueue(recording.id)
+
+    _write_project_readme(project)
+    return jsonify(recording.to_dict()), 201
+
+
 # ── Get single recording (for recording page) ──
 
 @projects_bp.route('/<int:project_id>/recordings/<int:recording_id>', methods=['GET'])
@@ -887,7 +988,7 @@ def recording_annotations(project_id, recording_id):
 
     data = request.get_json(force=True)
     updates = {}
-    for key in ('tag_spans', 'comments', 'speaker_labels'):
+    for key in ('tag_spans', 'comments', 'speaker_labels', 'speaker_colors'):
         if key in data:
             updates[key] = data[key]
     ann = update_annotations(project_dir, ann_ref, updates)
@@ -1060,21 +1161,9 @@ def _cached_json(path):
 
 
 def _merged_speaker_blocks(segments):
-    """Merge consecutive same-speaker segments into blocks (built once per
-    recording so anchor reconstruction is not quadratic in spans×segments)."""
-    blocks = []
-    for i, seg in enumerate(segments):
-        spk = (seg.get('speaker') or '').strip()
-        if blocks and (blocks[-1]['speaker'] or '').strip() == spk:
-            blocks[-1]['text'] = (blocks[-1]['text'] + ' ' + (seg.get('text') or '').strip()).strip()
-            blocks[-1]['indices'].append(i)
-        else:
-            blocks.append({
-                'speaker': seg.get('speaker', ''),
-                'indices': [i],
-                'text': (seg.get('text') or '').strip(),
-            })
-    return blocks
+    """Speaker turns for anchor reconstruction (built once per recording so it
+    is not quadratic in spans×segments). See ``services.speaker_blocks``."""
+    return merge_speaker_blocks(segments)
 
 
 def _anchor_text_from_span(span, segments, blocks=None):

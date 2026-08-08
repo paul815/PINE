@@ -800,7 +800,7 @@ class TestTagQuotes:
                 'segments': [
                     {'start': 0, 'end': 1, 'text': 'AAA', 'speaker': 'Mod'},
                     {'start': 1, 'end': 2, 'text': 'BBB', 'speaker': 'P1'},
-                    {'start': 2, 'end': 3, 'text': 'CCC', 'speaker': 'Mod'},
+                    {'start': 2, 'end': 3, 'text': 'CCC', 'speaker': 'P2'},
                 ],
                 'duration_seconds': 3,
             },

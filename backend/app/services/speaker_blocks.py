@@ -1,0 +1,105 @@
+"""Folding the segment list into the speaker turns the transcript is read as.
+
+A turn is not "everything one speaker said in a row". Two people talking take
+the floor from each other mid-sentence, and per-track transcription surfaces
+every bit of that: a "хорошо" dropped into a question arrives as its own
+segment, timestamped inside the question it interrupted.
+
+Merging on speaker changes alone would then cut the question in half — the half
+before the interjection and the half after — which is what the reader notices
+first and what nobody says happened. So a speaker who was cut off *mid-sentence*
+keeps the floor: the interjection becomes its own block, and when the
+interrupted speaker resumes, the words go back into the block they started in.
+A speaker who was interrupted after finishing a sentence has no claim on the
+floor, and the next thing they say opens a new block.
+
+This module is the single definition of that rule. ``recording.html`` mirrors it
+in JS for rendering; every server-side consumer — anchor reconstruction,
+find/replace offsets, exports — imports from here, because a block boundary that
+differs between the two is an annotation landing on the wrong words.
+"""
+
+import re
+
+# Sentence enders, plus any closing quote or bracket riding along after them.
+_SENTENCE_END = re.compile(r'[.!?…:;]["\'»”’)\]]*$')
+
+
+def ends_sentence(text):
+    """True if ``text`` closes a sentence — an empty block counts as closed."""
+    stripped = (text or '').strip()
+    return not stripped or bool(_SENTENCE_END.search(stripped))
+
+
+def merge_speaker_blocks(segments):
+    """Fold ``segments`` into speaker turns.
+
+    Returns ``[{speaker, start, end, text, indices}]`` in the order the blocks
+    are read, where ``indices`` are the positions in ``segments`` that landed in
+    the block — not necessarily contiguous, since an interrupted turn resumes in
+    the block it opened.
+    """
+    blocks = []
+    # The block that last took words, which is not always the last one in
+    # reading order: an interrupted turn resumes above the interruption.
+    cur = -1
+    # The block whose speaker was cut off mid-sentence and can still resume.
+    hold = -1
+
+    def append_to(idx, i, seg, txt):
+        block = blocks[idx]
+        block['text'] = (block['text'] + ' ' + txt).strip()
+        block['end'] = max(block.get('end') or 0, seg.get('end') or 0)
+        block['indices'].append(i)
+
+    for i, seg in enumerate(segments or []):
+        spk = (seg.get('speaker') or '').strip()
+        txt = (seg.get('text') or '').strip()
+        current = blocks[cur] if cur >= 0 else None
+
+        # The same speaker carrying on. A block that has been overtaken in
+        # reading order takes only the rest of its unfinished sentence: append
+        # a *new* sentence to it and the reader gets words dated later than the
+        # block below them.
+        if (current is not None and (current['speaker'] or '').strip() == spk
+                and (cur == len(blocks) - 1 or not ends_sentence(current['text']))):
+            append_to(cur, i, seg, txt)
+            continue
+
+        # The interrupted speaker resuming, into the block they opened.
+        if (hold >= 0 and (blocks[hold]['speaker'] or '').strip() == spk
+                and not ends_sentence(blocks[hold]['text'])):
+            # Whoever just held the floor may themselves have been cut off.
+            hold, cur = (cur if not ends_sentence(current['text']) else -1), hold
+            append_to(cur, i, seg, txt)
+            continue
+
+        # Opening a block hands the floor to whoever just got cut off, if they
+        # were cut off. Anyone else's claim expires here.
+        hold = (cur if current is not None
+                and not ends_sentence(current['text']) else -1)
+        blocks.append({
+            'speaker': spk,
+            'start': seg.get('start', 0),
+            'end': seg.get('end', 0),
+            'text': txt,
+            'indices': [i],
+        })
+        cur = len(blocks) - 1
+
+    return blocks
+
+
+def block_offsets(segments):
+    """Char offset of each segment within its merged block's text.
+
+    Keyed by index into ``segments``; mirrors the single space
+    ``merge_speaker_blocks`` joins with.
+    """
+    offsets = {}
+    for block in merge_speaker_blocks(segments):
+        running = 0
+        for i in block['indices']:
+            offsets[i] = running
+            running += len((segments[i].get('text') or '').strip()) + 1
+    return offsets

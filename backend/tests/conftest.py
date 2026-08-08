@@ -5,6 +5,7 @@ import sys
 import tempfile
 import shutil
 import stat
+import threading
 
 import pytest
 
@@ -15,6 +16,86 @@ if _backend_dir not in sys.path:
 
 # Use a testing config that avoids touching real data
 os.environ.setdefault('PINE_TESTING', '1')
+
+
+# --- Process-exit guard ------------------------------------------------------
+#
+# Four routes deliberately terminate the backend from a *daemon thread* after a
+# short sleep:
+#
+#   POST /api/settings/reset        0.8s -> graceful_exit(0)  -> os._exit(0)
+#   POST /api/utils/restart         0.3s -> os.execv(...)     (replaces the image)
+#   POST /api/internal/quit-backend 0.3s -> graceful_exit(0)
+#   the lease-shutdown route        0.5s -> graceful_exit(0)
+#
+# In production that is correct: these run on daemon threads, where sys.exit()
+# only raises SystemExit inside the thread and would not stop the process.
+# Under pytest it is a disaster — the thread kills the *test runner* with status
+# 0, so the run reports success with no summary line and no --junitxml file
+# while most of the suite never executes.
+#
+# We neutralise the exit primitives instead of touching production shutdown
+# behaviour.  Two properties matter:
+#
+#   * The threads fire on a delay, so a call armed by one test lands during a
+#     later test, during teardown, or during session finish.  The guard must
+#     therefore be installed once and *never* lifted — a function-scoped
+#     monkeypatch would reopen the window every time it unwound.
+#   * Every graceful_exit() call site imports it lazily (`from ..shutdown
+#     import graceful_exit` inside the function body), so patching the module
+#     attribute reaches all of them; no stale direct references exist.
+#
+# Recorded calls are exposed through the `process_exit_calls` fixture so a test
+# can assert that a route asked to exit.
+_process_exit_calls = []
+
+
+def _record_process_exit(name):
+    """Return a stand-in that records the exit request instead of performing it."""
+
+    def _recorder(*args, **kwargs):
+        # The calling thread is recorded because these threads outlive the test
+        # that armed them: a reset thread from one test lands during a later
+        # one.  Assertions filter on the ident so they cannot be tripped by
+        # another test's in-flight shutdown.
+        _process_exit_calls.append((name, args, threading.get_ident()))
+        return None
+
+    # Marker so a test can assert the guard is installed without depending on
+    # how pytest happened to name this module on import.
+    _recorder._pine_exit_guard = True
+    return _recorder
+
+
+# Installed at import time, before any test can arm a thread, and never undone.
+os._exit = _record_process_exit('os._exit')
+os.execv = _record_process_exit('os.execv')
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _guard_graceful_exit():
+    """Stop app.shutdown.graceful_exit from running its teardown during tests.
+
+    os._exit is already stubbed above, which is what actually keeps the process
+    alive.  Patching graceful_exit as well keeps its SQLite WAL checkpoint and
+    engine dispose from running against a live test database.  Imported here
+    rather than at module scope so importing the app stays inside the fixture
+    lifecycle.  Deliberately not restored: see the note above.
+    """
+    from app import shutdown as app_shutdown
+
+    app_shutdown.graceful_exit = _record_process_exit('graceful_exit')
+    yield
+
+
+@pytest.fixture
+def process_exit_calls():
+    """Exit requests recorded so far, as (name, args, thread_ident) triples.
+
+    Entries can arrive from threads armed by earlier tests, so filter on
+    thread_ident rather than asserting against the whole list.
+    """
+    return _process_exit_calls
 
 
 class TestingConfig:
