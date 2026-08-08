@@ -24,6 +24,22 @@ backend/data/
 backend/logs/
 pine_safety_backups/
 
+# Installer residue. The installers ship at the repo root, where
+# _promote_platform_launcher expects them; _sync_platform_launcher_layout copies
+# them into backend/ and tidies the dev-only config files into
+# Documentation/dev-config/ after onboarding. Those copies are runtime state, and
+# committing them once already deleted LICENSE and both installers from the repo.
+/backend/WIN_Install.bat
+/backend/MAC_Install.command
+/backend/Launch Pine.bat
+/Documentation/dev-config/.editorconfig
+/Documentation/dev-config/.gitattributes
+/Documentation/dev-config/.gitignore
+/Documentation/dev-config/.pre-commit-config.yaml
+/Documentation/dev-config/.python-version
+/Documentation/dev-config/AGENTS.md
+/Documentation/dev-config/LICENSE
+
 # Test cache
 .pytest_cache/
 backend/.pytest_cache/
