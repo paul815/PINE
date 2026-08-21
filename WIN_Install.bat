@@ -137,9 +137,13 @@ if "%NEED_SETUP%"=="1" (
         exit /b 1
     )
 
-    REM Move dev/GitHub files out of root for end-users
+    REM Move dev/GitHub files out of root for end-users. .gitattributes is NOT in
+    REM this list on purpose: it carries "*.bat text eol=crlf", and cmd.exe cannot
+    REM find labels in an LF batch file -- this very launcher dies at
+    REM "call :open_browser" and the window closes with no browser. Move it away and
+    REM the next git checkout rewrites the installers as LF.
     if not exist "%PINE_ROOT_DIR%documentation\dev-config\" mkdir "%PINE_ROOT_DIR%documentation\dev-config\"
-    for %%F in (AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version) do (
+    for %%F in (AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml .python-version) do (
         if exist "%PINE_ROOT_DIR%%%F" move "%PINE_ROOT_DIR%%%F" "%PINE_ROOT_DIR%documentation\dev-config\%%F" >nul 2>&1
     )
 
@@ -393,7 +397,8 @@ REM Docs -> documentation\ . The root CLAUDE.md is the context-mode routing copy
 REM documentation\ already ships its own, so park it under a distinct name.
 call :relocate_root_file "DESIGN.md" "%DOC_DIR%\DESIGN.md"
 call :relocate_root_file "CLAUDE.md" "%DOC_DIR%\CLAUDE.context-mode.md"
-call :relocate_root_file ".gitattributes" "%DEVCFG_DIR%\.gitattributes"
+REM .gitattributes deliberately stays in the root -- see the note above the
+REM dev-config move list. Losing it makes every .bat check out as LF.
 call :relocate_root_file ".gitignore" "%DEVCFG_DIR%\.gitignore"
 
 REM Seed the canonical installer copies in backend\ BEFORE dropping the root ones.

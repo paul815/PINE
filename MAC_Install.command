@@ -56,7 +56,8 @@ finalize_install_layout() {
   # documentation/ already ships its own, so park it under a distinct name.
   relocate_root_file "DESIGN.md" "$doc_dir/DESIGN.md"
   relocate_root_file "CLAUDE.md" "$doc_dir/CLAUDE.context-mode.md"
-  relocate_root_file ".gitattributes" "$devcfg_dir/.gitattributes"
+  # .gitattributes deliberately stays in the root -- see the note above the
+  # dev-config move list. Losing it makes every .bat check out as LF.
   relocate_root_file ".gitignore" "$devcfg_dir/.gitignore"
 
   # Seed the canonical installer copies in backend/ BEFORE dropping the root ones.
@@ -109,9 +110,12 @@ ensure_venv() {
     exit 1
   fi
 
-  # Move dev/GitHub files out of root for end-users
+  # Move dev/GitHub files out of root for end-users. .gitattributes is NOT in this
+  # list on purpose: it carries "*.bat text eol=crlf", and cmd.exe cannot find
+  # labels in an LF batch file -- WIN_Install.bat then dies at "call :open_browser"
+  # and the window closes with no browser.
   mkdir -p "$ROOT_DIR/documentation/dev-config"
-  for f in AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version; do
+  for f in AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml .python-version; do
     [[ -f "$ROOT_DIR/$f" ]] && mv "$ROOT_DIR/$f" "$ROOT_DIR/documentation/dev-config/$f" 2>/dev/null || true
   done
 
