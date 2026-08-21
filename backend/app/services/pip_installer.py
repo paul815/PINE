@@ -9,10 +9,11 @@ Two things make this more than `pip install`:
 * **The right torch.** On Windows/Linux `torchruntime` picks a CUDA or CPU
   wheel index for the detected GPU; on Apple Silicon the plain wheel is right.
 * **Keeping the companions aligned.** torchaudio and torchvision must come from
-  the same channel as torch (`+cu128` vs `+cpu`). pip will happily install a CPU
-  torchaudio next to a CUDA torch, which then fails at import with an unhelpful
-  symbol error, so `repair_torch_companion_wheels_if_needed()` checks the
-  channels on startup and reinstalls the odd one out.
+  the same channel as torch (`+cu128` vs `+cpu`). PINE imports neither directly,
+  but whisperx pins both, and pip will happily install a CPU torchaudio next to a
+  CUDA torch, which then fails at import with an unhelpful symbol error. So
+  `repair_torch_companion_wheels_if_needed()` checks the channels on startup and
+  reinstalls the odd one out.
 
 Everything runs with `PIP_REQUIRE_VIRTUALENV=1` and `PYTHONNOUSERSITE=1`, so a
 mistake here can never write into the user's system or `~/.local` packages.
@@ -261,9 +262,9 @@ def _run_torchruntime_install():
 def _pytorch_wheel_index_url():
     """Wheel repo that matches the installed torch build (cpu vs cu128, etc.).
 
-    Default PyPI often pulls torchvision with a *different* channel than torchruntime's torch
-    (e.g. torch ``2.8.0+cpu`` + torchvision ``0.26.0+cu128``), which breaks at import with
-    ``operator torchvision::nms does not exist``.
+    Default PyPI ships torchaudio with no channel tag at all, so pip will drop an
+    untagged wheel next to a ``+cu128`` torch; the pair then fails at import with an
+    undefined-symbol error rather than anything that names the real cause.
     """
     if IS_MAC:
         return None
@@ -278,7 +279,7 @@ def _pytorch_wheel_index_url():
     return 'https://download.pytorch.org/whl/cpu'
 
 def _companion_pip_extra_args(force_reinstall=False):
-    """Pip options to install torchaudio/torchvision from the same channel as torch."""
+    """Pip options to install the torch companions from the same channel as torch."""
     if IS_MAC:
         return []
     url = _pytorch_wheel_index_url()
@@ -287,26 +288,38 @@ def _companion_pip_extra_args(force_reinstall=False):
         args.insert(0, '--force-reinstall')
     return args
 
+def _local_version_tag(version):
+    """The ``+cu128`` / ``+cpu`` suffix of a wheel version, or None for an untagged one."""
+    return version.split('+', 1)[1] if '+' in version else None
+
 def _torch_companion_channels_aligned():
-    """True if torch and torchvision report the same +cpu / +cu* local version tag."""
+    """True if torch and its companions report the same +cpu / +cu* local version tag.
+
+    Both companions are checked. torchaudio is the one PINE imports and the one the
+    old check ignored, so a CPU torchaudio next to a CUDA torch used to slip through
+    and fail later at import with an undefined-symbol error.
+    """
     if IS_MAC:
         return True
     try:
         import torch
-        th = torch.__version__
+        th_tag = _local_version_tag(torch.__version__)
     except Exception:
         return True
-    th_tag = th.split('+', 1)[1] if '+' in th else None
     try:
-        import torchvision
-        tv = torchvision.__version__
+        import torchaudio
     except Exception:
         return False
-    tv_tag = tv.split('+', 1)[1] if '+' in tv else None
-    return th_tag == tv_tag
+    if _local_version_tag(torchaudio.__version__) != th_tag:
+        return False
+    try:
+        import torchvision
+    except Exception:
+        return False
+    return _local_version_tag(torchvision.__version__) == th_tag
 
 def _evict_torch_companion_modules():
-    """Drop torchvision/torchaudio from sys.modules after pip reinstall in-process."""
+    """Drop the torch companions from sys.modules after pip reinstall in-process."""
     to_drop = [
         k for k in list(sys.modules)
         if k in ('torchvision', 'torchaudio')
@@ -316,7 +329,7 @@ def _evict_torch_companion_modules():
         sys.modules.pop(k, None)
 
 def repair_torch_companion_wheels_if_needed():
-    """If torchvision/torchaudio channel mismatches torch, reinstall from PyTorch wheel index.
+    """If a torch companion's wheel channel mismatches torch, reinstall from PyTorch's index.
 
     Call before ``import whisperx`` so broken mixed installs self-heal without re-onboarding.
     """
@@ -330,42 +343,43 @@ def repair_torch_companion_wheels_if_needed():
     except Exception:
         _th_ver = '?'
     log.warning(
-        'torch (%s) and torchvision wheel channels differ; reinstalling torchaudio/torchvision from %s',
+        'torch (%s) and its companions are on different wheel channels; reinstalling from %s',
         _th_ver,
         _pytorch_wheel_index_url(),
     )
-    _install_emit('\n--- Repairing torchaudio/torchvision to match PyTorch wheel channel ---')
-    ok = _realign_torchaudio_torchvision()
+    _install_emit('\n--- Repairing torch companions to match the PyTorch wheel channel ---')
+    ok = _realign_torch_companions()
     if ok:
         _evict_torch_companion_modules()
-        log.info('torchaudio/torchvision repaired to match torch.')
+        log.info('torch companions repaired to match torch.')
     return ok
 
-def _realign_torchaudio_torchvision():
-    """Ensure torch + torchaudio + torchvision all match the targeted wheel channel.
+def _realign_torch_companions():
+    """Ensure torch and its companions all match the targeted wheel channel.
 
     whisperx 3.8.5 pins ``torch~=2.8.0`` and its pip-install step will happily downgrade
-    torch to the CPU-only 2.8.0 wheel from PyPI (~250 MB), leaving torchvision
-    ``0.26.0+cu128`` behind — which then breaks at import with
-    ``operator torchvision::nms does not exist``.
+    torch to the CPU-only 2.8.0 wheel from PyPI (~250 MB), leaving a ``+cu128`` companion
+    behind to fail at import with an undefined-symbol error.
 
-    We reinstall all three together from the PyTorch wheel channel derived from the
-    previously installed torch version (e.g. ``+cu128``). ``--no-deps`` is intentional:
-    torchvision ``0.26.0+cu128`` declares ``torch==2.11.0`` as a dependency, so without
-    ``--no-deps`` pip cascades and re-downloads torch a second time (~2.75 GB). With it,
-    only the explicit list is fetched, which also bypasses whisperx's ``torch~=2.8.0``
-    pin; that leaves ``pip check`` noisy about whisperx, but runtime is compatible.
+    We reinstall them together from the PyTorch wheel channel derived from the previously
+    installed torch version (e.g. ``+cu128``). ``--no-deps`` is intentional: the companion
+    wheels declare their own exact torch pin, so without it pip cascades and re-downloads
+    torch a second time (~2.75 GB). With it, only the explicit list is fetched, which also
+    bypasses whisperx's ``torch~=2.8.0`` pin; that leaves ``pip check`` noisy about
+    whisperx, but runtime is compatible.
     """
     if IS_MAC:
         return True
-    _install_emit('\n--- Re-aligning torchaudio/torchvision with installed PyTorch ---')
+    packages = ['torch', 'torchaudio', 'torchvision']
+    _install_emit('\n--- Re-aligning torch companions with installed PyTorch ---')
     ok = _run_pip(
-        ['torch', 'torchaudio', 'torchvision'],
+        packages,
         extra_args=[*_companion_pip_extra_args(force_reinstall=True), '--no-deps'],
     )
     if not ok:
-        log.error('Failed to re-align torch/torchaudio/torchvision')
+        log.error('Failed to re-align %s', ', '.join(packages))
     return ok
+
 
 _INSTALL_LOG_FH = None  # open file handle for the active install_pip_packages() session
 
@@ -484,9 +498,11 @@ def install_pip_packages():
                 _install_emit('\n--- Phase 2/5: Detecting GPU and installing PyTorch ---')
                 _run_torchruntime_install()
 
-                # WhisperX → transformers imports torchvision; use PyTorch wheel index
-                # (same +cpu / +cu* as torch). --no-deps avoids re-resolving numpy /
-                # pillow / sympy which torchruntime already installed in Phase 2.
+                # whisperx declares torchaudio~=2.8.0 and torchvision~=0.23.0 outright,
+                # and Phase 4 installs it --no-deps, so both companions are ours to place.
+                # They come from the PyTorch wheel index (same +cpu / +cu* as torch);
+                # --no-deps avoids re-resolving numpy / pillow / sympy which torchruntime
+                # already installed in Phase 2.
                 _install_emit('\n--- Phase 3/5: Installing torchaudio and torchvision ---')
                 success = _run_pip(
                     ['torchaudio', 'torchvision'],
@@ -517,7 +533,7 @@ def install_pip_packages():
             if success and not _torch_companion_channels_aligned():
                 # Safety net: re-align only when channels actually diverged.
                 _install_emit('\n--- Re-aligning torch stack (channels diverged) ---')
-                success = _realign_torchaudio_torchvision()
+                success = _realign_torch_companions()
 
         if success:
             log.info('Package installation succeeded.')

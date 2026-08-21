@@ -119,7 +119,7 @@ class TestModelRegistry:
             )
 
             init_model_registry()
-            model_id = 'pyannote-segmentation'
+            model_id = 'pyannote-wespeaker-voxceleb-resnet34-LM'
             m = MLModel.query.get(model_id)
             assert m.status == 'not_downloaded'
 
@@ -134,6 +134,36 @@ class TestModelRegistry:
 
             m = MLModel.query.get(model_id)
             assert m.status == 'ready'
+
+    def test_init_model_registry_drops_retired_models(self, app):
+        """A row whose id left MODEL_REGISTRY is deleted, not left in the list.
+
+        pyannote-segmentation was retired once community-1 turned out to carry its
+        own segmentation weights; without the prune it would keep appearing in
+        onboarding on every install that had already seen it.
+        """
+        with app.app_context():
+            from app.extensions import db
+            from app.models.ml_model import MLModel
+            from app.services.model_manager import init_model_registry
+
+            init_model_registry()
+            db.session.add(MLModel(
+                id='pyannote-segmentation',
+                name='pyannote segmentation-3.0',
+                function='diarization',
+                repo_id='pyannote/segmentation-3.0',
+                size_bytes=6_000_000,
+                status='ready',
+                required=True,
+            ))
+            db.session.commit()
+            assert MLModel.query.get('pyannote-segmentation') is not None
+
+            init_model_registry()
+
+            assert MLModel.query.get('pyannote-segmentation') is None
+            assert MLModel.query.get('pyannote-diarization') is not None
 
 
 # ---------------------------------------------------------------------------

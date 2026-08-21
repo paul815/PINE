@@ -30,7 +30,7 @@ from .pip_installer import (
     _check_packages,
     _install_emit,
     _install_model_specific_packages,
-    _realign_torchaudio_torchvision,
+    _realign_torch_companions,
     install_pip_packages,
 )
 
@@ -126,15 +126,6 @@ MODEL_REGISTRY = {
         # pyannote loads checkpoints via hf_hub_download(..., cache_dir=PYANNOTE_CACHE)
         'use_pyannote_hub_cache': True,
     },
-    'pyannote-segmentation': {
-        'name': 'pyannote segmentation-3.0',
-        'function': 'diarization',
-        'repo_id': 'pyannote/segmentation-3.0',
-        'size_bytes': 6_000_000,
-        'required': True,
-        'language': None,
-        'use_pyannote_hub_cache': True,
-    },
     'pyannote-wespeaker-voxceleb-resnet34-LM': {
         'name': 'pyannote WeSpeaker embedding (diarization)',
         'function': 'diarization',
@@ -174,7 +165,18 @@ def _model_for_platform(info):
     return plat == sys.platform
 
 def init_model_registry():
-    """Populate the ml_models table with known models (idempotent)."""
+    """Populate the ml_models table with known models (idempotent).
+
+    Rows for ids the registry no longer knows are dropped. Without that, an entry
+    retired from MODEL_REGISTRY keeps showing up in the onboarding and settings
+    lists of every install that ever saw it, since both read the table directly.
+    Platform-filtered entries are still in the registry and so survive a move
+    between machines; only genuinely unknown ids go.
+    """
+    for stale in MLModel.query.filter(MLModel.id.notin_(list(MODEL_REGISTRY))).all():
+        log.info('Dropping ml_models row for retired model %s', stale.id)
+        db.session.delete(stale)
+
     for model_id, info in MODEL_REGISTRY.items():
         if not _model_for_platform(info):
             continue
@@ -657,10 +659,10 @@ def download_models(app, model_ids, models_path, hf_token=None, finish_onboardin
 
             # Fix 2: Install model-specific packages (e.g. gliner for gliner-pii)
             optional_pip = _install_model_specific_packages(model_ids)
-            # Optional pip installs can alter torch; keep torchvision in sync for WhisperX/transformers.
-            if not IS_MAC and optional_pip and not _realign_torchaudio_torchvision():
+            # Optional pip installs can alter torch; keep its companions on the same channel.
+            if not IS_MAC and optional_pip and not _realign_torch_companions():
                 log.warning(
-                    'torchaudio/torchvision re-align failed after model-specific pip installs; '
+                    'torch companion re-align failed after model-specific pip installs; '
                     'transcription may fail until you run: python -m pip install torchaudio torchvision'
                 )
 

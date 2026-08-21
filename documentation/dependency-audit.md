@@ -17,20 +17,21 @@
 
 ## 2. ML-слой — что можно убрать
 
-### 2.1 torchvision — лишний (главная находка)
-Ни одного `import torchvision` в коде PINE. Он попадает в venv только потому, что
-`_run_torchruntime_install()` (`pip_installer.py:225`) вызывает `torchruntime install`
-без списка пакетов, а torchruntime по умолчанию ставит torch+torchvision+torchaudio.
+### 2.1 torchvision — оказался нужен (первоначальный вывод был неверен)
+Прямых `import torchvision` в коде PINE нет, и по этому признаку он выглядел лишним.
+Но `whisperx 3.8.6` объявляет `torchvision~=0.23.0` жёсткой зависимостью (проверено
+по метаданным PyPI), а фазы 4-5 в `install_pip_packages()` ставят whisperx через
+`--no-deps` и добирают его зависимости вручную — то есть torchvision там стоит
+намеренно, а не по недосмотру. Убирать нельзя.
 
-Цена: ~200 строк машинерии выравнивания каналов колёс —
-`_realign_torchaudio_torchvision`, `repair_torch_companion_wheels_if_needed`,
-`_torch_companion_channels_aligned`, `_companion_pip_extra_args`,
-плюс ветка ошибки в `job_runner.py:475`, плюс целый класс отказов
-`operator torchvision::nms does not exist`.
-
-Предлагаемая правка: `torchruntime install torch torchaudio`.
-Проверить перед коммитом: `transformers` подтягивает torchvision лениво только для
-image-моделей — путь WhisperX его не трогает, но нужен прогон транскрипции.
+Что при этом было исправлено:
+* Комментарий фазы 3 объяснял torchvision через `transformers` — неверно:
+  у transformers он только в extras `vision`/`all`/`dev`. Теперь комментарий
+  ссылается на реальный пин whisperx.
+* `_torch_companion_channels_aligned()` сравнивал канал колеса torch **только**
+  с torchvision и вовсе не смотрел на torchaudio — при том что импортирует PINE
+  именно torchaudio. CPU-torchaudio рядом с CUDA-torch проходил проверку молча
+  и падал позже undefined-symbol'ом. Теперь проверяются оба спутника.
 
 ### 2.2 pyannoteai-sdk + opentelemetry (13 пакетов) — мёртвый груз
 `pyannote-audio 4.x` тянет облачный SDK: `pyannoteai-sdk`, 8× `opentelemetry-*`,
@@ -81,7 +82,37 @@ Lock лаунчерами не используется (только как с�
 Полностью вендорится (`app/static/css|js|fonts`), ни одной ссылки на CDN. Хорошо.
 
 ## 7. Модели
-Обязательные: STT под платформу + 3 pyannote (community-1, segmentation-3.0,
-wespeaker). Опциональные: silero-vad, gliner-pii, parakeet. Состав разумный.
-Проверить отдельно: нужен ли `pyannote/segmentation-3.0` отдельной записью, если
-пайплайн community-1 несёт собственный сегментатор.
+Обязательные: STT под платформу + pyannote community-1 + wespeaker.
+Опциональные: silero-vad, gliner-pii, parakeet.
+
+### 7.1 pyannote/segmentation-3.0 — убран (на проверке)
+Кэшированный конфиг пайплайна на диске
+(`models/pyannote_cache/models--pyannote--speaker-diarization-community-1/.../config.yaml`)
+показывает, что community-1 адресует веса внутрь собственного репозитория:
+
+    segmentation: $model/segmentation
+    embedding:    $model/embedding
+    plda:         $model/plda
+
+Отдельные репозитории `pyannote/segmentation-3.0` и
+`pyannote/wespeaker-voxceleb-resnet34-LM` в конфиге не упоминаются, и в
+`models/pyannote_cache` на рабочей машине лежит только community-1 — при том
+что диаризация работает. Отката на пайплайн 3.1 в коде нет:
+`DEFAULT_DIARIZATION_MODEL` в `ml_worker/diarize.py:34` — всегда community-1.
+
+Удалено: запись в `MODEL_REGISTRY`, шаг лицензии в онбординге (шагов стало 3),
+`pyannote-segmentation` из `downloadModelIds`. Экономия — один gated-репозиторий
+в онбординге и один пункт лицензии, который пользователю больше не нужно принимать.
+
+Заодно `init_model_registry()` теперь удаляет строки `ml_models` с неизвестными
+registry id. Без этого запись о снятой модели навсегда оставалась бы в списках
+онбординга и настроек на всех уже существующих установках — обе страницы читают
+таблицу напрямую (`MLModel.query.all()`).
+
+**Статус: ждёт проверки реальной диаризацией.** Если сломается — вернуть запись
+в `MODEL_REGISTRY`, шаг лицензии и id в `downloadModelIds`.
+
+### 7.2 wespeaker — тот же случай, не тронут
+`pyannote/wespeaker-voxceleb-resnet34-LM` по тем же признакам выглядит таким же
+мёртвым: конфиг берёт `embedding` из собственного репозитория. Оставлен намеренно,
+чтобы проверка 7.1 дала чистый сигнал. Снимать следующим шагом, отдельно.

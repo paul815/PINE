@@ -701,18 +701,8 @@ body { font-size: inherit; }
             </a>
           </div>
         </div>
-        <div class="hf-step">
-          <div class="hf-n">3</div>
-          <div class="hf-body">
-            <div class="hf-title">Accept the pyannote/segmentation-3.0 license</div>
-            <a class="hf-link" href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener">
-              pyannote/segmentation-3.0
-              <svg viewBox="0 0 11 11" fill="none"><path d="M4 1.5h5.5v5.5M9.5 1.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </a>
-          </div>
-        </div>
         <div class="hf-step" id="hf-step-token">
-          <div class="hf-n">4</div>
+          <div class="hf-n">3</div>
           <div class="hf-body">
             <div class="hf-title">Generate a read-only access token and paste it here</div>
             <div class="hf-desc">Settings &rarr; Access Tokens &rarr; New token (type: Read). Stored locally only.</div>
@@ -1242,7 +1232,7 @@ async function startDownload() {
     const onbStatus = await api('/status');
     const mods = onbStatus.modules || [];
     const sttId = onbStatus.stt_model_id || (isMac ? 'mlx-whisper-large-v3' : 'whisperx-large-v3');
-    downloadModelIds = [sttId, 'pyannote-diarization', 'pyannote-segmentation', 'pyannote-wespeaker-voxceleb-resnet34-LM'];
+    downloadModelIds = [sttId, 'pyannote-diarization', 'pyannote-wespeaker-voxceleb-resnet34-LM'];
     if (mods.includes('pii')) downloadModelIds.push('gliner-pii');
   }
 

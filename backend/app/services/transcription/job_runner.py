@@ -472,7 +472,7 @@ def run_transcription_job(app, recording_id):
     if engine_kind_for_model(env_dict['stt_model_id']) == ENGINE_WHISPERX:
         if not repair_torch_companion_wheels_if_needed():
             raise RuntimeError(
-                'torch and torchvision are from different wheel channels (e.g. +cpu vs +cu128). '
+                'torch and its companions are from different wheel channels (e.g. +cpu vs +cu128). '
                 'In the app venv run: python -m pip install --force-reinstall torchaudio torchvision '
                 '--index-url https://download.pytorch.org/whl/cpu '
                 '(or .../whl/cu128 if torch.__version__ shows +cu128).'
