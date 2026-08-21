@@ -137,6 +137,7 @@ def patch_torch_load_for_trusted_checkpoints():
     if os.environ.get('PINE_TORCH_STRICT_WEIGHTS_ONLY', '').strip() == '1':
         return
     import functools
+
     import torch
 
     _orig = torch.load
@@ -175,11 +176,18 @@ def stub_torchcodec():
     # fail at runtime.  We instantiate a throw-away decoder on a tiny
     # silent WAV to verify it actually works.
     try:
+        import io
+        import os as _os
+        import struct
+        import tempfile
+
         from torchcodec.decoders import AudioDecoder as _real
-        import io, struct, tempfile, os as _os
         # Build a minimal 16-bit PCM WAV (44 bytes header + 2 bytes data)
         _buf = io.BytesIO()
-        _sr = 16000; _nch = 1; _bps = 16; _nsamp = 1
+        _sr = 16000
+        _nch = 1
+        _bps = 16
+        _nsamp = 1
         _data_sz = _nsamp * _nch * (_bps // 8)
         _buf.write(b'RIFF')
         _buf.write(struct.pack('<I', 36 + _data_sz))
@@ -189,7 +197,8 @@ def stub_torchcodec():
         _buf.write(struct.pack('<I', _data_sz))
         _buf.write(b'\x00\x00')
         _tmp = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-        _tmp.write(_buf.getvalue()); _tmp.close()
+        _tmp.write(_buf.getvalue())
+        _tmp.close()
         try:
             _real(_tmp.name)        # actual native-lib smoke test
         finally:
@@ -240,7 +249,10 @@ def stub_torchcodec():
         @staticmethod
         def _decode(path, target_sr=16000):
             """Decode audio to 16 kHz mono float32 tensor via ffmpeg."""
-            import subprocess, struct, torch
+            import struct
+            import subprocess
+
+            import torch
             proc = subprocess.run(
                 ['ffmpeg', '-y', '-i', path,
                  '-ar', str(target_sr), '-ac', '1',

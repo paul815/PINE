@@ -3,15 +3,13 @@
 import json
 import os
 
-import pytest
-
 from app.services.annotations import (
-    get_project_tags,
-    save_project_tags,
-    get_project_themes,
-    save_project_themes,
     get_annotations,
+    get_project_tags,
+    get_project_themes,
     save_annotations,
+    save_project_tags,
+    save_project_themes,
 )
 
 

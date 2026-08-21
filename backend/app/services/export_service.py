@@ -1,8 +1,8 @@
 """Export transcript to Markdown or ODT."""
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
 
 DEFAULT_EXPORT_PROMPT = """Prompt for Full Project Export (Multiple Interviews)
@@ -322,7 +322,7 @@ def _tag_direct_children(outer, candidates):
     for t in inside:
         if not any(_tags_strictly_inside(t, o) for o in inside if o is not t):
             children.append(t)
-    return sorted(children, key=lambda x: (x[1], -(x[2] - x[1]), str((x[0].get('tag_id') or ''))))
+    return sorted(children, key=lambda x: (x[1], -(x[2] - x[1]), str(x[0].get('tag_id') or '')))
 
 
 def _render_one_tag_item(item, text, tag_map):
@@ -337,7 +337,7 @@ def _render_same_bounds_tags(roots, text, tag_map):
     span0, sc, ec = roots[0]
     slice_t = text[sc:ec]
     tt = slice_t if slice_t else (span0.get('anchor_text') or '')
-    labels = [f"[{_tag_display_name(r[0], tag_map)}]" for r in sorted(roots, key=lambda x: str((x[0].get('tag_id') or '')))]
+    labels = [f"[{_tag_display_name(r[0], tag_map)}]" for r in sorted(roots, key=lambda x: str(x[0].get('tag_id') or ''))]
     return f'**{tt}** ' + ' '.join(labels)
 
 
@@ -380,7 +380,7 @@ def _render_nested_tag_markdown(tag_items, text, tag_map):
     if not tag_items:
         return ''
     roots = _tag_find_roots(tag_items)
-    roots.sort(key=lambda x: (x[1], -(x[2] - x[1]), str((x[0].get('tag_id') or ''))))
+    roots.sort(key=lambda x: (x[1], -(x[2] - x[1]), str(x[0].get('tag_id') or '')))
     sc0, ec0 = roots[0][1], roots[0][2]
     if len(roots) >= 2 and all(r[1] == sc0 and r[2] == ec0 for r in roots):
         return _render_same_bounds_tags(roots, text, tag_map)
@@ -458,7 +458,11 @@ def _render_transcript_blocks(segments, merged_blocks, tag_spans, comments, tag_
             sc, ec = _inline_span_bounds(kind, span, text, indices, offset_by_idx)
             resolved.append((kind, span, sc, ec))
 
-        def _span_export_sort_key(item):
+        # `indices` is bound as a default on purpose: both sort keys are defined
+        # inside the per-block loop and consumed in the same iteration, so late
+        # binding is harmless today — but only by accident. Binding it now keeps
+        # the key correct if a later edit ever defers the sort.
+        def _span_export_sort_key(item, indices=indices):
             kind, span, sc, ec = item
             cross_continues = (
                 span.get('end_segment_idx') is not None
@@ -490,7 +494,7 @@ def _render_transcript_blocks(segments, merged_blocks, tag_spans, comments, tag_
         for span, sc, ec in cmt_items:
             merged_events.append(('cmt', span, sc, ec))
 
-        def _merged_event_sort_key(ev):
+        def _merged_event_sort_key(ev, indices=indices):
             if ev[0] == 'tagx':
                 _, mn, mx, _md, span0 = ev
                 if span0.get('end_segment_idx') is not None and span0.get('segment_idx') not in indices:
@@ -605,7 +609,7 @@ def export_recording_markdown(app, project_id, recording_id, opts):
         if not os.path.isfile(transcript_path):
             return None, 'Transcript not found'
 
-        with open(transcript_path, 'r', encoding='utf-8') as f:
+        with open(transcript_path, encoding='utf-8') as f:
             transcript = json.load(f)
 
         from .annotations import annotation_recording_ref, get_annotations, get_project_tags
@@ -629,7 +633,7 @@ def export_recording_markdown(app, project_id, recording_id, opts):
                     seg['speaker'] = speaker_labels[spk]
 
         if remove_pii:
-            from .pii_service import _load_model, redact_segments, PIIError
+            from .pii_service import PIIError, _load_model, redact_segments
             try:
                 _load_model(current_app._get_current_object())
                 pii_thresh = float(Setting.get('pii_threshold', '0.8'))
@@ -637,7 +641,7 @@ def export_recording_markdown(app, project_id, recording_id, opts):
             except PIIError:
                 raise
             except Exception as exc:
-                raise PIIError(f'PII removal failed: {exc}')
+                raise PIIError(f'PII removal failed: {exc}') from exc
 
         lines = [f'# {project.name}']
         if include_project_details:
@@ -717,7 +721,7 @@ def export_project_markdown(app, project_id, recording_ids, opts):
             if not os.path.isfile(transcript_path):
                 continue
 
-            with open(transcript_path, 'r', encoding='utf-8') as f:
+            with open(transcript_path, encoding='utf-8') as f:
                 transcript = json.load(f)
 
             from .annotations import annotation_recording_ref, get_annotations
@@ -732,7 +736,7 @@ def export_project_markdown(app, project_id, recording_ids, opts):
                         seg['speaker'] = speaker_labels[spk]
 
             if remove_pii:
-                from .pii_service import _load_model, redact_segments, PIIError
+                from .pii_service import PIIError, _load_model, redact_segments
                 try:
                     _load_model(current_app._get_current_object())
                     pii_thresh = float(Setting.get('pii_threshold', '0.8'))
@@ -740,7 +744,7 @@ def export_project_markdown(app, project_id, recording_ids, opts):
                 except PIIError:
                     raise
                 except Exception as exc:
-                    raise PIIError(f'PII removal failed: {exc}')
+                    raise PIIError(f'PII removal failed: {exc}') from exc
 
             lines.append(f'# {recording.original_name} (Transcript)')
             if include_participant_details and not project.is_system:
@@ -784,9 +788,8 @@ def export_project_odt(app, project_id, recording_ids, opts):
 
 def _markdown_to_odt(md_text):
     """Convert markdown to minimal ODT (OpenDocument Text) XML."""
-    import zipfile
     import tempfile
-    from xml.etree import ElementTree as ET
+    import zipfile
 
     content = _md_to_odt_content(md_text)
     manifest = '''<?xml version="1.0" encoding="UTF-8"?>

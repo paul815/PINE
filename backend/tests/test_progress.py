@@ -53,7 +53,7 @@ class TestGlobalScale:
         m = _Harness().mapper
         assert m._bands[STAGES[0]][0] == 0
         assert round(m._bands[STAGES[-1]][1]) == 100
-        for earlier, later in zip(STAGES, STAGES[1:]):
+        for earlier, later in zip(STAGES, STAGES[1:], strict=False):
             assert m._bands[earlier][1] == m._bands[later][0]
 
     def test_progress_never_goes_backwards(self):

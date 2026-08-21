@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 
 from . import compat
 from .audio import get_duration_secs, load_audio_range
-from .constants import PARALLEL_STAGES, SPEAKER_LABELS
+from .constants import PARALLEL_STAGES, PROGRESS_SCALE_KEY, SPEAKER_LABELS
 from .diarize import Diarizer, detect_diarize_device
 from .engines import TranscribeContext, create_engine, engine_kind_for_model
 from .errors import TranscriptionCancelled
@@ -24,10 +24,6 @@ from .progress import ProgressMapper
 
 log = logging.getLogger(__name__)
 
-# Key the measured pace travels under inside the transcript payload. Underscored
-# because it is not part of the transcript — ``_finalize`` pops it before the
-# file is written.
-PROGRESS_SCALE_KEY = '_progress_scale'
 
 
 @dataclass
@@ -37,6 +33,9 @@ class JobEnv:
     model_dir: str
     diarize_dir: str
     pyannote_cache: str
+    # Speech-boundary model for the ONNX engine; empty for the Whisper engines,
+    # which cut the audio themselves.
+    vad_dir: str = ''
     hf_token: str = ''
     hf_offline: bool = False
     # How far off the shipped cost model this machine has been measured
@@ -407,6 +406,11 @@ class MLPipeline:
             'duration_seconds': total_duration,
             'speakers': speaker_map,
             'segments': clean_segments,
+            # Which engine and model produced this file. Recorded so a future
+            # format change, or a quality regression, can be traced to what
+            # actually ran — see app/services/transcript_format.py.
+            'engine': getattr(self._engine, 'id', ''),
+            'model': env.stt_model_id or '',
         }
         # How this job actually compared to the plan, for the next one to start
         # from. Rides along in the payload so both execution paths carry it

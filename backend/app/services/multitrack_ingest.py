@@ -35,11 +35,15 @@ _DATETIME = re.compile(
 _RECORDER_TAGS = ('audio_only', 'audioonly', 'audio')
 
 
-def _recorder_prefix_len(name):
+def _recorder_prefix_len(name, allow_capital=False):
     """How much of ``name`` is the recorder's own word, or 0 if none of it.
 
     Only a prefix when something separates it from what follows — otherwise a
-    participant called "Audiard" loses the front of their name.
+    participant called "Audiophile" loses the front of their name.
+
+    ``allow_capital`` also counts a capital letter as that separation, which
+    is how Zoom's ``audioPavelK`` gives up its name. Filenames ask for it;
+    folder names do not, so a meeting called "AudioSync" keeps its title.
     """
     lowered = name.lower()
     for tag in _RECORDER_TAGS:
@@ -47,6 +51,8 @@ def _recorder_prefix_len(name):
             continue
         rest = name[len(tag):]
         if rest == '' or rest[0] in _SEPARATORS or rest[0].isdigit():
+            return len(tag)
+        if allow_capital and rest[0].isupper():
             return len(tag)
     return 0
 
@@ -65,7 +71,7 @@ def speaker_name_from_filename(filename):
     stem = os.path.splitext(os.path.basename(filename or ''))[0]
     work = stem
 
-    cut = _recorder_prefix_len(work)
+    cut = _recorder_prefix_len(work, allow_capital=True)
     if cut:
         # Digits straight after the recorder's own prefix are its id, at
         # whatever length it happens to use — nobody's name starts there.

@@ -17,8 +17,6 @@ legitimately contains their entries too.
 import os
 import threading
 
-import pytest
-
 
 def _exits_from(calls, idents):
     """Exit requests made by the given threads, ignoring other tests' threads."""

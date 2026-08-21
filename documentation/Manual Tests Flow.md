@@ -1,7 +1,7 @@
 # Manual Testing Scenarios & Best Practices for PINE
 
 ## Context
-PINE has 105 automated tests covering API-level logic (Tier 1). But many critical user flows — onboarding with real models, real-time transcription, UI interactions, cross-screen state — can only be verified by a human. This document is a structured checklist for manual QA.
+PINE has 558 automated tests across 34 modules, covering the API, the transcription pipeline against mocked models, the ML worker process, the launcher and the edge cases (Tiers 1–3). But many critical user flows — onboarding with real models, real transcription quality, UI interactions, cross-screen state, and above all a clean install — can only be verified by a human. This document is a structured checklist for manual QA.
 
 ---
 
@@ -48,6 +48,21 @@ PINE has 105 automated tests covering API-level logic (Tier 1). But many critica
 | 3.9 | Перезапуск приложения во время транскрипции | Статус `transcribing` → re-queue при старте, транскрипция возобновляется |
 | 3.10 | CPU-only режим | Короткий клип транскрибируется (медленно), результат корректный |
 | 3.11 | Две записи подряд | Вторая стоит в очереди (pending), стартует после первой |
+
+### 3a. Мультитрек (Zoom-папка / многоканальный файл)
+
+Дорожка на спикера: диаризация не запускается вообще, pyannote даже не грузится.
+
+| # | Сценарий | Что проверить |
+|---|----------|---------------|
+| 3a.1 | Папка Zoom с `Audio Record` | Предпросмотр (`inspect-multitrack`) показывает по дорожке на участника до импорта |
+| 3a.2 | Имена спикеров из имён файлов | В транскрипте реальные имена, а не «Участник 1» |
+| 3a.3 | Файл, где каналы = спикеры | Распознан как мультитрек, каналы разложены по дорожкам |
+| 3a.4 | Материал не копируется | Исходная папка остаётся на месте, в проект ничего не скопировано; после переноса/удаления исходника — понятная ошибка, а не тишина |
+| 3a.5 | Одновременная речь | Реплики, сказанные внахлёст, обе в транскрипте — не «побеждает» одна |
+| 3a.6 | Тишина на чужой дорожке | Whisper не выдумывает текст поверх молчания слушателя |
+| 3a.7 | Плеер | Играет микс/исходник, перемотка по клику работает как у обычной записи |
+| 3a.8 | Переименование спикера | Работает так же, как в одиночной записи |
 
 ### 4. Просмотр записи и воспроизведение
 
@@ -133,6 +148,21 @@ PINE has 105 automated tests covering API-level logic (Tier 1). But many critica
 | 10.6 | Нет интернета (после onboarding) | Приложение работает полностью оффлайн |
 | 10.7 | Битый _annotations.json | GET возвращает дефолтные значения, не 500 |
 | 10.8 | Имя проекта 500 символов | Обрезается до 80, ошибки нет |
+
+### 11. Установка и reset (блокер релиза)
+
+Единственный сценарий, который проверяет создание venv, установку ML-стека в
+онбординге и переезд файлов. Прогоняется **на обеих платформах** и **без
+флагов** — `--keep-venv` и `backend/tools/dev_reset.*` пропускают ровно то, что
+здесь проверяется, поэтому для релизной верификации не годятся.
+
+| # | Сценарий | Что проверить |
+|---|----------|---------------|
+| 11.1 | `reset` без флагов, затем чистая установка | venv создаётся, ML-стек ставится в онбординге, приложение стартует |
+| 11.2 | Дерево после reset | Ничего лишнего не удалено (баг здесь однажды съел `README.md` и `.github`), ничего устаревшего не осталось |
+| 11.3 | Переезд файлов установщиком | Dev-файлы и LICENSE уехали в `documentation/dev-config`, `DESIGN.md` и корневой `CLAUDE.md` — в `documentation/`, установщики — в `backend/`. В корне остались только `README.md`, `backend/`, `documentation/`, `models/` и ярлык |
+| 11.4 | Второй запуск | Установщик не переустанавливает зависимости, а просто стартует сервер |
+| 11.5 | Ярлыки | Пункт в меню «Пуск» / на рабочем столе создаётся и удаляется из Настроек |
 
 ---
 

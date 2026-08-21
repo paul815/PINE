@@ -156,8 +156,8 @@ class TestAnnotationsAPI:
 
         with app.app_context():
             from app.extensions import db
-            from app.models.recording import Recording
             from app.models.project import Project
+            from app.models.recording import Recording
 
             proj = db.session.get(Project, pid)
             rec = Recording(
@@ -434,6 +434,112 @@ class TestExportAPI:
         assert 'opendocument' in r.headers.get('Content-Type', '')
         assert '.odt' in r.headers.get('Content-Disposition', '')
 
+    def test_export_project_separate_files_returns_zip(self, client, app):
+        """separate_files=true bundles one document per recording into a ZIP."""
+        import io
+        import zipfile
+
+        with app.app_context():
+            from app.extensions import db
+            from app.models.project import Project
+            from app.models.recording import Recording
+            from app.models.setting import Setting
+
+            projects_path = app.config['DEFAULT_PROJECTS_PATH']
+            os.makedirs(projects_path, exist_ok=True)
+            Setting.set('projects_path', projects_path)
+
+            proj = Project(name='Split Export', folder_name='split_export')
+            db.session.add(proj)
+            db.session.flush()
+            recs = []
+            for i in (1, 2):
+                rec = Recording(
+                    project_id=proj.id,
+                    original_name=f'talk{i}.mp3',
+                    stored_name=f'talk{i}.mp3',
+                    transcript_path=f'talk{i}_transcript.json',
+                    duration_seconds=30,
+                    transcription_status='transcribed',
+                )
+                db.session.add(rec)
+                recs.append(rec)
+            db.session.commit()
+            pid = proj.id
+            rids = [r.id for r in recs]
+
+            proj_dir = os.path.join(projects_path, 'split_export')
+            os.makedirs(proj_dir, exist_ok=True)
+            for i in (1, 2):
+                with open(os.path.join(proj_dir, f'talk{i}_transcript.json'), 'w') as f:
+                    json.dump({
+                        'segments': [{'start': 0, 'end': 3, 'text': f'Line {i}', 'speaker': 'S1'}],
+                        'duration_seconds': 3,
+                    }, f)
+
+        r = client.post(
+            f'/api/projects/{pid}/export',
+            json={'format': 'markdown', 'recording_ids': rids, 'separate_files': True},
+        )
+        assert r.status_code == 200
+        assert 'zip' in r.headers.get('Content-Type', '')
+        assert '.zip' in r.headers.get('Content-Disposition', '')
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            names = sorted(zf.namelist())
+            assert names == ['Split Export-talk1.md', 'Split Export-talk2.md']
+            assert 'Line 1' in zf.read(names[0]).decode('utf-8')
+            assert 'Line 2' in zf.read(names[1]).decode('utf-8')
+
+    def test_export_project_combined_stays_single_document(self, client, app):
+        """Without separate_files the project export is still one Markdown file."""
+        with app.app_context():
+            from app.extensions import db
+            from app.models.project import Project
+            from app.models.recording import Recording
+            from app.models.setting import Setting
+
+            projects_path = app.config['DEFAULT_PROJECTS_PATH']
+            os.makedirs(projects_path, exist_ok=True)
+            Setting.set('projects_path', projects_path)
+
+            proj = Project(name='Joint Export', folder_name='joint_export')
+            db.session.add(proj)
+            db.session.flush()
+            recs = []
+            for i in (1, 2):
+                rec = Recording(
+                    project_id=proj.id,
+                    original_name=f'joint{i}.mp3',
+                    stored_name=f'joint{i}.mp3',
+                    transcript_path=f'joint{i}_transcript.json',
+                    duration_seconds=30,
+                    transcription_status='transcribed',
+                )
+                db.session.add(rec)
+                recs.append(rec)
+            db.session.commit()
+            pid = proj.id
+            rids = [r.id for r in recs]
+
+            proj_dir = os.path.join(projects_path, 'joint_export')
+            os.makedirs(proj_dir, exist_ok=True)
+            for i in (1, 2):
+                with open(os.path.join(proj_dir, f'joint{i}_transcript.json'), 'w') as f:
+                    json.dump({
+                        'segments': [{'start': 0, 'end': 3, 'text': f'Joint {i}', 'speaker': 'S1'}],
+                        'duration_seconds': 3,
+                    }, f)
+
+        r = client.post(
+            f'/api/projects/{pid}/export',
+            json={'format': 'markdown', 'recording_ids': rids},
+        )
+        assert r.status_code == 200
+        assert 'text/markdown' in r.headers.get('Content-Type', '')
+        body = r.data.decode('utf-8')
+        assert 'Joint 1' in body and 'Joint 2' in body
+
+
 
 class TestUploadFormats:
     """All 8 allowed audio/video formats must be accepted."""
@@ -502,8 +608,8 @@ class TestTransferZip:
     """Transfer endpoint returns a valid ZIP with required structure."""
 
     def test_transfer_zip_structure(self, client, app):
-        import zipfile
         import io
+        import zipfile
 
         with app.app_context():
             from app.extensions import db as _db
@@ -847,8 +953,8 @@ class TestManageTagsPage:
     """Tag editing is integrated into the Tags screen; the old /manage route redirects."""
 
     def test_manage_page_redirects_to_tags(self, client, app):
-        from app.models.setting import Setting
         from app.extensions import db
+        from app.models.setting import Setting
         with app.app_context():
             Setting.set('onboarding_complete', 'true')
             db.session.commit()
@@ -858,8 +964,8 @@ class TestManageTagsPage:
         assert f'/project/{pid}/tags' in r.headers['Location']
 
     def test_tags_page_renders_with_editor(self, client, app):
-        from app.models.setting import Setting
         from app.extensions import db
+        from app.models.setting import Setting
         with app.app_context():
             Setting.set('onboarding_complete', 'true')
             db.session.commit()

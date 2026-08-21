@@ -1,4 +1,4 @@
-from app.services import model_manager
+from app.services import launcher_layout, model_manager, pip_installer
 
 
 def test_cleanup_cross_platform_launchers_on_mac(tmp_path, monkeypatch):
@@ -11,8 +11,8 @@ def test_cleanup_cross_platform_launchers_on_mac(tmp_path, monkeypatch):
     win_install.write_text('echo win install', encoding='utf-8')
     win_launch.write_text('echo win launch', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', True)
-    model_manager._cleanup_cross_platform_launchers(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', True)
+    launcher_layout._cleanup_cross_platform_launchers(repo_root=tmp_path)
 
     assert mac_install.exists()
     assert mac_launch.exists()
@@ -30,8 +30,8 @@ def test_cleanup_cross_platform_launchers_on_windows(tmp_path, monkeypatch):
     win_install.write_text('echo win install', encoding='utf-8')
     win_launch.write_text('echo win launch', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', False)
-    model_manager._cleanup_cross_platform_launchers(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
+    launcher_layout._cleanup_cross_platform_launchers(repo_root=tmp_path)
 
     assert not mac_install.exists()
     assert not mac_launch.exists()
@@ -43,8 +43,8 @@ def test_promote_platform_launcher_on_mac(tmp_path, monkeypatch):
     mac_install = tmp_path / 'MAC_Install.command'
     mac_install.write_text('echo mac install', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', True)
-    model_manager._promote_platform_launcher(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', True)
+    launcher_layout._promote_platform_launcher(repo_root=tmp_path)
 
     assert mac_install.exists()
     assert (tmp_path / 'Launch Pine.command').exists()
@@ -54,8 +54,8 @@ def test_promote_platform_launcher_on_windows(tmp_path, monkeypatch):
     win_install = tmp_path / 'WIN_Install.bat'
     win_install.write_text('@echo off\n', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', False)
-    model_manager._promote_platform_launcher(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
+    launcher_layout._promote_platform_launcher(repo_root=tmp_path)
 
     assert win_install.exists()
     launcher = tmp_path / 'backend' / 'Launch Pine.bat'
@@ -104,8 +104,8 @@ def test_sync_platform_launcher_layout_on_windows_moves_installers_to_backend(tm
     mac_install.write_text('#!/bin/bash\necho mac install\n', encoding='utf-8')
     stale_mac_launch.write_text('#!/bin/bash\necho stale\n', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', False)
-    model_manager._sync_platform_launcher_layout(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
+    launcher_layout._sync_platform_launcher_layout(repo_root=tmp_path)
 
     assert (backend_dir / 'Launch Pine.bat').exists()
     assert not (tmp_path / 'Launch Pine.bat').exists()
@@ -126,8 +126,8 @@ def test_sync_platform_launcher_layout_on_mac_moves_installers_to_backend(tmp_pa
     win_install.write_text('@echo off\n', encoding='utf-8')
     stale_win_launch.write_text('@echo off\n', encoding='utf-8')
 
-    monkeypatch.setattr(model_manager, 'IS_MAC', True)
-    model_manager._sync_platform_launcher_layout(repo_root=tmp_path)
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', True)
+    launcher_layout._sync_platform_launcher_layout(repo_root=tmp_path)
 
     assert (tmp_path / 'Launch Pine.command').exists()
     assert not mac_install.exists()
@@ -149,7 +149,7 @@ def test_restore_default_launcher_layout_after_reset_moves_installers_to_root(tm
     (tmp_path / 'Launch Pine.command').write_text('#!/bin/bash\necho launch\n', encoding='utf-8')
     (data_dir / 'onboarding_complete.flag').write_text('true\n', encoding='utf-8')
 
-    model_manager.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
+    launcher_layout.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
 
     assert (tmp_path / 'WIN_Install.bat').exists()
     assert (tmp_path / 'MAC_Install.command').exists()
@@ -171,7 +171,7 @@ def test_restore_default_launcher_layout_after_reset_keeps_existing_root_install
     (backend_dir / 'WIN_Install.bat').write_text('backend win\n', encoding='utf-8')
     (backend_dir / 'MAC_Install.command').write_text('backend mac\n', encoding='utf-8')
 
-    model_manager.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
+    launcher_layout.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
 
     assert root_win.read_text(encoding='utf-8') == 'root win\n'
     assert root_mac.read_text(encoding='utf-8') == 'root mac\n'
@@ -181,7 +181,7 @@ def test_restore_default_launcher_layout_after_reset_keeps_existing_root_install
 
 def test_install_log_path_uses_pine_log_dir(tmp_path, monkeypatch):
     monkeypatch.setenv('PINE_LOG_DIR', str(tmp_path))
-    path = model_manager._install_log_path()
+    path = pip_installer._install_log_path()
     parent = tmp_path.resolve()
     daily = parent / _today_stamp()
     assert daily.is_dir(), 'daily subdir should have been created'
@@ -194,12 +194,12 @@ def test_install_log_path_uses_pine_log_dir(tmp_path, monkeypatch):
 def test_install_emit_writes_to_open_log_file(tmp_path, monkeypatch):
     log_path = tmp_path / 'install.log'
     emitted = []
-    monkeypatch.setattr(model_manager, '_safe_emit', lambda event, data: emitted.append((event, data)))
+    monkeypatch.setattr(pip_installer, '_safe_emit', lambda event, data: emitted.append((event, data)))
     fh = open(log_path, 'w', encoding='utf-8', buffering=1)
-    monkeypatch.setattr(model_manager, '_INSTALL_LOG_FH', fh)
+    monkeypatch.setattr(pip_installer, '_INSTALL_LOG_FH', fh)
     try:
-        model_manager._install_emit('hello world')
-        model_manager._install_emit('line with \\n newline\n')
+        pip_installer._install_emit('hello world')
+        pip_installer._install_emit('line with \\n newline\n')
     finally:
         fh.close()
     contents = log_path.read_text(encoding='utf-8').splitlines()
@@ -212,9 +212,9 @@ def test_install_emit_writes_to_open_log_file(tmp_path, monkeypatch):
 
 def test_install_emit_without_session_only_socketio(monkeypatch):
     emitted = []
-    monkeypatch.setattr(model_manager, '_safe_emit', lambda event, data: emitted.append((event, data)))
-    monkeypatch.setattr(model_manager, '_INSTALL_LOG_FH', None)
-    model_manager._install_emit('pure socket line')
+    monkeypatch.setattr(pip_installer, '_safe_emit', lambda event, data: emitted.append((event, data)))
+    monkeypatch.setattr(pip_installer, '_INSTALL_LOG_FH', None)
+    pip_installer._install_emit('pure socket line')
     assert emitted == [('install:log', {'line': 'pure socket line'})]
 
 

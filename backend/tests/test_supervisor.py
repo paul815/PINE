@@ -4,12 +4,11 @@ import shutil
 import threading
 import time
 import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from http.server import ThreadingHTTPServer
-
 import supervisor
-from supervisor import BackendSupervisor, make_supervisor_handler, SUPERVISOR_TOKEN
+from supervisor import SUPERVISOR_TOKEN, BackendSupervisor, make_supervisor_handler
 
 _TOKEN_HEADER = {"X-Pine-Supervisor-Token": SUPERVISOR_TOKEN}
 

@@ -11,7 +11,7 @@ REM               minutes-long cycle into a seconds-long one.
 REM               Because WIN_Install.bat runs its first-time setup only when
 REM               .venv is missing, this ALSO skips the install-time file layout
 REM               move - so it does not exercise the installer.
-REM               Must be OFF for release verification. See Documentation\TODO.md,
+REM               Must be OFF for release verification. See documentation\TODO.md,
 REM               section "Before release - dev-only test shortcuts".
 set "KEEP_VENV="
 :parse_args
@@ -72,21 +72,46 @@ for %%L in ("Launch Pine.bat" "Launch Pine.command" "Launch Pine.vbs" "Launch_WI
 
 REM Restore dev files moved during install
 for %%F in (AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version) do (
-    if exist "..\Documentation\dev-config\%%F" if not exist "..\%%F" move "..\Documentation\dev-config\%%F" "..\%%F" >nul 2>&1
+    if exist "..\documentation\dev-config\%%F" if not exist "..\%%F" move "..\documentation\dev-config\%%F" "..\%%F" >nul 2>&1
 )
-if exist "..\Documentation\dev-config\" rd "..\Documentation\dev-config" >nul 2>&1
+if exist "..\documentation\dev-config\" rd "..\documentation\dev-config" >nul 2>&1
 
 if not exist "..\WIN_Install.bat" if exist ".\WIN_Install.bat" copy /y ".\WIN_Install.bat" "..\WIN_Install.bat" >nul
 if not exist "..\MAC_Install.command" if exist ".\MAC_Install.command" copy /y ".\MAC_Install.command" "..\MAC_Install.command" >nul
 if exist ".\WIN_Install.bat" del /f /q ".\WIN_Install.bat" >nul 2>nul
 if exist ".\MAC_Install.command" del /f /q ".\MAC_Install.command" >nul 2>nul
 
+REM What survives a reset is listed in tools\reset_preserve_*.txt - the same two
+REM files reset.command and the in-app reset read, so the three cannot drift
+REM apart. Everything unlisted is deleted, so a missing or truncated list must
+REM stop the run here, before anything is removed.
+set "PRESERVE_ROOT_LIST=%~dp0tools\reset_preserve_root.txt"
+set "PRESERVE_BACKEND_LIST=%~dp0tools\reset_preserve_backend.txt"
+for %%L in ("%PRESERVE_ROOT_LIST%" "%PRESERVE_BACKEND_LIST%") do (
+    if not exist "%%~L" (
+        echo [ERROR] Missing allowlist %%~nxL - nothing was deleted.
+        exit /b 1
+    )
+)
+set /a PRESERVE_ROOT_COUNT=0
+for /f "usebackq eol=# delims=" %%K in ("%PRESERVE_ROOT_LIST%") do set /a PRESERVE_ROOT_COUNT+=1
+set /a PRESERVE_BACKEND_COUNT=0
+for /f "usebackq eol=# delims=" %%K in ("%PRESERVE_BACKEND_LIST%") do set /a PRESERVE_BACKEND_COUNT+=1
+if !PRESERVE_ROOT_COUNT! LSS 8 (
+    echo [ERROR] reset_preserve_root.txt looks truncated - nothing was deleted.
+    exit /b 1
+)
+if !PRESERVE_BACKEND_COUNT! LSS 8 (
+    echo [ERROR] reset_preserve_backend.txt looks truncated - nothing was deleted.
+    exit /b 1
+)
+
 set FAIL=0
 
 for /f "delims=" %%I in ('dir /b /a ".."') do (
     set "NAME=%%~I"
     set "KEEP=0"
-    for %%K in (".editorconfig" ".gitattributes" ".github" ".gitignore" ".git" ".pre-commit-config.yaml" ".python-version" "AGENTS.md" "Documentation" "LICENSE" "MAC_Install.command" "README.md" "WIN_Install.bat" "backend" "models") do (
+    for /f "usebackq eol=# delims=" %%K in ("%PRESERVE_ROOT_LIST%") do (
         if /I "!NAME!"=="%%~K" set "KEEP=1"
     )
     if "!KEEP!"=="0" (
@@ -111,7 +136,7 @@ for /f "delims=" %%I in ('dir /b /a ".."') do (
 for /f "delims=" %%I in ('dir /b /a "."') do (
     set "NAME=%%~I"
     set "KEEP=0"
-    for %%K in ("app" "ml_worker" "design-audit.js" "package-lock.json" "package.json" "pytest.ini" "requirements-lock.txt" "requirements.txt" "reset.command" "reset_win.bat" "run.py" "scripts" "supervisor.py" "templates" "tests" "tools" "MAC_Install.command" "WIN_Install.bat") do (
+    for /f "usebackq eol=# delims=" %%K in ("%PRESERVE_BACKEND_LIST%") do (
         if /I "!NAME!"=="%%~K" set "KEEP=1"
     )
     if defined KEEP_VENV if /I "!NAME!"==".venv" set "KEEP=1"

@@ -36,71 +36,11 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 </script>
 <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
 <style>
-@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Design tokens: light (default) ── */
-:root {
-  --bg:         hsl(220, 20%, 97%);
-  --fg:         hsl(220, 25%, 10%);
-  --card:       hsl(0, 0%, 100%);
-  --muted:      hsl(220, 15%, 94%);
-  --muted-fg:   hsl(220, 10%, 46%);
-  --accent:     hsl(152, 60%, 42%);
-  --accent-fg:  #fff;
-  --accent-dim: hsla(152, 60%, 42%, 0.10);
-  --accent-bd:  hsla(152, 60%, 42%, 0.25);
-  --border:     hsl(220, 15%, 88%);
-  --secondary:  hsl(220, 15%, 92%);
-  --destr:      hsl(0, 72%, 51%);
-  --destr-dim:  hsla(0, 72%, 51%, 0.10);
-  --destr-bd:   hsla(0, 72%, 51%, 0.25);
-  --warn:       hsl(38, 90%, 55%);
-  --warn-dim:   hsla(38, 90%, 55%, 0.10);
-  --warn-bd:    hsla(38, 90%, 55%, 0.25);
-  --sunken:     hsl(220, 20%, 95%);
-  --radius:     6px;
-  --font-body:  'Inter', sans-serif;
-  --font-mono:  'JetBrains Mono', monospace;
-}
 
-/* ── Design tokens: dark ── */
-[data-theme="dark"] {
-  --bg:         hsl(220, 20%, 7%);
-  --fg:         hsl(220, 15%, 93%);
-  --card:       hsl(220, 16%, 11%);
-  --muted:      hsl(220, 14%, 14%);
-  --muted-fg:   hsl(220, 10%, 54%);
-  --accent:     hsl(152, 55%, 45%);
-  --accent-dim: hsla(152, 55%, 45%, 0.12);
-  --accent-bd:  hsla(152, 55%, 45%, 0.28);
-  --border:     hsl(220, 16%, 17%);
-  --secondary:  hsl(220, 14%, 16%);
-  --destr:      hsl(0, 62%, 60%);
-  --destr-dim:  hsla(0, 62%, 60%, 0.12);
-  --destr-bd:   hsla(0, 62%, 60%, 0.28);
-  --warn:       hsl(38, 85%, 60%);
-  --warn-dim:   hsla(38, 85%, 60%, 0.10);
-  --warn-bd:    hsla(38, 85%, 60%, 0.25);
-  --sunken:     hsl(220, 18%, 9%);
-}
 
 html, body {
   height: 100%; font-family: var(--font-body);
@@ -292,6 +232,14 @@ body { font-size: inherit; }
   margin-bottom: 2px; display: flex; align-items: center; gap: 7px;
 }
 .mod-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.4; }
+.stt-choice { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.stt-opt {
+  display: grid; grid-template-columns: auto auto 1fr; align-items: baseline;
+  gap: 8px; cursor: pointer; font-size: 0.923rem; line-height: 1.4;
+}
+.stt-opt input { accent-color: var(--accent); align-self: center; }
+.stt-opt-name { color: var(--fg); font-weight: 500; white-space: nowrap; }
+.stt-opt-note { color: var(--muted-fg); }
 .total-row {
   display: flex; justify-content: flex-end; align-items: center; gap: 8px;
   font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 28px; padding-top: 8px;
@@ -657,6 +605,7 @@ body { font-size: inherit; }
           <div class="mod-info">
             <div class="mod-name">Transcription + Speaker diarization <span class="badge badge-dim">Required</span></div>
             <div class="mod-desc" id="baseModDesc"></div>
+            <div class="stt-choice" id="sttChoice"></div>
           </div>
           <div class="setup-size-meta" id="baseSizeLabel">~4 GB</div>
         </div>
@@ -1054,7 +1003,12 @@ async function loadSystemCheck() {
   const container = document.getElementById('syscheckList');
   container.innerHTML = '<div class="loading-spinner">Checking system&hellip;</div>';
   // Detect platform (Mac uses mlx-whisper)
-  try { const st = await api('/status'); isMac = !!st.is_mac; } catch(_){}
+  try {
+    const st = await api('/status');
+    isMac = !!st.is_mac;
+    sttModels = st.stt_models || [];
+    sttModelId = st.stt_model_id || (sttModels[0] || {}).id || '';
+  } catch(_){}
   const data = await api('/system-check');
   const iconOk = '<svg viewBox="0 0 11 11" fill="none"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const iconWarn = '<svg viewBox="0 0 11 11" fill="none"><path d="M5.5 3v3M5.5 8v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
@@ -1150,7 +1104,8 @@ function toggleMod(el, key, sizeMB) {
 }
 
 function updateTotal() {
-  const sttMB = 3000;
+  const chosen = (sttModels || []).find(m => m.id === sttModelId);
+  const sttMB = chosen ? chosen.size_bytes / 1e6 : 3000;
   const diarMB = 1000;
   let total = sttMB + diarMB;
   checkedMods.forEach(k => { total += modSizes[k] || 0; });
@@ -1158,16 +1113,45 @@ function updateTotal() {
   const baseEl = document.getElementById('baseSizeLabel');
   if (baseEl) baseEl.textContent = '~' + ((sttMB + diarMB) / 1000).toFixed(1) + ' GB';
 }
-let isMac = false;  // set from /status API
+let isMac = false;         // set from /status API
+let sttModels = [];        // choices offered on this platform, from /status
+let sttModelId = '';       // the one this setup will download
+
+// What separates the two: where the work happens and what that costs.
+const STT_MODEL_NOTES = {
+  'whisperx-large-v3': 'Highest accuracy · runs on the GPU · language can be set by hand',
+  'mlx-whisper-large-v3': 'Highest accuracy · runs on the Neural Engine · language can be set by hand',
+  'parakeet-tdt-0.6b-v3-onnx':
+    'Runs on the CPU, leaving the card to speaker detection · ~6× faster · language detected automatically',
+};
+
+function renderSttChoice() {
+  const host = document.getElementById('sttChoice');
+  if (!host) return;
+  host.innerHTML = sttModels.map(m => `
+    <label class="stt-opt">
+      <input type="radio" name="sttModel" value="${m.id}" ${m.id === sttModelId ? 'checked' : ''}
+             onchange="pickSttModel('${m.id}')" />
+      <span class="stt-opt-name">${m.name}</span>
+      <span class="stt-opt-note">${STT_MODEL_NOTES[m.id] || ''}</span>
+    </label>`).join('');
+}
+
+function pickSttModel(modelId) {
+  sttModelId = modelId;
+  updateTotal();
+}
+
 function onModulesStepShow() {
-  const modelName = 'large-v3';
-  const engine = isMac ? 'mlx-whisper' : 'WhisperX';
   const desc = document.getElementById('baseModDesc');
-  if (desc) desc.textContent = `${engine} ${modelName} · pyannote 3.1 · Word-level timestamps, up to 6 speakers`;
+  if (desc) desc.textContent = 'pyannote 3.1 speaker diarization · word-level timestamps, up to 6 speakers';
+  renderSttChoice();
   updateTotal();
 }
 async function saveModulesAndContinue() {
   const modules = Array.from(checkedMods);
+  // Model first: /modules sizes the download against whichever model is chosen.
+  if (sttModelId) await apiPost('/stt-model', { stt_model_id: sttModelId });
   const data = await apiPost('/modules', { modules });
   downloadModelIds = data.model_ids || [];
   goStep(2);

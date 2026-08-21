@@ -49,7 +49,6 @@ class TestDiskFullAnnotationSave:
         from app.services.annotations import save_annotations
 
         # Mock os.fdopen to raise OSError (simulating disk full)
-        original_fdopen = os.fdopen
         call_count = 0
 
         def failing_fdopen(fd, *args, **kwargs):

@@ -11,11 +11,12 @@
 #                 Because MAC_Install.command runs its first-time setup only
 #                 when .venv is missing, this ALSO skips the install-time file
 #                 layout move — so it does not exercise the installer.
-#                 Must be OFF for release verification. See Documentation/TODO.md,
+#                 Must be OFF for release verification. See documentation/TODO.md,
 #                 section "Before release — dev-only test shortcuts".
 
 set -e
 cd "$(dirname "$0")"
+SCRIPT_DIR="$(pwd)"
 shopt -s nullglob
 
 KEEP_VENV=0
@@ -34,44 +35,45 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-ROOT_PRESERVE=(
-  ".editorconfig"
-  ".gitattributes"
-  ".github"
-  ".gitignore"
-  ".git"
-  ".pre-commit-config.yaml"
-  ".python-version"
-  "AGENTS.md"
-  "Documentation"
-  "LICENSE"
-  "MAC_Install.command"
-  "README.md"
-  "WIN_Install.bat"
-  "backend"
-  "models"
-)
+# What survives a reset is listed in tools/reset_preserve_*.txt — the same two
+# files reset_win.bat and the in-app reset read, so the three cannot drift
+# apart. Everything unlisted is deleted, so a missing or truncated list has to
+# stop the run here, before anything is removed.
+PRESERVE_ROOT_LIST="$SCRIPT_DIR/tools/reset_preserve_root.txt"
+PRESERVE_BACKEND_LIST="$SCRIPT_DIR/tools/reset_preserve_backend.txt"
 
-BACKEND_PRESERVE=(
-  "app"
-  "ml_worker"
-  "design-audit.js"
-  "package-lock.json"
-  "package.json"
-  "pytest.ini"
-  "requirements-lock.txt"
-  "requirements.txt"
-  "reset.command"
-  "reset_win.bat"
-  "run.py"
-  "scripts"
-  "supervisor.py"
-  "templates"
-  "tests"
-  "tools"
-  "MAC_Install.command"
-  "WIN_Install.bat"
-)
+read_preserve_list() {
+    # Drop comments, CR (the lists are checked out CRLF on Windows) and blanks.
+    tr -d '\r' < "$1" \
+        | sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+        | grep -v '^$' || true
+}
+
+validate_preserve_list() {
+    if [ ! -f "$1" ]; then
+        echo "[ERROR] Missing allowlist $1 - nothing was deleted." >&2
+        exit 1
+    fi
+    local count
+    count="$(read_preserve_list "$1" | grep -c . || true)"
+    if [ "$count" -lt 8 ]; then
+        echo "[ERROR] $(basename "$1") looks truncated ($count entries) - nothing was deleted." >&2
+        exit 1
+    fi
+}
+
+validate_preserve_list "$PRESERVE_ROOT_LIST"
+validate_preserve_list "$PRESERVE_BACKEND_LIST"
+
+ROOT_PRESERVE=()
+while IFS= read -r item; do
+    ROOT_PRESERVE+=("$item")
+done < <(read_preserve_list "$PRESERVE_ROOT_LIST")
+
+BACKEND_PRESERVE=()
+while IFS= read -r item; do
+    BACKEND_PRESERVE+=("$item")
+done < <(read_preserve_list "$PRESERVE_BACKEND_LIST")
 
 if [ "$KEEP_VENV" = "1" ]; then
     BACKEND_PRESERVE+=(".venv")
@@ -132,9 +134,9 @@ rm -f ../"Launch Pine.bat" ../"Launch Pine.command" ../"Launch Pine.vbs" ../"Lau
 
 # Restore dev files moved during install
 for f in AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version; do
-  [[ -f "../Documentation/dev-config/$f" && ! -f "../$f" ]] && mv "../Documentation/dev-config/$f" "../$f" 2>/dev/null || true
+  [[ -f "../documentation/dev-config/$f" && ! -f "../$f" ]] && mv "../documentation/dev-config/$f" "../$f" 2>/dev/null || true
 done
-rmdir ../Documentation/dev-config 2>/dev/null || true
+rmdir ../documentation/dev-config 2>/dev/null || true
 
 if [ ! -f ../WIN_Install.bat ] && [ -f ./WIN_Install.bat ]; then
     cp ./WIN_Install.bat ../WIN_Install.bat

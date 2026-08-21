@@ -4,7 +4,6 @@ from flask import Flask
 
 from app.api import onboarding
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

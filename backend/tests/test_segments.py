@@ -1,6 +1,5 @@
 """Tier 2 tests: Segments CRUD API."""
 
-import pytest
 
 
 class TestSegmentsCRUD:
@@ -203,7 +202,7 @@ class TestSegmentsCRUD:
         # Segment and recording rows are gone — not orphaned, no IntegrityError.
         with app.app_context():
             from app.extensions import db
-            from app.models.segment import Segment
             from app.models.recording import Recording
+            from app.models.segment import Segment
             assert db.session.get(Segment, sid) is None
             assert db.session.get(Recording, rid) is None

@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from glob import glob
 from pathlib import PurePosixPath
 
@@ -286,7 +286,7 @@ def _create_backup_inner(app, include_audio, project_folders=None, label=None,
     backup_path = backup_dir or _backup_dir(app)
     os.makedirs(backup_path, exist_ok=True)
     projects_root = _projects_root(app)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     filename = _build_backup_filename(now, include_audio, label=label)
     zip_path = os.path.join(backup_path, filename)
 

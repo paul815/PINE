@@ -17,12 +17,17 @@ import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO
 
 SUPERVISOR_TOKEN = os.environ.get("PINE_SUPERVISOR_TOKEN") or secrets.token_urlsafe(32)
 
 
 HOST = "127.0.0.1"
+# The supervisor assigns both ports and passes them to the backend it spawns as
+# PINE_SUPERVISOR_PORT / PINE_BACKEND_PORT. These two literals are deliberately
+# not imported from app.ports: this process must start before (and independently
+# of) the Flask stack, including while onboarding is still pip-installing it.
+# app.ports.DEFAULT_* mirrors them for the backend side — change both together.
 PORT = 5001
 BACKEND_PORT = 5000
 BACKEND_SCRIPT = "run.py"
@@ -178,11 +183,11 @@ def _configure_logging() -> Path:
 class BackendSupervisor:
     def __init__(self, supervisor_port: int = PORT, backend_port: int = BACKEND_PORT) -> None:
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
-        self._backend_log_handle: Optional[IO[str]] = None
+        self._proc: subprocess.Popen | None = None
+        self._backend_log_handle: IO[str] | None = None
         self._shutdown_requested = False
         self._shutdown_reason_logged = False
-        self._stop_server_event: Optional[threading.Event] = None
+        self._stop_server_event: threading.Event | None = None
         self._backend_ready_event = threading.Event()
         self._leases: dict[str, float] = {}
         self._lease_grace_until = time.time() + STARTUP_LEASE_GRACE_SECONDS

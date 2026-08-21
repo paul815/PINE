@@ -138,9 +138,9 @@ if "%NEED_SETUP%"=="1" (
     )
 
     REM Move dev/GitHub files out of root for end-users
-    if not exist "%PINE_ROOT_DIR%Documentation\dev-config\" mkdir "%PINE_ROOT_DIR%Documentation\dev-config\"
+    if not exist "%PINE_ROOT_DIR%documentation\dev-config\" mkdir "%PINE_ROOT_DIR%documentation\dev-config\"
     for %%F in (AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version) do (
-        if exist "%PINE_ROOT_DIR%%%F" move "%PINE_ROOT_DIR%%%F" "%PINE_ROOT_DIR%Documentation\dev-config\%%F" >nul 2>&1
+        if exist "%PINE_ROOT_DIR%%%F" move "%PINE_ROOT_DIR%%%F" "%PINE_ROOT_DIR%documentation\dev-config\%%F" >nul 2>&1
     )
 
     echo.
@@ -383,14 +383,14 @@ goto :eof
 
 :finalize_install_layout
 REM Tidy the repo root after a fresh install: keep only "Launch Pine.lnk" plus the
-REM backend\ and Documentation\ folders. Canonical installer copies live in backend\.
-set "DOC_DIR=%PINE_ROOT_DIR%Documentation"
+REM backend\ and documentation\ folders. Canonical installer copies live in backend\.
+set "DOC_DIR=%PINE_ROOT_DIR%documentation"
 set "DEVCFG_DIR=%DOC_DIR%\dev-config"
 if not exist "%DOC_DIR%\" mkdir "%DOC_DIR%" >nul 2>nul
 if not exist "%DEVCFG_DIR%\" mkdir "%DEVCFG_DIR%" >nul 2>nul
 
-REM Docs -> Documentation\ . The root CLAUDE.md is the context-mode routing copy and
-REM Documentation\ already ships its own, so park it under a distinct name.
+REM Docs -> documentation\ . The root CLAUDE.md is the context-mode routing copy and
+REM documentation\ already ships its own, so park it under a distinct name.
 call :relocate_root_file "DESIGN.md" "%DOC_DIR%\DESIGN.md"
 call :relocate_root_file "CLAUDE.md" "%DOC_DIR%\CLAUDE.context-mode.md"
 call :relocate_root_file ".gitattributes" "%DEVCFG_DIR%\.gitattributes"

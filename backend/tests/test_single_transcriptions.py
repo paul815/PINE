@@ -1,7 +1,6 @@
 """Tests for single transcription (no-project) mode."""
 
 import io
-import os
 
 
 def test_list_empty(client):

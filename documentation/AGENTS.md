@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Last updated: 2026-04-09
+Last updated: 2026-08-20
 Scope: Repository-wide guidance for Claude Code, Codex, and Cursor.
 
 ## 1) Mission
@@ -24,7 +24,7 @@ All agents must follow this file even if their platform defaults differ.
 ## 3) Priority Rules (highest -> lowest)
 
 1. System/tooling safety constraints
-2. This `Documentation/AGENTS.md`
+2. This `documentation/AGENTS.md`
 3. User request in the current task
 4. Agent preferences/defaults
 
@@ -37,11 +37,14 @@ If rules conflict, the agent must state which rule won and why.
 - Database path: `backend/data/pine.db`
 - User project storage: `projects/` (configurable at runtime)
 - Models storage: `models/` (configurable at runtime)
-- Models: SQLAlchemy — Project, Recording, Segment, Setting, MLModel
+- Models: SQLAlchemy — Project, Recording, RecordingTrack, Segment, Setting, MLModel
 - Templates: server-rendered Jinja2 under `backend/templates/`
-- Tests: `pytest` in `backend/tests/`
+- Tests: `pytest` in `backend/tests/` (558 tests)
+- ML runs in a **separate process**: `backend/ml_worker/`, driven by `app/services/transcription/worker_client.py`
 
 Important architecture: metadata is in SQLite, while transcript and annotation source-of-truth files live in per-project folders. Breaking file consistency is a production data-loss event.
+
+Process boundary: `backend/app/` must never import `torch`, `whisperx`, `pyannote` or `mlx`. Those belong to `backend/ml_worker/` alone, so that a CUDA crash or an OOM kills the worker instead of the backend. An import that crosses this line looks harmless and undoes the split.
 
 ## 5) Data Safety Requirements (Critical)
 
@@ -76,6 +79,8 @@ High-risk modules (read carefully before edits):
 - `backend/app/services/export_service.py`
 - `backend/app/services/backup_service.py`
 - `backend/app/services/file_utils.py`
+- `backend/app/services/transcript_edit.py`
+- `backend/app/services/multitrack_ingest.py` (registers files by absolute path — never copies, never moves user media)
 - `backend/app/models/` (schema implications)
 
 Data-bearing runtime directories (do not modify casually):

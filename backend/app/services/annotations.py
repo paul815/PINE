@@ -1,8 +1,8 @@
 """Annotations storage: tags, comments. Stored as JSON in project folders."""
 
+import json
 import os
 import re
-import json
 import threading
 
 from .file_utils import atomic_write_json as _atomic_write_json
@@ -172,7 +172,7 @@ def get_project_tags(project_dir):
     path = _project_tags_path(project_dir)
     if os.path.isfile(path):
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 return normalize_tags(json.load(f))
         except (json.JSONDecodeError, OSError):
             pass
@@ -189,7 +189,7 @@ def get_project_themes(project_dir):
     path = _project_themes_path(project_dir)
     if os.path.isfile(path):
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 return normalize_themes(json.load(f))
         except (json.JSONDecodeError, OSError):
             pass
@@ -218,7 +218,7 @@ def get_annotations(project_dir, recording_stored_name):
     with lock:
         if os.path.isfile(path):
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     return json.load(f)
             except (json.JSONDecodeError, OSError):
                 pass
@@ -244,7 +244,7 @@ def update_annotations(project_dir, recording_stored_name, updates):
     with lock:
         if os.path.isfile(path):
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     ann = json.load(f)
             except (json.JSONDecodeError, OSError):
                 ann = _default_annotations()

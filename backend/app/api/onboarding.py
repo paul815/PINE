@@ -8,26 +8,29 @@ import time
 import urllib.request
 from pathlib import Path
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, current_app, jsonify, request
 
-from ..models.setting import Setting
 from ..models.ml_model import MLModel
-from ..services.system_check import run_system_check, _existing_ancestor, _detect_nvidia_gpu
+from ..models.setting import Setting
+from ..ports import supervisor_port, supervisor_url
 from ..services.model_manager import (
-    validate_hf_token,
-    get_models_for_setup,
-    get_default_stt_model,
-    normalize_stt_model_id,
-    download_models,
-    play_install_complete_sound,
     IS_MAC,
+    MODEL_REGISTRY,
+    download_models,
+    get_default_stt_model,
+    get_models_for_setup,
+    normalize_stt_model_id,
+    play_install_complete_sound,
+    stt_model_extra_ids,
+    supported_stt_models,
+    validate_hf_token,
 )
+from ..services.system_check import _detect_nvidia_gpu, _existing_ancestor, run_system_check
 
 onboarding_bp = Blueprint('onboarding', __name__)
 
 def _supervisor_status_url() -> str:
-    port = os.environ.get('PINE_SUPERVISOR_PORT', '5001')
-    return f'http://127.0.0.1:{port}/status'
+    return supervisor_url('status')
 
 
 def _resolve_supervisor_python() -> Path:
@@ -55,7 +58,7 @@ def _ensure_supervisor_running(timeout: float = 8.0) -> dict | None:
     if status and status.get('supervisor_running'):
         # Supervisor is already up — reuse the token we already know about.
         existing_token = os.environ.get('PINE_SUPERVISOR_TOKEN', '')
-        sup_port = status.get('supervisor_port') or int(os.environ.get('PINE_SUPERVISOR_PORT', '5001'))
+        sup_port = status.get('supervisor_port') or supervisor_port()
         return {'token': existing_token, 'port': int(sup_port)}
 
     token = secrets.token_urlsafe(32)
@@ -86,7 +89,7 @@ def _ensure_supervisor_running(timeout: float = 8.0) -> dict | None:
     while time.time() < deadline:
         status = _probe_supervisor_status()
         if status and status.get('supervisor_running'):
-            sup_port = status.get('supervisor_port') or int(os.environ.get('PINE_SUPERVISOR_PORT', '5001'))
+            sup_port = status.get('supervisor_port') or supervisor_port()
             # Propagate for this backend process so later requests use the right port.
             os.environ['PINE_SUPERVISOR_PORT'] = str(sup_port)
             os.environ['PINE_SUPERVISOR_TOKEN'] = token
@@ -107,6 +110,15 @@ def status():
         'completed': completed,
         'modules': modules,
         'stt_model_id': stt_model_id,
+        # What the model step offers, best-quality first. Sizes include anything
+        # the model cannot run without, so the step can quote one number.
+        'stt_models': [{
+            'id': model_id,
+            'name': MODEL_REGISTRY.get(model_id, {}).get('name', model_id),
+            'size_bytes': sum(
+                MODEL_REGISTRY.get(mid, {}).get('size_bytes', 0)
+                for mid in [model_id, *stt_model_extra_ids(model_id)]),
+        } for model_id in supported_stt_models()],
         'is_mac': IS_MAC,
         'models_path': Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH']),
         'projects_path': Setting.get('projects_path', current_app.config['DEFAULT_PROJECTS_PATH']),
@@ -180,7 +192,7 @@ def set_modules():
 
     stt_model_id = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
     Setting.set('stt_model_id', stt_model_id)
-    model_ids = get_models_for_setup(modules)
+    model_ids = get_models_for_setup(modules, stt_model_id)
     total = sum(
         (db.session.get(MLModel, mid).size_bytes or 0)
         for mid in model_ids
@@ -189,14 +201,18 @@ def set_modules():
     return jsonify({'ok': True, 'total_size_bytes': total, 'model_ids': model_ids})
 
 
-@onboarding_bp.route('/language', methods=['POST'])
-def set_language():
-    request.get_json(force=True)
-    stt_model_id = get_default_stt_model()
+@onboarding_bp.route('/stt-model', methods=['POST'])
+def set_stt_model():
+    """Record which transcription model setup should download."""
+    data = request.get_json(force=True) or {}
+    requested = str(data.get('stt_model_id', '')).strip()
+    # An unsupported id is not an error here: normalize falls back to the
+    # platform default, which is what setup would have downloaded anyway.
+    stt_model_id = normalize_stt_model_id(requested) if requested else get_default_stt_model()
     Setting.set('stt_model_id', stt_model_id)
     raw_modules = Setting.get('onboarding_modules', '')
     modules = [m for m in raw_modules.split(',') if m]
-    model_ids = get_models_for_setup(modules)
+    model_ids = get_models_for_setup(modules, stt_model_id)
     total = sum(
         (db.session.get(MLModel, mid).size_bytes or 0)
         for mid in model_ids
@@ -261,7 +277,7 @@ def start_download():
 
     stt_model_id = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
     Setting.set('stt_model_id', stt_model_id)
-    model_ids = get_models_for_setup(modules)
+    model_ids = get_models_for_setup(modules, stt_model_id)
     download_models(current_app._get_current_object(), model_ids, models_path, hf_token)
     return jsonify({'ok': True, 'model_ids': model_ids})
 

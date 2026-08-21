@@ -148,71 +148,12 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 })();
 </script>
 <style>
-@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Design tokens: light (default) ── */
-:root {
-  --bg:         hsl(220, 20%, 97%);
-  --fg:         hsl(220, 25%, 10%);
-  --card:       hsl(0, 0%, 100%);
-  --muted:      hsl(220, 15%, 94%);
-  --muted-fg:   hsl(220, 10%, 46%);
-  --accent:     hsl(152, 60%, 42%);
-  --accent-fg:  #fff;
-  --accent-dim: hsla(152, 60%, 42%, 0.10);
-  --accent-bd:  hsla(152, 60%, 42%, 0.25);
-  --border:     hsl(220, 15%, 88%);
-  --secondary:  hsl(220, 15%, 92%);
-  --destr:      hsl(0, 72%, 51%);
-  --destr-dim:  hsla(0, 72%, 51%, 0.10);
-  --destr-bd:   hsla(0, 72%, 51%, 0.25);
-  --warn:       hsl(38, 90%, 55%);
-  --warn-dim:   hsla(38, 90%, 55%, 0.10);
-  --warn-bd:    hsla(38, 90%, 55%, 0.25);
-  --sunken:     hsl(220, 20%, 95%);
-  --radius:     6px;
-  --font-body:  'Inter', sans-serif;
-  --font-mono:  'JetBrains Mono', monospace;
-}
 
 /* ── Design tokens: dark ── */
-:root[data-theme="dark"] {
-  --bg:         hsl(220, 20%, 7%);
-  --fg:         hsl(220, 15%, 93%);
-  --card:       hsl(220, 16%, 11%);
-  --muted:      hsl(220, 14%, 14%);
-  --muted-fg:   hsl(220, 10%, 54%);
-  --accent:     hsl(152, 55%, 45%);
-  --accent-dim: hsla(152, 55%, 45%, 0.12);
-  --accent-bd:  hsla(152, 55%, 45%, 0.28);
-  --border:     hsl(220, 16%, 17%);
-  --secondary:  hsl(220, 14%, 16%);
-  --destr:      hsl(0, 62%, 60%);
-  --destr-dim:  hsla(0, 62%, 60%, 0.12);
-  --destr-bd:   hsla(0, 62%, 60%, 0.28);
-  --warn:       hsl(38, 85%, 60%);
-  --warn-dim:   hsla(38, 85%, 60%, 0.10);
-  --warn-bd:    hsla(38, 85%, 60%, 0.25);
-  --sunken:     hsl(220, 18%, 9%);
-}
 
 html, body {
   height: 100%;
@@ -626,6 +567,13 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
         <div class="sec-title">Transcription process <span class="save-status" role="status" aria-live="polite">Saved</span></div>
         <div class="sec-sub sec-note">Current model: <span id="sttCurrentModel">—</span></div>
         <div class="card">
+          <div id="sttModelList" style="padding-bottom:14px;border-bottom:1px solid var(--border)"></div>
+          <div id="sttProgress" style="display:none;margin-top:10px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+            <div style="height:4px;background:var(--muted);border-radius:2px;overflow:hidden">
+              <div id="sttBar" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div>
+            </div>
+            <div id="sttProgressText" class="assistive-text help"></div>
+          </div>
           <div class="row" style="align-items:flex-start;gap:16px">
             <div style="flex:1">
               <div class="row-lbl">Play a sound when transcription finishes</div>
@@ -991,6 +939,7 @@ function applySettings() {
   const sttId = settings.stt_model_id || 'whisperx-large-v3';
   const sttModel = (settings.models || []).find(m => m.id === sttId);
   document.getElementById('sttCurrentModel').textContent = sttModel ? sttModel.name : sttId;
+  renderSttModels();
 
   const txSoundOn = settings.transcription_complete_sound_enabled !== 'false';
   const txSw = document.getElementById('txCompleteSound');
@@ -1216,6 +1165,134 @@ async function saveExportPromptRecording() {
     settings.export_default_prompt_recording = val;
     showSaved('sec-export');
   } catch (e) { toast('Failed to save: ' + e.message); }
+}
+
+/* ============ Transcription model ============ */
+// What each model is for, in the terms that decide the choice: where it runs,
+// what it costs on the card, and what it does about language.
+const STT_MODEL_NOTES = {
+  'whisperx-large-v3': 'Runs on the GPU · 6.5 GB VRAM · you can set the language yourself',
+  'mlx-whisper-large-v3': 'Runs on the Neural Engine · you can set the language yourself',
+  'parakeet-tdt-0.6b-v3-onnx':
+    'Runs on the CPU, leaving the whole card to speaker detection · ~6× faster · '
+    + '25 languages, detected automatically (cannot be set by hand)',
+};
+
+let _sttSocket = null;
+let _sttPendingId = null;
+
+function renderSttModels() {
+  const host = document.getElementById('sttModelList');
+  if (!host) return;
+  const current = settings.stt_model_id || '';
+  host.innerHTML = (settings.stt_models || []).map(m => {
+    const checked = m.id === current ? 'checked' : '';
+    const note = STT_MODEL_NOTES[m.id] || '';
+    const action = m.installed
+      ? (m.id === current
+          ? '<span class="assistive-text">In use</span>'
+          : `<button class="btn-outline" onclick="removeSttModel('${m.id}')">Remove</button>`)
+      : `<button class="btn-outline" onclick="installSttModel('${m.id}')">Install</button>`;
+    return `
+      <label class="row" style="align-items:flex-start;gap:12px;cursor:pointer">
+        <input type="radio" name="sttModel" value="${m.id}" ${checked}
+               ${m.installed ? '' : 'disabled'}
+               onchange="selectSttModel('${m.id}')"
+               style="margin-top:3px;accent-color:var(--accent);flex-shrink:0" />
+        <div style="flex:1">
+          <div class="row-lbl">${m.name}</div>
+          <div class="row-sub row-sub-tight">${note}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <div class="model-size">${fmtBytes(m.size_bytes || 0)}</div>
+          ${action}
+        </div>
+      </label>`;
+  }).join('');
+}
+
+async function selectSttModel(modelId) {
+  const res = await fetch(API, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stt_model_id: modelId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast(err.error || 'Could not switch model');
+    await loadSettings();
+    return;
+  }
+  showSaved('sec-stt');
+  await loadSettings();
+}
+
+async function removeSttModel(modelId) {
+  if (!confirm('Remove this transcription model? You can install it again later.')) return;
+  try {
+    const res = await fetch(API + '/stt-model/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Remove failed');
+    toast('Model removed');
+    await loadSettings();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function installSttModel(modelId) {
+  _sttPendingId = modelId;
+  document.getElementById('sttProgress').style.display = 'block';
+  document.getElementById('sttProgressText').textContent = 'Preparing...';
+  document.getElementById('sttProgressText').style.color = '';
+  document.getElementById('sttBar').style.width = '0';
+
+  if (!_sttSocket) {
+    _sttSocket = window._settingsSocket || io();
+    _sttSocket.on('install:log', d => {
+      if (_sttPendingId) document.getElementById('sttProgressText').textContent = d.line;
+    });
+    _sttSocket.on('download:progress', d => {
+      // The VAD rides along with Parakeet; both report under their own ids.
+      if (_sttPendingId && d.total_bytes > 0 && d.model_id !== 'gliner-pii') {
+        const pct = Math.min((d.downloaded_bytes / d.total_bytes) * 100, 100);
+        document.getElementById('sttBar').style.width = pct.toFixed(1) + '%';
+        document.getElementById('sttProgressText').textContent = 'Downloading... ' + Math.round(pct) + '%';
+      }
+    });
+    _sttSocket.on('download:model_complete', d => {
+      if (d.model_id === _sttPendingId) {
+        document.getElementById('sttBar').style.width = '100%';
+        document.getElementById('sttProgressText').textContent = 'Done';
+        _sttPendingId = null;
+        toast('Transcription model installed');
+        loadSettings();
+      }
+    });
+    _sttSocket.on('download:error', d => {
+      if (d.model_id === _sttPendingId) {
+        document.getElementById('sttProgressText').textContent = 'Error: ' + d.error;
+        document.getElementById('sttProgressText').style.color = 'var(--destr)';
+        _sttPendingId = null;
+      }
+    });
+  }
+
+  try {
+    const res = await fetch(API + '/stt-model/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Install failed');
+  } catch (e) {
+    toast('Failed: ' + e.message);
+    _sttPendingId = null;
+    document.getElementById('sttProgress').style.display = 'none';
+  }
 }
 
 /* ============ PII Model ============ */

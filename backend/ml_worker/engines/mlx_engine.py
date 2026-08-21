@@ -55,7 +55,7 @@ def probe_language_file(audio_path: str, model_path: str):
     """Return (best_code, top_p, second_p, options) or None on failure."""
     try:
         import mlx.core as mx
-        from mlx_whisper.audio import log_mel_spectrogram, N_SAMPLES, pad_or_trim, N_FRAMES
+        from mlx_whisper.audio import N_FRAMES, N_SAMPLES, log_mel_spectrogram, pad_or_trim
         from mlx_whisper.load_models import load_model
     except ImportError:
         return None
@@ -134,12 +134,12 @@ class MlxWhisperEngine(EngineAdapter):
     def _transcribe_single(self, audio_path, language=None):
         """Transcribe one file with mlx-whisper. Returns (result_dict, language)."""
         import mlx_whisper
-        tx_kw = dict(
-            path_or_hf_repo=self._model_path,
-            word_timestamps=True,
+        tx_kw = {
+            'path_or_hf_repo': self._model_path,
+            'word_timestamps': True,
             # True keeps 30s windows coherent; False can cause garbled / duplicated text.
-            condition_on_previous_text=True,
-        )
+            'condition_on_previous_text': True,
+        }
         if language:
             tx_kw['language'] = language
         result = mlx_whisper.transcribe(audio_path, **tx_kw)
@@ -199,11 +199,11 @@ class MlxWhisperEngine(EngineAdapter):
                 write_wav(tmp_path, chunk_audio)
 
                 import mlx_whisper
-                tx_kw = dict(
-                    path_or_hf_repo=self._model_path,
-                    word_timestamps=True,
-                    condition_on_previous_text=True,
-                )
+                tx_kw = {
+                    'path_or_hf_repo': self._model_path,
+                    'word_timestamps': True,
+                    'condition_on_previous_text': True,
+                }
                 if language:
                     tx_kw['language'] = language
                 result = mlx_whisper.transcribe(tmp_path, **tx_kw)

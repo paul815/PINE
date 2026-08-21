@@ -37,7 +37,16 @@ DIARIZE_CHUNK_OVERLAP_SEC = 30       # 30s overlap for speaker continuity
 # mlx-whisper on Metal, diarization wants to be somewhere else. Measure the
 # combinations with PINE_PARALLEL_STAGES and PINE_DIARIZE_DEVICE before
 # assuming a default fits.
-PARALLEL_STAGES = os.environ.get('PINE_PARALLEL_STAGES', '1').strip() != '0'
+#
+# Default is off. On CUDA both stages land on the same card by default, and a
+# 12 GB GPU running whisperx float16 (batch_size 16) next to pyannote spends
+# 6+ minutes with both resident: the machine becomes unusable while the driver
+# pages VRAM back to host RAM, and the first chunk's status line sits still for
+# the whole of it. Sequential stages cost more wall clock and give it back in
+# a responsive desktop. Set PINE_PARALLEL_STAGES=1 to overlap them again --
+# worth it when diarization is on a different device (PINE_DIARIZE_DEVICE=cpu)
+# or the GPU has headroom to spare.
+PARALLEL_STAGES = os.environ.get('PINE_PARALLEL_STAGES', '0').strip() != '0'
 
 # Progress weighting: expected cost of each stage as a multiple of the audio
 # duration. These only set how the single 0→100 scale is divided between
@@ -76,6 +85,13 @@ PROGRESS_LOAD_SEC = float(os.environ.get('PINE_PROGRESS_LOAD_SEC', '10'))
 PROGRESS_FINALIZE_SEC = 2.0
 # How often the interpolating ticker refreshes between real milestones.
 PROGRESS_TICK_SEC = float(os.environ.get('PINE_PROGRESS_TICK_SEC', '2'))
+# Key the measured pace travels under inside the transcript payload. Underscored
+# because it is not part of the transcript — ``_finalize`` pops it before the
+# file is written. It lives here rather than beside the pipeline so the Flask
+# side can read it without importing the pipeline, and through it torch: that
+# import ran once with a stale ``constants`` still in ``sys.modules`` and cost
+# a finished 40-minute transcript.
+PROGRESS_SCALE_KEY = '_progress_scale'
 
 # ── Per-speaker tracks (see tracks.py) ──
 #
@@ -105,6 +121,14 @@ VAD_DOMINANCE_DB = float(os.environ.get('PINE_VAD_DOMINANCE_DB', '6.0'))
 # Silence inserted between two spliced-together regions, so the model does not
 # run a turn from minute 3 into a turn from minute 40.
 VAD_COMPACT_GAP_SEC = float(os.environ.get('PINE_VAD_COMPACT_GAP_SEC', '0.2'))
+# Cutting the pauses out also cuts the transcript: a turn spoken across two
+# speech regions comes back as two segments. Neighbours from one speaker no
+# further apart than this are put back together — wide enough to close the
+# breath the gate opened on, short enough to leave a real handover alone.
+TRACK_JOIN_GAP_SEC = float(os.environ.get('PINE_TRACK_JOIN_GAP_SEC', '1.5'))
+# ...but only up to here. Someone talking steadily for ten minutes would
+# otherwise arrive as one block nobody can scroll past or click into.
+TRACK_JOIN_MAX_SEC = float(os.environ.get('PINE_TRACK_JOIN_MAX_SEC', '30.0'))
 
 SPEAKER_LABELS = [
     'Moderator',

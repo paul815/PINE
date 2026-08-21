@@ -13,7 +13,6 @@ Run from repo root with the venv active:
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -138,7 +137,7 @@ def parse_css(css: str) -> list[tuple[list[str], dict[str, str]]]:
 def rules_for_class(
     parsed: list[tuple[list[str], dict[str, str]]],
     class_name: str,
-) -> Optional[dict[str, str]]:
+) -> dict[str, str] | None:
     """
     Return merged CSS properties for a given class name.
     Only considers direct (non-contextual) rules — i.e. selectors that have
@@ -182,7 +181,7 @@ def get_html_rem_scale(css: str) -> float:
 
 # ── Data collection ───────────────────────────────────────────────────────────
 
-def collect() -> dict[str, dict[str, Optional[dict[str, str]]]]:
+def collect() -> dict[str, dict[str, dict[str, str] | None]]:
     """
     Returns {template_stem: {css_class: {prop: value | None}}}.
     font-size values are normalised to px.
@@ -193,7 +192,7 @@ def collect() -> dict[str, dict[str, Optional[dict[str, str]]]]:
         sys.exit(1)
 
     all_classes = {c for cs in ROLE_MAP.values() for c in cs}
-    data: dict[str, dict[str, Optional[dict[str, str]]]] = {}
+    data: dict[str, dict[str, dict[str, str] | None]] = {}
 
     for tmpl in templates:
         name = tmpl.stem
@@ -244,7 +243,7 @@ def _mismatch_props(
     return mismatches
 
 
-def print_report(data: dict[str, dict[str, Optional[dict[str, str]]]]) -> int:
+def print_report(data: dict[str, dict[str, dict[str, str] | None]]) -> int:
     templates = sorted(data.keys())
     all_classes = {c for cs in ROLE_MAP.values() for c in cs}
     has_mismatch = False

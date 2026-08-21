@@ -10,7 +10,6 @@ from app.services.multitrack_ingest import (
     speaker_name_from_filename,
 )
 
-
 # ── the participant name Zoom left in the filename ──
 
 @pytest.mark.parametrize('filename, expected', [
@@ -22,6 +21,9 @@ from app.services.multitrack_ingest import (
     ('audio99 Lena.m4a', 'Lena'),
     ('audio_only_Maria.m4a', 'Maria'),
     ('audioonly_Maria.m4a', 'Maria'),
+    # No separator at all: the capital is what starts the name.
+    ('audioPavelK.m4a', 'PavelK'),
+    ('audioНаташа.m4a', 'Наташа'),
     ('Ivan_Petrov.m4a', 'Ivan Petrov'),
     ('2026-08-07 10.00.00 Ivan.m4a', 'Ivan'),
     # Nothing exotic to strip.
@@ -37,7 +39,11 @@ def test_speaker_name_from_filename(filename, expected):
 
 
 def test_a_name_starting_with_audio_is_not_truncated():
-    """"Audiard" must not become "rd" — the prefix needs a separator after it."""
+    """"Audiophile" must not become "phile" — a lower-case letter is no boundary.
+
+    The prefix only goes when a separator, a digit or a capital follows it.
+    """
+    assert speaker_name_from_filename('Audiophile.m4a') == 'Audiophile'
     assert speaker_name_from_filename('Audiard.m4a') == 'Audiard'
 
 
@@ -56,6 +62,8 @@ def test_full_path_is_accepted():
     (('Zoom', 'Interview', 'audio1234567890'), 'Interview'),
     # A meeting whose own name merely begins with those letters is left alone.
     (('Zoom', 'Audiard interview'), 'Audiard interview'),
+    # Including a capital straight after — that only names a track, not a folder.
+    (('Zoom', 'AudioSync weekly'), 'AudioSync weekly'),
 ])
 def test_meeting_name_from_folder(parts, expected):
     assert meeting_name_from_folder(os.path.join(*parts)) == expected

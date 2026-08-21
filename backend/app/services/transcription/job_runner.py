@@ -19,6 +19,7 @@ from ...models.project import Project
 from ...models.recording import Recording
 from ...models.setting import Setting
 from ..file_utils import atomic_write_json
+from ..transcript_format import stamp
 from . import (
     _build_transcript_filename,
     _check_cancel,
@@ -36,6 +37,36 @@ _inprocess_pipeline = None
 
 def _inprocess_mode():
     return os.environ.get('PINE_ML_INPROCESS', '').strip() == '1'
+
+
+def _preflight_stt_model(app):
+    """Return the chosen STT model id, refusing the job if it is not installed.
+
+    Runs before the recording is marked 'transcribing', because a model that was
+    never downloaded is a setup problem rather than a failed transcription. With
+    one mandatory model this could not happen; with a choice it can.
+    """
+    from ..model_manager import (
+        get_default_stt_model,
+        normalize_stt_model_id,
+        stt_model_extra_ids,
+    )
+
+    with app.app_context():
+        stt_model_id = normalize_stt_model_id(
+            Setting.get('stt_model_id', get_default_stt_model()))
+        models_path = Setting.get('models_path', app.config['DEFAULT_MODELS_PATH'])
+
+        for model_id in [stt_model_id, *stt_model_extra_ids(stt_model_id)]:
+            row = db.session.get(MLModel, model_id)
+            path = (row.path if row and row.path else '') or os.path.join(models_path, model_id)
+            if row is None or row.status != 'ready' or not os.path.isdir(path):
+                raise RuntimeError(
+                    f'Transcription model "{model_id}" is not installed. '
+                    'Open Settings -> Transcription process and install it, '
+                    'or switch to a model that is ready.'
+                )
+    return stt_model_id
 
 
 # ── learned pace (how far off the shipped cost model this machine runs) ──
@@ -85,6 +116,7 @@ def _learn_progress_scale(stt_model_id, multitrack, measured):
 def _resolve_job(app, recording_id):
     """Build (env_dict, job_dict) for the pipeline. Returns None if the recording is gone."""
     from ..model_manager import (
+        VAD_MODEL_ID,
         get_default_stt_model,
         normalize_stt_model_id,
         pyannote_hub_cache_root,
@@ -157,6 +189,7 @@ def _resolve_job(app, recording_id):
         'stt_model_id': stt_model_id,
         'model_dir': os.path.join(models_path, stt_model_id),
         'diarize_dir': diarize_dir,
+        'vad_dir': os.path.join(models_path, VAD_MODEL_ID),
         'pyannote_cache': pyannote_hub_cache_root(models_path),
         'hf_token': hf_token,
         'hf_offline': onboarding_complete,
@@ -334,7 +367,7 @@ def _run_inprocess(app, recording_id, env_dict, job_dict):
 
 def _finalize(app, recording_id, transcript):
     """Write the transcript JSON, update the DB row, refresh the project README."""
-    from ml_worker.pipeline import PROGRESS_SCALE_KEY
+    from ml_worker.constants import PROGRESS_SCALE_KEY
 
     # Rode along in the payload so both execution paths could carry it; it is
     # not part of the transcript, so take it out before anything is written.
@@ -351,6 +384,9 @@ def _finalize(app, recording_id, transcript):
         transcript_filename = _build_transcript_filename(recording)
         transcript_path = os.path.join(project_dir, transcript_filename)
 
+        stamp(transcript,
+              engine=transcript.get('engine', ''),
+              model=transcript.get('model', ''))
         atomic_write_json(transcript_path, transcript)
 
         recording.transcription_status = 'transcribed'
@@ -358,34 +394,52 @@ def _finalize(app, recording_id, transcript):
         recording.transcript_path = transcript_filename
         recording.error_message = ''
 
+        # Pacing for the next job, not part of this one. Worth a log line if it
+        # goes wrong, never worth the commit below.
         if measured_scale:
-            from ..model_manager import get_default_stt_model, normalize_stt_model_id
-            model_id = normalize_stt_model_id(
-                Setting.get('stt_model_id', get_default_stt_model()))
-            _learn_progress_scale(
-                model_id, bool(recording.tracks), float(measured_scale))
+            try:
+                from ..model_manager import get_default_stt_model, normalize_stt_model_id
+                model_id = normalize_stt_model_id(
+                    Setting.get('stt_model_id', get_default_stt_model()))
+                _learn_progress_scale(
+                    model_id, bool(recording.tracks), float(measured_scale))
+            except Exception:
+                log.exception('Progress-scale learning failed for recording %d; '
+                              'the transcript stands', recording_id)
 
         db.session.commit()
 
-        from ...api.projects import _write_project_readme
-        _write_project_readme(project)
-
-        play_tx_sound = (
-            Setting.get('transcription_complete_sound_enabled', 'true') == 'true'
-        )
+        # Past the commit the job is finished: the JSON is on disk and the row
+        # says so. Everything below is housekeeping, and it used to be able to
+        # undo all of that — the queue worker turns whatever propagates out of
+        # here into transcription_status='error', so a README that failed to
+        # write cost the user the whole pipeline again.
         try:
-            tx_sound_volume = max(
-                0,
-                min(100, int(Setting.get('transcription_complete_sound_volume', '50'))),
+            from ...api.projects.common import _write_project_readme
+            _write_project_readme(project)
+
+            play_tx_sound = (
+                Setting.get('transcription_complete_sound_enabled', 'true') == 'true'
             )
-        except ValueError:
-            tx_sound_volume = 50
+            try:
+                tx_sound_volume = max(
+                    0,
+                    min(100, int(Setting.get('transcription_complete_sound_volume', '50'))),
+                )
+            except ValueError:
+                tx_sound_volume = 50
+        except Exception:
+            log.exception('Post-transcription housekeeping failed for recording %d; '
+                          'the transcript is written and committed', recording_id)
 
     _emit_status(recording_id, 'transcribed', stage='done', message='Transcription complete')
 
     if play_tx_sound and tx_sound_volume > 0:
         from ..model_manager import play_install_complete_sound
-        play_install_complete_sound(app, volume_pct=tx_sound_volume)
+        try:
+            play_install_complete_sound(app, volume_pct=tx_sound_volume)
+        except Exception:
+            log.exception('Completion sound failed for recording %d', recording_id)
 
     log.info('Transcription complete for recording %d (%s)', recording_id, detected_lang)
 
@@ -394,12 +448,14 @@ def _finalize(app, recording_id, transcript):
 
 def run_transcription_job(app, recording_id):
     """Run the full transcription flow for one recording."""
-    from ..model_manager import (
+    from ..pip_installer import (
         ensure_transcription_dependencies,
         repair_torch_companion_wheels_if_needed,
     )
 
-    missing = ensure_transcription_dependencies()
+    stt_model_id = _preflight_stt_model(app)
+
+    missing = ensure_transcription_dependencies(stt_model_id)
     if missing:
         pip_pkgs = ' '.join(missing)
         raise RuntimeError(

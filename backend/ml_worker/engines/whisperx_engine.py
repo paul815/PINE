@@ -5,6 +5,7 @@ no MPS backend, so on Apple Silicon this engine runs on CPU — the MLX engine
 is the preferred Mac path.
 """
 
+import contextlib
 import gc
 import logging
 import os
@@ -31,6 +32,24 @@ from .base import (
 log = logging.getLogger(__name__)
 
 
+# Phase timers, kept on purpose (decided 2026-08-21) as the app's only source of
+# per-machine timing data. Whisper's own progress output is the only thing this
+# path prints, so everything before its first batch (decode, VAD, language
+# detect) and everything after its last (alignment) is a blind spot — these
+# timers name each phase inside it. They are what showed the second unit of work
+# in a job costing far more per second of audio than the first. Cost is one
+# log.info per phase per chunk, written to backend/logs/<date>/app-*.log and
+# never surfaced in the UI; if it ever gets noisy, drop these to DEBUG rather
+# than removing them.
+@contextlib.contextmanager
+def _perf(label):
+    t0 = time.monotonic()
+    try:
+        yield
+    finally:
+        log.info('PERF: %s took %.1fs', label, time.monotonic() - t0)
+
+
 def detect_torch_device():
     """Return (device, compute_type) for CTranslate2/whisperx on this machine."""
     try:
@@ -52,14 +71,14 @@ def detect_torch_device():
             ver = torch.__version__ or ''
             if '+cpu' in ver:
                 hint = (
-                    ' Installed PyTorch is CPU-only (%s); for GPU, reinstall torch with CUDA '
+                    f' Installed PyTorch is CPU-only ({ver}); for GPU, reinstall torch with CUDA '
                     'from pytorch.org (e.g. cu128 matching your driver).'
-                ) % ver
+                )
             elif '+' in ver and 'cu' in ver.split('+', 1)[1]:
                 hint = (
-                    ' PyTorch is CUDA-enabled (%s) but cuda.is_available() is false — '
+                    f' PyTorch is CUDA-enabled ({ver}) but cuda.is_available() is false — '
                     'check NVIDIA driver, GPU visibility, and reboot after driver updates.'
-                ) % ver
+                )
         except Exception:
             pass
         log.info('No CUDA in this PyTorch build — using CPU with int8.%s', hint)
@@ -83,7 +102,7 @@ def align_model_candidates(language_code: str):
 def probe_language_whisperx(pipeline, audio_np):
     """Return (language_code, confidence, options_for_ui) using first ~30s logic from whisperx."""
     import numpy as np
-    from whisperx.audio import log_mel_spectrogram, N_SAMPLES
+    from whisperx.audio import N_SAMPLES, log_mel_spectrogram
 
     model = getattr(pipeline, 'model', None)
     if model is None or not getattr(model.model, 'is_multilingual', True):
@@ -188,7 +207,7 @@ class WhisperXEngine(EngineAdapter):
         for model_name in attempts:
             try:
                 with compat.allow_hf_network_for_align(self._hf_offline):
-                    kwargs = dict(language_code=language_code, device=device)
+                    kwargs = {'language_code': language_code, 'device': device}
                     if model_name:
                         kwargs['model_name'] = model_name
                     model_a, metadata = whisperx.load_align_model(**kwargs)
@@ -226,7 +245,7 @@ class WhisperXEngine(EngineAdapter):
         min_batch = 2
 
         while batch_size >= min_batch:
-            tx_kw = dict(batch_size=batch_size, print_progress=True)
+            tx_kw = {'batch_size': batch_size, 'print_progress': True}
             if language:
                 tx_kw['language'] = language
             try:
@@ -246,7 +265,7 @@ class WhisperXEngine(EngineAdapter):
                     raise
 
         # Final attempt with min_batch — let any error propagate
-        tx_kw = dict(batch_size=min_batch, print_progress=True)
+        tx_kw = {'batch_size': min_batch, 'print_progress': True}
         if language:
             tx_kw['language'] = language
         return self._model.transcribe(audio, **tx_kw)
@@ -290,9 +309,11 @@ class WhisperXEngine(EngineAdapter):
             log.info('Chunk %d/%d  offset=%.0fs  duration=%.0fs',
                      i + 1, total_chunks, offset, duration)
 
-            chunk_audio = load_audio_range(audio_path, offset, duration)
+            with _perf(f'chunk {i + 1} decode'):
+                chunk_audio = load_audio_range(audio_path, offset, duration)
 
-            result = self._transcribe_with_oom_retry(chunk_audio, language=language)
+            with _perf(f'chunk {i + 1} whisper'):
+                result = self._transcribe_with_oom_retry(chunk_audio, language=language)
 
             lang = result.get('language', language or 'en')
             if i == 0:
@@ -301,11 +322,13 @@ class WhisperXEngine(EngineAdapter):
             # Align (cached align model, reused across chunks and recordings)
             if align_enabled:
                 try:
-                    model_a, metadata = self._get_align_model(
-                        whisperx, detected_lang, self._device)
-                    result = whisperx.align(
-                        result['segments'], model_a, metadata, chunk_audio,
-                        self._device, return_char_alignments=False)
+                    with _perf(f'chunk {i + 1} align model'):
+                        model_a, metadata = self._get_align_model(
+                            whisperx, detected_lang, self._device)
+                    with _perf(f'chunk {i + 1} align'):
+                        result = whisperx.align(
+                            result['segments'], model_a, metadata, chunk_audio,
+                            self._device, return_char_alignments=False)
                 except Exception as exc:
                     align_enabled = False
                     log.warning(
@@ -351,7 +374,8 @@ class WhisperXEngine(EngineAdapter):
             result, detected_lang = self._transcribe_chunked(
                 whisperx, audio_path, total_duration, language, ctx)
         else:
-            audio = whisperx.load_audio(audio_path)
+            with _perf('decode'):
+                audio = whisperx.load_audio(audio_path)
             total_duration = audio.shape[0] / 16000
             device_note = ' (CPU - may be slow)' if self._device == 'cpu' else ''
             ctx.on_status(stage='transcribing',
@@ -370,18 +394,21 @@ class WhisperXEngine(EngineAdapter):
 
             threading.Thread(target=_heartbeat, daemon=True).start()
             try:
-                result = self._transcribe_with_oom_retry(audio, language=language)
+                with _perf('whisper'):
+                    result = self._transcribe_with_oom_retry(audio, language=language)
             finally:
                 _heartbeat_stop.set()
 
             detected_lang = language or result.get('language', 'en')
             ctx.on_status(stage='aligning', message='Aligning word timestamps...')
             try:
-                model_a, metadata = self._get_align_model(
-                    whisperx, detected_lang, self._device)
-                result = whisperx.align(
-                    result['segments'], model_a, metadata, audio,
-                    self._device, return_char_alignments=False)
+                with _perf('align model'):
+                    model_a, metadata = self._get_align_model(
+                        whisperx, detected_lang, self._device)
+                with _perf('align'):
+                    result = whisperx.align(
+                        result['segments'], model_a, metadata, audio,
+                        self._device, return_char_alignments=False)
             except Exception as exc:
                 log.warning('Alignment failed for lang=%s: %s - skipping', detected_lang, exc)
 

@@ -4,9 +4,6 @@ import json
 import os
 import zipfile
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -52,8 +49,8 @@ def _seed_project_files(app, project):
 
 def _add_recording_to_db(app, project_id, transcript_name='test_audio_transcript.json'):
     """Insert a recording row into the DB."""
-    from app.models.recording import Recording
     from app.extensions import db
+    from app.models.recording import Recording
     with app.app_context():
         rec = Recording(
             project_id=project_id,
@@ -220,8 +217,8 @@ class TestRestore:
         """Restore with rename strategy creates a new project with _restored suffix."""
         filename, proj = self._create_and_get_backup(app, client)
 
-        from app.services.backup_service import _restore_inner
         from app.models.project import Project
+        from app.services.backup_service import _restore_inner
         with app.app_context():
             result = _restore_inner(app, filename, None, False, 'rename')
             assert result['projects_restored'] == 1
@@ -237,8 +234,8 @@ class TestRestore:
         """Restore with overwrite strategy replaces the existing project."""
         filename, proj = self._create_and_get_backup(app, client)
 
-        from app.services.backup_service import _restore_inner
         from app.models.project import Project
+        from app.services.backup_service import _restore_inner
         with app.app_context():
             result = _restore_inner(app, filename, None, False, 'overwrite')
             assert result['projects_restored'] == 1
@@ -255,9 +252,9 @@ class TestRestore:
         _seed_project_files(app, proj2)
         _add_recording_to_db(app, proj2['id'])
 
-        from app.services.backup_service import _create_backup_inner, _restore_inner
-        from app.models.project import Project
         from app.extensions import db
+        from app.models.project import Project
+        from app.services.backup_service import _create_backup_inner, _restore_inner
         with app.app_context():
             result = _create_backup_inner(app, include_audio=False)
 
@@ -266,6 +263,7 @@ class TestRestore:
             # too — leaving them behind would be a DB/disk desync, which the
             # restore now treats as a conflict in its own right.
             import shutil
+
             from app.models.setting import Setting
             projects_root = Setting.get('projects_path', app.config['DEFAULT_PROJECTS_PATH'])
             from app.models.recording import Recording
@@ -292,11 +290,12 @@ class TestRestore:
         lost while the projects directory survived.
         """
         import shutil
-        from app.models.setting import Setting
+
+        from app.extensions import db
         from app.models.project import Project
         from app.models.recording import Recording
+        from app.models.setting import Setting
         from app.services.backup_service import _create_backup_inner, _restore_inner
-        from app.extensions import db
 
         proj = _create_project(client, 'Orphan Proj')
         _seed_project_files(app, proj)
@@ -363,10 +362,10 @@ class TestRestore:
         """Restore extracts transcript and annotation files to disk."""
         filename, proj = self._create_and_get_backup(app, client)
 
-        from app.services.backup_service import _restore_inner
+        from app.extensions import db
         from app.models.project import Project
         from app.models.recording import Recording
-        from app.extensions import db
+        from app.services.backup_service import _restore_inner
         with app.app_context():
             projects_root = app.config['DEFAULT_PROJECTS_PATH']
             # Delete existing project
@@ -466,9 +465,15 @@ class TestDeleteBackup:
 class TestPruneBackups:
     def test_prune_keeps_n(self, app, client):
         """Prune removes older backups beyond retention count."""
-        from app.services.backup_service import _backup_dir, prune_backups, list_backups, BACKUP_VERSION
-        from app.models.setting import Setting
         import json
+
+        from app.models.setting import Setting
+        from app.services.backup_service import (
+            BACKUP_VERSION,
+            _backup_dir,
+            list_backups,
+            prune_backups,
+        )
 
         with app.app_context():
             Setting.set('backup_retention_count', '2')

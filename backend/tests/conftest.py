@@ -1,10 +1,10 @@
 """Pytest fixtures for PINE backend tests."""
 
 import os
-import sys
-import tempfile
 import shutil
 import stat
+import sys
+import tempfile
 import threading
 
 import pytest
@@ -210,14 +210,14 @@ def project_with_recording(app):
             db.session.add(proj)
             db.session.flush()
 
-            defaults = dict(
-                project_id=proj.id,
-                original_name='rec.mp3',
-                stored_name='rec.mp3',
-                transcript_path='rec_transcript.json',
-                transcription_status=status,
-                duration_seconds=60,
-            )
+            defaults = {
+                'project_id': proj.id,
+                'original_name': 'rec.mp3',
+                'stored_name': 'rec.mp3',
+                'transcript_path': 'rec_transcript.json',
+                'transcription_status': status,
+                'duration_seconds': 60,
+            }
             defaults.update(rec_kwargs)
             rec = Recording(**defaults)
             db.session.add(rec)

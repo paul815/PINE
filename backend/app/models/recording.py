@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from ..extensions import db
 
@@ -28,7 +28,7 @@ class Recording(db.Model):
     # speaker has their own track (see RecordingTrack), so there is nothing to
     # infer and diarization is skipped entirely.
     source_kind = db.Column(db.String(20), default='single')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
     tracks = db.relationship(
         'RecordingTrack', backref='recording', lazy='select',

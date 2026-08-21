@@ -14,7 +14,8 @@ A **fully local** interview transcription tool for UX researchers. No recordings
 
 PINE provides:
 
-- **Local transcription** — WhisperX + faster-whisper (STT) + pyannote (speaker diarization)
+- **Local transcription** — WhisperX + faster-whisper or Parakeet TDT (STT) + pyannote (speaker diarization); mlx-whisper on Apple Silicon
+- **Per-speaker tracks** — Zoom meeting folders and multi-channel files are transcribed track by track, so overlapping speech survives and diarization is skipped entirely. Speaker names come from the filenames
 - **Project management** — Organize recordings by research project
 - **Tagging & comments** — Highlight spans, apply tags, add researcher notes
 - **Attachments** — Upload any files to a project (PDFs, presentations, client feedback) with editable names and one-click download
@@ -62,14 +63,20 @@ Creates the venv and installs dependencies on first run, then starts the server 
 ### First launch
 
 1. **System check** — Verifies Python, FFmpeg, and hardware
-2. **STT model** — Choose transcription speed vs. accuracy (skipped on Mac — mlx-whisper has one model)
-3. **Modules** — Transcription + diarization (required); optionally PII removal
-4. **Storage** — Choose paths for models and projects
-5. **HuggingFace** — Token required for pyannote diarization model
-6. **Download** — Models download from HuggingFace
-7. **Ready** — Create projects and upload recordings
+2. **Modules** — Transcription + diarization (required); optionally PII removal. This step also picks the transcription model
+3. **Storage** — Choose paths for models and projects
+4. **HuggingFace** — Token required for pyannote diarization model
+5. **Download** — Models download from HuggingFace
+6. **Ready** — Create projects and upload recordings
 
-> **macOS:** Uses mlx-whisper (Apple Silicon optimised). The STT model selection step is skipped since only one model is available.
+**Transcription models** — two choices, switchable later in Settings; the second one downloads on demand:
+
+| Model | Runs on | Size | Language |
+|---|---|---|---|
+| Whisper large-v3 (default) | GPU (Neural Engine on Mac) | ~3 GB | can be set by hand |
+| Parakeet TDT 0.6B v3 | CPU, leaving the card to speaker detection | ~0.7 GB | detected automatically |
+
+> **macOS:** Whisper runs through mlx-whisper (Apple Silicon optimised); Parakeet runs on the CPU as it does everywhere else.
 
 ---
 
@@ -101,14 +108,14 @@ Recordings and transcripts stay on your machine. The app still opens outbound co
 
 Apple Silicon uses MLX for STT and does not use the WhisperX align path above.
 
-**Threat model:** PINE is a single-user local application bound to `127.0.0.1:5000`. It has no authentication and CORS is currently permissive, so treat it like any other local dev server — do not expose the port to a network you do not control. See [TODO.md](Documentation/TODO.md) for tracked hardening items.
+**Threat model:** PINE is a single-user local application bound to `127.0.0.1:5000`. CORS is restricted to `127.0.0.1` and `pine.localhost` on the app's own port, but there is no authentication — treat it like any other local dev server and do not expose the port to a network you do not control. See [TODO.md](documentation/TODO.md) for tracked hardening items.
 
 ---
 
 ## Development
 
 ```bash
-# Run the test suite (29 modules)
+# Run the test suite (34 modules, 558 tests)
 cd backend && pytest
 
 # With coverage
@@ -129,11 +136,11 @@ Tests use an in-memory SQLite DB and temp directories — they never touch real 
 
 | Doc | Contents |
 |-----|----------|
-| [ARCHITECTURE.md](Documentation/ARCHITECTURE.md) | System design, data model, transcription pipeline |
-| [API.md](Documentation/API.md) | Full endpoint reference and data shapes |
-| [DESIGN.md](Documentation/DESIGN.md) | UI design system and tokens |
-| [TODO.md](Documentation/TODO.md) | Roadmap and known gaps |
-| [AGENTS.md](Documentation/AGENTS.md) | Guidance for AI coding agents |
+| [ARCHITECTURE.md](documentation/ARCHITECTURE.md) | System design, data model, transcription pipeline |
+| [API.md](documentation/API.md) | Full endpoint reference and data shapes |
+| [DESIGN.md](documentation/DESIGN.md) | UI design system and tokens |
+| [TODO.md](documentation/TODO.md) | Roadmap and known gaps |
+| [AGENTS.md](documentation/AGENTS.md) | Guidance for AI coding agents |
 
 ---
 

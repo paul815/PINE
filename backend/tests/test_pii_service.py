@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.pii_service import redact_text, redact_segments
+from app.services.pii_service import redact_segments, redact_text
 
 
 class TestRedactText:

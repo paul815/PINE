@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-
 
 # Use unicode escape sequences so this checker is not sensitive to editor/display encoding.
 REPLACEMENTS: tuple[tuple[str, str], ...] = (
@@ -103,7 +102,7 @@ def main() -> int:
     parser.add_argument(
         "--paths",
         nargs="*",
-        default=["backend", "frontend", "Documentation"],
+        default=["backend", "frontend", "documentation"],
         help="Root paths to scan.",
     )
     args = parser.parse_args()

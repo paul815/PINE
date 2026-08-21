@@ -1,8 +1,8 @@
 """PII detection and redaction using GLiNER."""
 
-import os
-import logging
 import importlib.util
+import logging
+import os
 import warnings
 
 from ..extensions import db
@@ -76,11 +76,11 @@ def _load_model(app):
 
     try:
         from gliner import GLiNER
-    except ImportError:
+    except ImportError as exc:
         raise PIIError(
             'The gliner Python package is not installed. '
             'Re-run model setup from Settings to install it.'
-        )
+        ) from exc
 
     # Force fully-offline loading so GLiNER + transformers never hit HuggingFace.
     # GLiNER doesn't propagate local_files_only to its internal tokenizer init.
@@ -118,10 +118,10 @@ def _load_model(app):
             raise PIIError(
                 'GLiNER tried to fetch files from HuggingFace but network was blocked. '
                 'Tokenizer files may be missing — reinstall the PII model from Settings.'
-            )
-        raise PIIError(f'Could not load GLiNER model: {exc}')
+            ) from exc
+        raise PIIError(f'Could not load GLiNER model: {exc}') from exc
     except Exception as exc:
-        raise PIIError(f'Could not load GLiNER model: {exc}')
+        raise PIIError(f'Could not load GLiNER model: {exc}') from exc
     finally:
         _sock.getaddrinfo = _real_getaddrinfo
         _hf_const.HF_HUB_OFFLINE = _prev_const

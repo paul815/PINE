@@ -1,7 +1,7 @@
 """API tests for the transcript find & replace endpoint."""
 
-import os
 import json
+import os
 
 from app.extensions import db
 from app.models.project import Project

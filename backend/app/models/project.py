@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from ..extensions import db
 
@@ -31,9 +31,9 @@ class Project(db.Model):
     is_system = db.Column(db.Boolean, default=False)
     folder_name = db.Column(db.String(300), nullable=False)
     default_transcription_language = db.Column(db.Text, default='')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
-                           onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC),
+                           onupdate=lambda: datetime.now(UTC))
 
     recordings = db.relationship('Recording', backref='project', lazy=True,
                                  cascade='all, delete-orphan')

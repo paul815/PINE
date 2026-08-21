@@ -132,25 +132,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  --bg: hsl(220,20%,97%); --fg: hsl(220,25%,10%); --card: hsl(0,0%,100%);
-  --muted: hsl(220,15%,94%); --muted-fg: hsl(220,10%,46%);
-  --accent: hsl(152,60%,42%); --accent-fg: #fff;
-  --accent-dim: hsla(152,60%,42%,0.10); --accent-bd: hsla(152,60%,42%,0.25);
-  --border: hsl(220,15%,88%); --secondary: hsl(220,15%,92%);
-  --destr: hsl(0,72%,51%); --destr-dim: hsla(0,72%,51%,0.10); --destr-bd: hsla(0,72%,51%,0.25);
-  --sunken: hsl(220,20%,95%); --radius: 6px;
-  --font-body: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-}
-[data-theme="dark"] {
-  --bg: hsl(220,20%,7%); --fg: hsl(220,15%,93%); --card: hsl(220,16%,11%);
-  --muted: hsl(220,14%,14%); --muted-fg: hsl(220,10%,54%);
-  --accent: hsl(152,55%,45%); --accent-dim: hsla(152,55%,45%,0.12); --accent-bd: hsla(152,55%,45%,0.28);
-  --border: hsl(220,16%,17%); --secondary: hsl(220,14%,16%);
-  --destr: hsl(0,62%,60%); --destr-dim: hsla(0,62%,60%,0.12); --destr-bd: hsla(0,62%,60%,0.28);
-  --sunken: hsl(220,18%,9%);
-}
 
 html, body { height: 100%; font-family: var(--font-body); background: var(--bg); color: var(--fg); line-height: 1.5; -webkit-font-smoothing: antialiased; }
 body { font-size: inherit; overflow: hidden; }
@@ -158,28 +139,6 @@ body { font-size: inherit; overflow: hidden; }
 
 /* Fonts — must be declared here too, otherwise a non-system font chosen in
    Settings silently falls back to the system stack on this page only. */
-@font-face { font-family: 'Space Grotesk'; font-weight: 300; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Light.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 /* Top bar */
 .top-bar { height: 48px; flex-shrink: 0; background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; z-index: var(--z-sticky); }

@@ -1,5 +1,14 @@
 # Backend Decomposition Audit
 
+> **Retired — kept for the record.** Superseded by
+> [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) (2026-06-05); see its Appendix B
+> for why. Read it for the current picture, not this file.
+>
+> Two things below no longer exist as described: `transcription.py` was split
+> into `app/services/transcription/` plus the separate `ml_worker/` process, and
+> the route inventory predates multitrack, themes, transcript editing and the
+> backup blueprint. Line counts are all stale.
+
 **Date:** 2026-03-28
 **Scope:** projects.py (1,358 LOC), transcription.py (1,905 LOC), model_manager.py (1,087 LOC)
 

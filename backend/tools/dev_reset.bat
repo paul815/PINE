@@ -12,7 +12,7 @@ rem model_manager.py pulls during onboarding.
 rem
 rem Use this for the day-to-day loop. For a release-grade reset that also
 rem exercises the installer and the file layout, run backend\reset_win.bat with
-rem no flags. See Documentation\TODO.md, "Before release - dev-only test
+rem no flags. See documentation\TODO.md, "Before release - dev-only test
 rem shortcuts", for what has to be verified before shipping.
 rem
 rem Usage: backend\tools\dev_reset.bat [-y] [--projects-dir <path>]

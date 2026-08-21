@@ -26,6 +26,7 @@ import tempfile
 import time
 
 from .audio import load_audio_file, write_wav
+from .constants import TRACK_JOIN_GAP_SEC, TRACK_JOIN_MAX_SEC
 from .engines import TranscribeContext
 from .tracks import (
     SAMPLE_RATE,
@@ -194,6 +195,39 @@ def prepare_tracks(specs, events, work_dir):
     return prepared
 
 
+def join_runs(segments, max_gap=TRACK_JOIN_GAP_SEC, max_len=TRACK_JOIN_MAX_SEC):
+    """Put back together the turns the speech gate cut in two.
+
+    Every pause longer than the gate's own tolerance ends a speech region, and
+    ``remap`` ends a segment wherever a region does — so one person drawing
+    breath mid-sentence arrives as two lines in the transcript. Neighbours from
+    the same speaker within ``max_gap`` are joined back up to ``max_len``.
+
+    Only neighbours in the sorted list are candidates: anything between them is
+    somebody else talking, and joining across it would put a segment on top of a
+    turn it does not contain. Words move with the text, since the transcript is
+    rebuilt from them; a segment carrying words is never joined to one without.
+    """
+    out = []
+    for seg in segments:
+        prev = out[-1] if out else None
+        if (prev is not None
+                and prev.get('speaker') == seg.get('speaker')
+                and bool(prev.get('words')) == bool(seg.get('words'))
+                and float(seg['start']) - float(prev['end']) <= max_gap
+                and float(seg['end']) - float(prev['start']) <= max_len):
+            prev['end'] = seg['end']
+            prev['text'] = ' '.join(
+                part for part in (str(prev.get('text', '') or '').strip(),
+                                  str(seg.get('text', '') or '').strip())
+                if part)
+            if seg.get('words'):
+                prev['words'] = list(prev.get('words') or []) + list(seg['words'])
+            continue
+        out.append(dict(seg))
+    return out
+
+
 def run_multitrack(engine, specs, language, events, work_dir=None):
     """Transcribe every track; returns ``(segments, speaker_names, language)``.
 
@@ -259,7 +293,7 @@ def run_multitrack(engine, specs, language, events, work_dir=None):
             shutil.rmtree(work_dir, ignore_errors=True)
 
     merged.sort(key=lambda s: (s['start'], s.get('speaker', '')))
-    return merged, names, language
+    return join_runs(merged), names, language
 
 
 def _unlink(path):

@@ -216,7 +216,9 @@ def resolve_bleed(db_list, mask_list, dominance_db=VAD_DOMINANCE_DB):
     width = max(m.size for m in mask_list)
     levels = np.full((len(db_list), width), VAD_SILENCE_FLOOR_DB, dtype=np.float32)
     gates = np.zeros((len(mask_list), width), dtype=bool)
-    for i, (db, mask) in enumerate(zip(db_list, mask_list)):
+    # strict: the two lists are one entry per track and are indexed in
+    # lockstep below, so a length mismatch is a caller bug, not a short zip.
+    for i, (db, mask) in enumerate(zip(db_list, mask_list, strict=True)):
         levels[i, :db.size] = db
         gates[i, :mask.size] = mask
 

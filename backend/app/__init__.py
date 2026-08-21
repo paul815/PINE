@@ -1,15 +1,18 @@
+import json
 import logging
 import os
 import sqlite3
 import sys
 import types
-import json
 import urllib.request
 from datetime import datetime
-from flask import Flask, render_template, redirect, request, jsonify
+
+from flask import Flask, jsonify, redirect, render_template, request
 from flask_cors import CORS
-from .config import Config
+
+from .config import Config, resolve_secret_key
 from .extensions import db, socketio
+from .ports import backend_port, supervisor_port
 
 __version__ = "1.0.0"
 log = logging.getLogger(__name__)
@@ -236,8 +239,8 @@ def _run_startup_checks(app):
             log.critical('SQLite integrity check error', exc_info=True)
 
     # 2. Orphan detection — recordings marked transcribed but transcript file missing
-    from .models.recording import Recording
     from .models.project import Project
+    from .models.recording import Recording
     from .models.setting import Setting
     projects_path = Setting.get('projects_path', app.config['DEFAULT_PROJECTS_PATH'])
     orphans = 0
@@ -297,6 +300,10 @@ def create_app(config_class=Config):
 
     os.makedirs(app.config['DATA_DIR'], exist_ok=True)
 
+    # Per-installation key, created on first run next to the DB. Must happen
+    # after DATA_DIR exists and before anything can sign a cookie.
+    app.config['SECRET_KEY'] = resolve_secret_key(app.config['DATA_DIR'])
+
     _ensure_sqlite_db_path(
         app.config['DATA_DIR'],
         app.config['SQLITE_DB_FILENAME'],
@@ -311,7 +318,7 @@ def create_app(config_class=Config):
     db.init_app(app)
     socketio.init_app(app)
 
-    from .api import onboarding_bp, projects_bp, settings_bp, utils_bp, backup_bp
+    from .api import backup_bp, onboarding_bp, projects_bp, settings_bp, utils_bp
     app.register_blueprint(onboarding_bp, url_prefix='/api/onboarding')
     app.register_blueprint(projects_bp, url_prefix='/api/projects')
     app.register_blueprint(settings_bp, url_prefix='/api/settings')
@@ -353,14 +360,13 @@ def create_app(config_class=Config):
                 db.create_all()
             else:
                 raise
-        from .services.model_manager import (
-            init_model_registry,
-            reconcile_model_statuses,
-            _sync_platform_launcher_layout,
-            _refresh_windows_launcher_shortcuts,
-        )
         from .models.setting import Setting as _Setting
+        from .services.launcher_layout import (
+            _refresh_windows_launcher_shortcuts,
+            _sync_platform_launcher_layout,
+        )
         from .services.launcher_state import clear_onboarding_complete, mark_onboarding_complete
+        from .services.model_manager import init_model_registry, reconcile_model_statuses
         init_model_registry()
         _models_path = _Setting.get('models_path', app.config['DEFAULT_MODELS_PATH']) or app.config['DEFAULT_MODELS_PATH']
         reconcile_model_statuses(_models_path)
@@ -371,7 +377,7 @@ def create_app(config_class=Config):
         else:
             clear_onboarding_complete(app.config['ROOT_DIR'])
 
-        from .services.transcription import start_worker, start_watchdog, requeue_interrupted
+        from .services.transcription import requeue_interrupted, start_watchdog, start_worker
         start_worker(app)
         start_watchdog(app)
         requeue_interrupted(app)
@@ -385,7 +391,7 @@ def create_app(config_class=Config):
         # ── Notify supervisor that the backend is ready ──
         def _notify_supervisor_ready():
             try:
-                sup_port = os.environ.get('PINE_SUPERVISOR_PORT', '5001')
+                sup_port = supervisor_port()
                 token = os.environ.get('PINE_SUPERVISOR_TOKEN', '')
                 req = urllib.request.Request(
                     f'http://127.0.0.1:{sup_port}/backend-ready',
@@ -427,8 +433,8 @@ def create_app(config_class=Config):
     def inject_supervisor_config():
         return {
             'supervisor_token': os.environ.get('PINE_SUPERVISOR_TOKEN', ''),
-            'supervisor_port': os.environ.get('PINE_SUPERVISOR_PORT', '5001'),
-            'backend_port': os.environ.get('PINE_BACKEND_PORT', '5000'),
+            'supervisor_port': supervisor_port(),
+            'backend_port': backend_port(),
         }
 
     @app.route('/')
@@ -489,7 +495,7 @@ def create_app(config_class=Config):
                     'source': source,
                     'lease_id': lease_id,
                 }
-                sup_port = os.environ.get('PINE_SUPERVISOR_PORT', '5001')
+                sup_port = supervisor_port()
                 req = urllib.request.Request(
                     f'http://127.0.0.1:{sup_port}/shutdown',
                     method='POST',

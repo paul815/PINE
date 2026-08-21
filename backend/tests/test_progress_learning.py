@@ -102,8 +102,8 @@ def _payload(recording_id, **extra):
 
 def test_finalize_keeps_the_measurement_out_of_the_transcript(
         app, project_with_recording):
-    from app.models.recording import Recording
     from app.extensions import db
+    from app.models.recording import Recording
     from app.services.transcription.job_runner import _finalize
     from ml_worker.pipeline import PROGRESS_SCALE_KEY
 

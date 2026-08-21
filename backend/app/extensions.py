@@ -1,7 +1,7 @@
 import sqlite3
 
-from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -38,13 +38,25 @@ def _set_sqlite_pragmas(dbapi_connection, connection_record):
     cursor.close()
 
 
-import os as _os
+from .ports import allowed_origins
 
-_backend_port = _os.environ.get('PINE_BACKEND_PORT', '5000')
-ALLOWED_ORIGINS = [
-    f'http://pine.localhost:{_backend_port}',
-    f'http://127.0.0.1:{_backend_port}',
-]
+# Read once: SocketIO is constructed below at import time and cannot be told
+# about a new origin later. The supervisor sets PINE_BACKEND_PORT in the child
+# environment before the backend starts, so the value is already final here.
+ALLOWED_ORIGINS = allowed_origins()
 
 socketio = SocketIO(cors_allowed_origins=ALLOWED_ORIGINS, async_mode='threading',
                     ping_timeout=120, ping_interval=25)
+
+
+def safe_emit(event, data):
+    """Emit a SocketIO event, ignoring a disconnected or absent client.
+
+    Progress events are advisory: a download or install must finish even when
+    nobody is watching, so a failure to deliver one must never propagate into
+    the work that produced it.
+    """
+    try:
+        socketio.emit(event, data)
+    except Exception:
+        pass

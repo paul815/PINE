@@ -136,7 +136,11 @@ pyannote на MPS часто проигрывает CPU: много мелких
 транскрипцию.
 
 ## Переключатели
-- `PINE_PARALLEL_STAGES=0` — вернуть последовательные стадии.
+- `PINE_PARALLEL_STAGES=1` — включить параллельные стадии. По умолчанию
+  выключено: на CUDA обе стадии садятся на одну карту, и 12 ГБ VRAM под
+  whisperx float16 + pyannote одновременно подвешивают машину, пока
+  драйвер выгружает память в RAM. Осмысленно вместе с
+  `PINE_DIARIZE_DEVICE=cpu` либо на карте с запасом.
 - `PINE_DIARIZE_DEVICE=cpu` — увести pyannote с Metal.
 - `PINE_DIARIZE_CHUNK_THRESHOLD_SEC` — вернуть чанкование.
 

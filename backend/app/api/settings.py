@@ -1,74 +1,71 @@
 """Settings API — read and update application settings."""
 
+import ctypes
 import json
 import os
 import shutil
 import subprocess
-import ctypes
 import sys
 import threading
-import urllib.request
 import urllib.error
+import urllib.request
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, current_app, jsonify, request
 
-from ..models.setting import Setting
+from .. import __version__
+from ..extensions import db
 from ..models.ml_model import MLModel
 from ..models.project import Project
 from ..models.recording import Recording
 from ..models.segment import Segment
+from ..models.setting import Setting
+from ..ports import supervisor_port
+from ..services.export_service import DEFAULT_EXPORT_PROMPT, DEFAULT_EXPORT_PROMPT_RECORDING
+from ..services.launcher_layout import (
+    INSTALLER_STORAGE_DIR,
+    restore_default_launcher_layout_after_reset,
+)
 from ..services.model_manager import (
     MODEL_REGISTRY,
     download_models,
-    remove_model,
     get_default_stt_model,
     normalize_stt_model_id,
-    restore_default_launcher_layout_after_reset,
+    remove_model,
+    stt_model_extra_ids,
+    supported_stt_models,
 )
-from ..extensions import db
-from .. import __version__
-from ..services.export_service import DEFAULT_EXPORT_PROMPT, DEFAULT_EXPORT_PROMPT_RECORDING
 
 GITHUB_REPO = "paul815/pine"
 
 settings_bp = Blueprint('settings', __name__)
 
-RESET_ROOT_PRESERVE = {
-    '.editorconfig',
-    '.gitattributes',
-    '.gitignore',
-    '.git',
-    '.pre-commit-config.yaml',
-    '.python-version',
-    'AGENTS.md',
-    'Documentation',
-    'LICENSE',
-    'MAC_Install.command',
-    'WIN_Install.bat',
-    'backend',
-    'models',
-}
-
-RESET_BACKEND_PRESERVE = {
-    'app',
-    'ml_worker',
-    'design-audit.js',
-    'package-lock.json',
-    'package.json',
-    'pytest.ini',
-    'requirements-lock.txt',
-    'requirements.txt',
-    'reset.command',
-    'reset_win.bat',
-    'run.py',
-    'scripts',
-    'supervisor.py',
-    'templates',
-    'tests',
+PRESERVE_LIST_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     'tools',
-    'MAC_Install.command',
-    'WIN_Install.bat',
-}
+)
+ROOT_PRESERVE_LIST = 'reset_preserve_root.txt'
+BACKEND_PRESERVE_LIST = 'reset_preserve_backend.txt'
+
+
+def load_preserve_list(filename):
+    """Read one reset allowlist from backend/tools/.
+
+    Those two files are the only copy of the lists — reset_win.bat and
+    reset.command read the same ones, so the three resets cannot drift apart.
+    Read at reset time rather than at import: a missing list must fail the
+    reset, not take the whole app down at startup. A truncated list is worse
+    than no list at all (everything unlisted is deleted), so refuse it.
+    """
+    path = os.path.join(PRESERVE_LIST_DIR, filename)
+    with open(path, encoding='utf-8') as fh:
+        entries = {line.split('#', 1)[0].strip() for line in fh}
+    entries.discard('')
+    if len(entries) < 8:
+        raise RuntimeError(
+            f'{path} holds only {len(entries)} entries - refusing to reset '
+            'against a truncated allowlist.'
+        )
+    return entries
 
 # Keys that can be read/written via this API
 ALLOWED_KEYS = {
@@ -178,11 +175,14 @@ def _cleanup_except_preserved(base_dir, preserved_names):
 
 def _cleanup_reset_workspace(root_dir):
     """Reset the repo workspace while preserving application source and models."""
-    failed_paths = _cleanup_except_preserved(root_dir, RESET_ROOT_PRESERVE)
+    failed_paths = _cleanup_except_preserved(
+        root_dir,
+        load_preserve_list(ROOT_PRESERVE_LIST),
+    )
     failed_paths.extend(
         _cleanup_except_preserved(
             os.path.join(root_dir, 'backend'),
-            RESET_BACKEND_PRESERVE,
+            load_preserve_list(BACKEND_PRESERVE_LIST),
         )
     )
     return failed_paths
@@ -195,7 +195,7 @@ def _shutdown_backend_after_reset():
         import time
 
         try:
-            sup_port = os.environ.get('PINE_SUPERVISOR_PORT', '5001')
+            sup_port = supervisor_port()
             req = urllib.request.Request(
                 f'http://127.0.0.1:{sup_port}/shutdown',
                 method='POST',
@@ -274,7 +274,7 @@ LEGACY_MAC_LAUNCHER_NAMES = ('Launch_MAC.command',)
 MAC_START_MENU_LAUNCHER_NAME = 'Launch Pine.app'
 MAC_DESKTOP_LAUNCHER_NAME = 'Launch Pine.app'
 LEGACY_MAC_SHORTCUT_NAMES = ('PINE.command', 'MAC_Install.command', 'Launch Pine.command')
-INSTALLER_STORAGE_DIR = 'backend'
+# INSTALLER_STORAGE_DIR is imported from launcher_layout — that module owns the layout.
 START_MENU_ENABLED_KEY = 'start_menu_launcher_enabled'
 DESKTOP_ENABLED_KEY = 'desktop_launcher_enabled'
 
@@ -859,6 +859,17 @@ def get_settings():
     models = MLModel.query.all()
     result['models'] = [m.to_dict() for m in models if m.id in MODEL_REGISTRY]
 
+    # The transcription models this platform can offer, best-quality first, with
+    # the download size the settings UI quotes (Parakeet drags its VAD along).
+    result['stt_models'] = [{
+        'id': model_id,
+        'name': MODEL_REGISTRY.get(model_id, {}).get('name', model_id),
+        'size_bytes': sum(
+            MODEL_REGISTRY.get(mid, {}).get('size_bytes', 0)
+            for mid in [model_id, *stt_model_extra_ids(model_id)]),
+        'installed': _stt_model_installed(model_id),
+    } for model_id in supported_stt_models()]
+
     result['app_version'] = __version__
 
     return jsonify(result)
@@ -878,6 +889,13 @@ def update_settings():
                 continue  # reject non-numeric project id
             if key == 'stt_model_id':
                 value = normalize_stt_model_id(value)
+                if not _stt_model_installed(value):
+                    # Switching to a model that is not on disk would only fail at
+                    # transcribe time; the UI installs first, then switches.
+                    return jsonify({
+                        'error': f'Model "{value}" is not installed yet',
+                        'stt_model_id': value,
+                    }), 409
             if key == 'transcription_complete_sound_volume':
                 try:
                     iv = int(value)
@@ -950,6 +968,68 @@ def check_update():
     })
 
 
+def _stt_model_installed(stt_model_id):
+    """True when the model and everything it needs are downloaded and ready."""
+    for model_id in [stt_model_id, *stt_model_extra_ids(stt_model_id)]:
+        row = db.session.get(MLModel, model_id)
+        if row is None or row.status != 'ready':
+            return False
+    return True
+
+
+def _transcription_in_flight():
+    """True while any recording is mid-transcription — models must stay put."""
+    return db.session.query(Recording.id).filter(
+        Recording.transcription_status == 'transcribing').first() is not None
+
+
+@settings_bp.route('/stt-model/install', methods=['POST'])
+def install_stt_model():
+    """Download a transcription model the user has not installed yet."""
+    data = request.get_json(force=True) or {}
+    model_id = str(data.get('model_id', '')).strip()
+    if model_id not in supported_stt_models():
+        return jsonify({'error': f'Unknown transcription model "{model_id}"'}), 400
+
+    models_path = Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH'])
+    if not models_path:
+        return jsonify({'error': 'Models path not configured'}), 400
+
+    hf_token = Setting.get('hf_token')
+    app = current_app._get_current_object()
+    model_ids = [model_id, *stt_model_extra_ids(model_id)]
+    download_models(app, model_ids, models_path, hf_token=hf_token, finish_onboarding=False)
+    return jsonify({'ok': True, 'model_ids': model_ids})
+
+
+@settings_bp.route('/stt-model/remove', methods=['POST'])
+def remove_stt_model():
+    """Remove a transcription model that is installed but not in use."""
+    data = request.get_json(force=True) or {}
+    model_id = str(data.get('model_id', '')).strip()
+    if model_id not in supported_stt_models():
+        return jsonify({'error': f'Unknown transcription model "{model_id}"'}), 400
+
+    current = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
+    if model_id == current:
+        return jsonify({'error': 'That model is the one in use — switch first'}), 409
+    if _transcription_in_flight():
+        return jsonify({'error': 'A transcription is running — try again when it finishes'}), 409
+
+    models_path = Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH'])
+    if not models_path:
+        return jsonify({'error': 'Models path not configured'}), 400
+
+    removed = [model_id]
+    remove_model(model_id, models_path)
+    # The VAD only exists for Parakeet; drop it with the model that needed it.
+    for extra in stt_model_extra_ids(model_id):
+        if extra not in stt_model_extra_ids(current):
+            remove_model(extra, models_path)
+            removed.append(extra)
+    return jsonify({'ok': True, 'removed': removed})
+
+
 @settings_bp.route('/pii-model/install', methods=['POST'])
 def install_pii_model():
     """Download and install the GLiNER PII model."""
@@ -993,7 +1073,7 @@ def reset_all_data():
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         )
 
-    from ..services.backup_service import create_safety_snapshot, _external_safety_backup_dir
+    from ..services.backup_service import _external_safety_backup_dir, create_safety_snapshot
 
     safety_backup = create_safety_snapshot(
         current_app._get_current_object(),

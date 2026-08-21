@@ -3,9 +3,7 @@
 import os
 from pathlib import Path
 
-import pytest
-
-from app.api.settings import ALLOWED_KEYS, DEFAULTS
+from app.api.settings import ALLOWED_KEYS
 
 
 class TestSettingsAPI:
@@ -154,7 +152,6 @@ class TestSettingsAPI:
         for rel_path in (
             '.claude',
             '.codex_tmp',
-            '.github',
             '.venv',
             'backups',
             'projects',
@@ -164,6 +161,11 @@ class TestSettingsAPI:
         ):
             abs_path = os.path.join(root_dir, *rel_path.split('/'))
             assert not os.path.exists(abs_path)
+
+        # .github has always been on the allowlist the reset scripts use; the
+        # in-app reset deleted it only because it kept a second copy of that
+        # list. Both now read backend/tools/reset_preserve_root.txt.
+        assert os.path.isdir(os.path.join(root_dir, '.github'))
 
         assert not os.path.exists(launch_bat)
         assert not os.path.exists(launch_cmd)
@@ -210,8 +212,8 @@ class TestSettingsAPI:
 
     def test_reset_removes_start_menu_and_desktop_shortcuts(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
-        from app.models import Setting
         from app.extensions import db
+        from app.models import Setting
 
         start_menu = tmp_path / 'Programs' / 'PINE.lnk'
         desktop = tmp_path / 'Desktop' / 'Launch Pine.lnk'
@@ -259,7 +261,7 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_is_macos', lambda: False)
         monkeypatch.setattr(settings_api, '_launch_win_bat_path', lambda: str(launch_bat))
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(launcher))
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
         monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_path', lambda: str(tmp_path / 'Programs' / 'PINE' / 'Open PINE.bat'))
         monkeypatch.setattr(settings_api, '_legacy_start_menu_bat_path', lambda: str(tmp_path / 'Programs' / 'PINE.bat'))
         monkeypatch.setattr(settings_api, '_write_launcher_file', lambda p: (p and (launcher.parent.mkdir(parents=True, exist_ok=True), launcher.write_text('shortcut', encoding='utf-8'))))
@@ -306,7 +308,7 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_launch_win_bat_path', lambda: str(launch_bat))
         monkeypatch.setattr(settings_api, '_desktop_launcher_path', lambda: str(launcher))
         monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [str(launcher)])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
         monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [str(tmp_path / 'Desktop' / 'PINE.bat')])
         monkeypatch.setattr(settings_api, '_write_launcher_file', lambda p: (p and (launcher.parent.mkdir(parents=True, exist_ok=True), launcher.write_text('shortcut', encoding='utf-8'))))
 
@@ -343,8 +345,8 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(start_menu))
         monkeypatch.setattr(settings_api, '_desktop_launcher_path', lambda: str(desktop))
         monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [str(desktop)])
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
 
         r = client.get('/api/settings/app-launch')
         assert r.status_code == 200
@@ -378,9 +380,9 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(start_menu))
         monkeypatch.setattr(settings_api, '_desktop_launcher_path', lambda: str(desktop))
         monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [str(desktop)])
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', list)
         monkeypatch.setattr(
             settings_api,
             '_write_launcher_file',
@@ -409,8 +411,8 @@ class TestSettingsAPI:
 
     def test_app_launch_status_clears_stale_start_menu_flag_when_shortcut_missing(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
-        from app.models import Setting
         from app.extensions import db
+        from app.models import Setting
 
         launch_bat = tmp_path / 'Launch Pine.bat'
         launch_bat.write_text('@echo off\n', encoding='utf-8')
@@ -420,10 +422,10 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_is_macos', lambda: False)
         monkeypatch.setattr(settings_api, '_launch_win_bat_path', lambda: str(launch_bat))
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(start_menu))
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_desktop_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', list)
 
         # Setting touches the DB, so it needs an app context of its own —
         # the `client` fixture only pushes one for the duration of a request.
@@ -450,7 +452,7 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_is_macos', lambda: False)
         monkeypatch.setattr(settings_api, '_launch_win_bat_path', lambda: str(launch_bat))
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(launcher))
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
         monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_path', lambda: str(tmp_path / 'Programs' / 'PINE' / 'Open PINE.bat'))
         monkeypatch.setattr(settings_api, '_legacy_start_menu_bat_path', lambda: str(tmp_path / 'Programs' / 'PINE.bat'))
         monkeypatch.setattr(settings_api, '_write_launcher_file', lambda p: None)
@@ -512,7 +514,7 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_is_macos', lambda: True)
         monkeypatch.setattr(settings_api, '_launch_mac_command_path', lambda: str(launch_cmd))
         monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: str(launcher))
-        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
         monkeypatch.setattr(settings_api, '_write_launcher_file', lambda p: (p and launcher.mkdir(parents=True, exist_ok=True)))
 
         r0 = client.get('/api/settings/start-menu')
@@ -542,8 +544,8 @@ class TestSettingsAPI:
         monkeypatch.setattr(settings_api, '_launch_mac_command_path', lambda: str(launch_cmd))
         monkeypatch.setattr(settings_api, '_desktop_launcher_path', lambda: str(launcher))
         monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [str(launcher)])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', lambda: [])
-        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', lambda: [])
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', list)
         monkeypatch.setattr(settings_api, '_write_launcher_file', lambda p: (p and launcher.mkdir(parents=True, exist_ok=True)))
 
         r0 = client.get('/api/settings/desktop')
@@ -560,3 +562,72 @@ class TestSettingsAPI:
         assert r2.status_code == 200
         assert r2.get_json()['added'] is False
         assert not launcher.exists()
+
+
+class TestSttModelChoice:
+    """Choosing, installing and removing the transcription model."""
+
+    def _mark_ready(self, app, model_id):
+        from app.extensions import db
+        from app.models.ml_model import MLModel
+        with app.app_context():
+            row = db.session.get(MLModel, model_id)
+            row.status = 'ready'
+            db.session.commit()
+
+    def test_get_settings_lists_choices(self, client):
+        data = client.get('/api/settings').get_json()
+        ids = [m['id'] for m in data['stt_models']]
+        assert 'parakeet-tdt-0.6b-v3-onnx' in ids
+        assert all('installed' in m for m in data['stt_models'])
+
+    def test_switch_rejected_while_model_missing(self, client):
+        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        assert r.status_code == 409
+        assert 'not installed' in r.get_json()['error']
+
+    def test_switch_allowed_once_installed(self, app, client):
+        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
+        self._mark_ready(app, 'silero-vad-onnx')
+
+        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        assert r.status_code == 200
+        assert client.get('/api/settings').get_json()['stt_model_id'] == 'parakeet-tdt-0.6b-v3-onnx'
+
+    def test_parakeet_without_its_vad_is_not_installed(self, app, client):
+        """The VAD is not optional — Parakeet cannot cut speech without it."""
+        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
+
+        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        assert r.status_code == 409
+
+    def test_install_rejects_unknown_model(self, client):
+        r = client.post('/api/settings/stt-model/install', json={'model_id': 'whisper-tiny'})
+        assert r.status_code == 400
+
+    def test_cannot_remove_the_model_in_use(self, client):
+        from app.services.model_manager import get_default_stt_model
+
+        r = client.post('/api/settings/stt-model/remove',
+                        json={'model_id': get_default_stt_model()})
+        assert r.status_code == 409
+        assert 'in use' in r.get_json()['error']
+
+    def test_cannot_remove_while_transcribing(self, app, client):
+        from app.extensions import db
+        from app.models.project import Project
+        from app.models.recording import Recording
+
+        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
+        with app.app_context():
+            project = Project(name='p', folder_name='p')
+            db.session.add(project)
+            db.session.commit()
+            db.session.add(Recording(project_id=project.id, original_name='a.mp3',
+                                     stored_name='a.mp3', transcription_status='transcribing'))
+            db.session.commit()
+
+        r = client.post('/api/settings/stt-model/remove',
+                        json={'model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        assert r.status_code == 409
+        assert 'transcription is running' in r.get_json()['error']

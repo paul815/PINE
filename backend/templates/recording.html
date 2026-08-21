@@ -140,28 +140,6 @@ fetch('/api/settings').then(r=>r.json()).then(s=>{
 })();
 </script>
 <style>
-@font-face { font-family:'Space Grotesk'; font-weight:300; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Light.woff2") }}') format('woff2'); }
-@font-face { font-family:'Space Grotesk'; font-weight:400; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'Space Grotesk'; font-weight:500; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Space Grotesk'; font-weight:600; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Space Grotesk'; font-weight:700; font-style:normal; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family:'JetBrains Mono'; font-weight:400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'JetBrains Mono'; font-weight:500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Inter'; font-weight:400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'Inter'; font-weight:500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Inter'; font-weight:600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Inter'; font-weight:700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Source Sans 3'; font-weight:400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'Source Sans 3'; font-weight:500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Source Sans 3'; font-weight:600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Source Sans 3'; font-weight:700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Open Sans'; font-weight:400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'Open Sans'; font-weight:500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Open Sans'; font-weight:600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Open Sans'; font-weight:700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family:'Roboto'; font-weight:400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family:'Roboto'; font-weight:500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family:'Roboto'; font-weight:700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Page-local tokens ──
@@ -190,7 +168,9 @@ fetch('/api/settings').then(r=>r.json()).then(s=>{
   --amber: #c47d0a; --a-dim: rgba(196,125,10,.08); --a-bd: rgba(196,125,10,.22);
 }
 
-[data-theme="dark"] {
+/* :root-scoped, like tokens.css. Unscoped, this repaints any element
+   that carries data-theme="dark" — a theme-picker button, say. */
+:root[data-theme="dark"] {
   --active-ring: hsla(210, 30%, 88%, 0.92);
   --active-ring-soft: hsla(210, 24%, 72%, 0.42);
   --active-glow: hsla(210, 30%, 68%, 0.18);

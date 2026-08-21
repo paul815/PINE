@@ -108,7 +108,21 @@ components:
 
 ## Overview
 
-Pine is a macOS desktop app for audio recording and transcription. The UI is calm and focused — built for long work sessions where distraction must be minimal. The palette is cool gray (hsl 220) with a green accent (`hsl(152, …)`). Both light and dark themes are first-class: the app ships with a theme toggle and respects user preference.
+PINE is a local desktop web app for interview transcription and analysis, running on Windows, macOS and Linux (Windows is the primary target; the macOS chrome is why the top bar leaves a traffic-light zone). The UI is calm and focused — built for long work sessions where distraction must be minimal. The palette is cool gray (hsl 220) with a green accent (`hsl(152, …)`). Both light and dark themes are first-class: the app ships with a theme toggle and respects user preference.
+
+**Source of truth:** `backend/app/static/css/tokens.css`, linked by all six templates before their own `<style>` block. Companion sheets: `button-system.css` (shared control geometry), `fonts.css` (bundled `@font-face`), `save-status.css`. The values in this document mirror `tokens.css` — if the two disagree, the CSS wins.
+
+A colour now changes in one place. The private copies the six templates used to
+carry — 168 palette declarations and 117 `@font-face` blocks — are gone; what
+remains in a template's `:root` is only what that page alone uses (`main.html`
+keeps its layout metrics, `recording.html` its player and tag-label colours).
+
+One rule survived the cleanup and is worth stating: **scope theme selectors to
+`:root`.** Four templates wrote a bare `[data-theme="dark"] { … }`, which
+matches *any* element carrying the attribute — including the Settings theme
+picker's own "Dark" button, which would paint itself in the dark palette while
+sitting on a light page. `tokens.css` and every template now use
+`:root[data-theme="dark"]`.
 
 The app layout is a two-panel design: a narrow left sidebar for navigation and a main content area for recordings, transcripts, and settings.
 
@@ -136,14 +150,22 @@ All color usage goes through semantic CSS custom properties (`var(--token)`), ne
 | `--warn` | Warning states |
 | `--warn-dim` | Translucent warning for tints |
 | `--warn-bd` | Warning-colored borders |
+| `--accent-on-dim`, `--destr-on-dim`, `--warn-on-dim` | Contrast-corrected text colour for text sitting **on** the matching `-dim` fill. Never use the solid token for that — it fails contrast in light theme |
+| `--accent-bd-solid` | Opaque accent border, where a translucent one would show the layer beneath |
 
-Semantic colors travel in triplets: a solid color (`--accent`), a translucent fill (`--accent-dim`, 10–12% opacity), and a border (`--accent-bd`, 25–28% opacity). Always use all three together when building a new colored interactive surface.
+Semantic colors travel in triplets: a solid color (`--accent`), a translucent fill (`--accent-dim`, 10–12% opacity), and a border (`--accent-bd`, 25–28% opacity). Always use all three together when building a new colored interactive surface. Text on the fill takes the fourth token, `-on-dim`.
+
+### Tag categories
+
+Qualitative coding categories carry their own scale, per theme: `--tag-pain`, `--tag-ins` (insight), `--tag-del` (delight), `--tag-conf` (confusion), `--tag-fu` (follow-up), each with `-bg` and `-bd` variants. These are **content** categories, not UI status — keep them separate from `--destr` / `--warn` even where the hues nearly match, so that restyling an alert never restyles a researcher's coding.
 
 ## Typography
 
-**Body font** (`--font-body`): system font stack — `-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`. Renders natively on macOS without loading a web font.
+**Body font** (`--font-body`): Inter, bundled as WOFF2 in `static/fonts/` and declared in `fonts.css`. The value in `tokens.css` is only the pre-JS fallback — each template's boot script overwrites it from the user's `font_family` setting (backend default: `inter`).
 
 **Mono font** (`--font-mono`): JetBrains Mono — used exclusively for transcript text and timestamps. Bundled as WOFF2.
+
+**Display font** (`--font-display`): Space Grotesk, for the few display-weight headings.
 
 **Font size scale** — three steps only:
 - `0.846rem` — small labels, metadata, sidebar items
@@ -160,7 +182,25 @@ The app shell is a fixed-height window (no scroll on the outer frame). Layout us
 - **Main panel**: fills remaining space, scrolls internally
 - **Top bar**: `20px` height — minimal traffic-light zone on macOS
 - **Left header**: `6px` vertical padding, `6px` gap between elements
-- Global border-radius for surfaces: `6px` (buttons use `8px`)
+- Global border-radius for surfaces: `6px` (buttons use `8px`). Radius scale: `--radius-sm` 4px · `--radius` 6px · `--radius-lg` 10px · `--radius-pill` 999px
+
+### Stacking
+
+Never write a raw `z-index` number. The ladder lives in `tokens.css`:
+
+| Token | Value | Use |
+|---|---|---|
+| `--z-base` | 0 | Default flow |
+| `--z-raised` | 1 | Playhead, hover lifts |
+| `--z-sticky` | 100 | Sticky headers |
+| `--z-dropdown` | 200 | Menus |
+| `--z-overlay` | 500 | Full-pane overlays |
+| `--z-modal` | 1000 | Modal dialogs and their backdrop |
+| `--z-popover` | 1200 | Popovers above a modal |
+| `--z-toast` | 2000 | Toast notifications |
+| `--z-max` | 9999 | Last resort — a blocking full-screen layer |
+
+A page may collapse adjacent steps — `recording.html`'s popovers are mutually exclusive and all sit on `--z-popover`. `save-status.css` sits at a literal 2100, deliberately above `--z-toast`.
 
 ## Components
 

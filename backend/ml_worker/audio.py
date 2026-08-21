@@ -67,8 +67,9 @@ def count_channels(audio_path):
 
 def write_wav(path, audio_f32, sample_rate=16000):
     """Write float32 mono audio array to a 16-bit PCM WAV file."""
-    import numpy as np
     import struct
+
+    import numpy as np
     pcm = (audio_f32 * 32768).astype(np.int16)
     n_samples = len(pcm)
     data_size = n_samples * 2

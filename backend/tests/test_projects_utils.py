@@ -1,8 +1,7 @@
 """Unit tests for projects API utilities."""
 
-import pytest
 
-from app.api.projects import _safe_folder_name, ALLOWED_EXTENSIONS
+from app.api.projects.common import ALLOWED_EXTENSIONS, _safe_folder_name
 from app.services.annotations import annotation_recording_ref
 
 

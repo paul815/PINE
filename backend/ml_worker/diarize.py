@@ -149,7 +149,8 @@ def pyannote_audio_file_input(diarize_input):
     if isinstance(diarize_input, str):
         # File path — decode to waveform via ffmpeg so pyannote never
         # touches torchcodec (which fails on Apple Silicon).
-        import subprocess, struct
+        import struct
+        import subprocess
         proc = subprocess.run(
             ['ffmpeg', '-y', '-i', diarize_input,
              '-ar', '16000', '-ac', '1',
@@ -188,8 +189,9 @@ def normalize_diarize_audio_input(diarize_input):
 def instantiate_whisperx_pipeline(model_name, hf_token, device):
     """Build DiarizationPipeline; WhisperX versions differ (token vs use_auth_token)."""
     import inspect
-    from whisperx.diarize import DiarizationPipeline
+
     import torch
+    from whisperx.diarize import DiarizationPipeline
 
     if isinstance(device, str):
         device = torch.device(device)
@@ -312,7 +314,7 @@ def assign_speakers_simple(diarization, segments):
             remap = {}
             for spk in minor:
                 neighbor_counts = Counter()
-                for i, (s, e, sp) in enumerate(turns):
+                for i, (_s, _e, sp) in enumerate(turns):
                     if sp != spk:
                         continue
                     if i > 0 and turns[i - 1][2] in major:
@@ -436,6 +438,7 @@ class Diarizer:
     def _load_native(self, diarize_dir, config_file, hf_token, device):
         """Apple Silicon (MLX): pyannote ``Pipeline`` only — no WhisperX diarization import."""
         import inspect
+
         import torch
         from pyannote.audio import Pipeline
 

@@ -5,7 +5,6 @@ import os
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Atomic write tests
 # ---------------------------------------------------------------------------
@@ -20,7 +19,7 @@ class TestAtomicWriteJson:
         data = {'key': 'value', 'nested': [1, 2, 3]}
         atomic_write_json(path, data)
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             result = json.load(f)
         assert result == data
 
@@ -48,7 +47,7 @@ class TestAtomicWriteJson:
             atomic_write_json(path, {'corrupted': True})
 
         # Original must be intact
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             result = json.load(f)
         assert result == original
 
@@ -79,7 +78,7 @@ class TestAtomicWriteText:
         path = os.path.join(temp_dir, 'readme.md')
         atomic_write_text(path, '# Hello\n')
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             assert f.read() == '# Hello\n'
 
 

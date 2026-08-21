@@ -158,7 +158,7 @@ def test_remap_restores_original_timings():
     out = remap(segments, splices)
 
     assert len(out) == 2
-    for got, (start, end) in zip(out, wanted):
+    for got, (start, end) in zip(out, wanted, strict=False):
         assert got['start'] == pytest.approx(start, abs=TOLERANCE)
         assert got['end'] == pytest.approx(end, abs=TOLERANCE)
 

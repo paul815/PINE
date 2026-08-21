@@ -3,8 +3,6 @@
 import json
 import os
 
-import pytest
-
 from app.services.export_service import (
     _fmt_time,
     _md_to_odt_content,
@@ -651,8 +649,8 @@ class TestExportRecordingOdt:
         assert content is not None
         assert isinstance(content, bytes)
         # ODT is a ZIP file
-        import zipfile
         import io
+        import zipfile
         zf = zipfile.ZipFile(io.BytesIO(content), 'r')
         names = zf.namelist()
         assert 'content.xml' in names
@@ -885,8 +883,8 @@ class TestExportProjectMarkdown:
         assert content is not None
         assert isinstance(content, bytes)
         # ODT is a ZIP file
-        import zipfile
         import io
+        import zipfile
         zf = zipfile.ZipFile(io.BytesIO(content), 'r')
         names = zf.namelist()
         assert 'content.xml' in names

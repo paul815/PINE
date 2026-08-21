@@ -1,0 +1,33 @@
+# Entries a reset keeps inside backend/. One name per line; '#' starts a comment.
+#
+# Single source of truth for all three resets: backend/reset_win.bat,
+# backend/reset.command and the in-app reset in backend/app/api/settings.py all
+# read this file. Edit it here and nowhere else —
+# backend/tests/test_reset_preserve_list.py fails if a script grows its own copy.
+#
+# Anything needed to run or lint the project belongs here. pyproject.toml was
+# missing from all three copies of this list and a reset deleted the ruff config
+# outright — that is the failure this file exists to prevent.
+#
+# .venv is deliberately absent: a real reset rebuilds it. reset_win.bat and
+# reset.command re-add it themselves under the dev-only --keep-venv flag.
+
+app
+ml_worker
+design-audit.js
+package-lock.json
+package.json
+pyproject.toml
+pytest.ini
+requirements-lock.txt
+requirements.txt
+reset.command
+reset_win.bat
+run.py
+scripts
+supervisor.py
+templates
+tests
+tools
+MAC_Install.command
+WIN_Install.bat

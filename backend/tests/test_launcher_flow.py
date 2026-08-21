@@ -2,7 +2,6 @@ from pathlib import Path
 
 from app import _launch_page_html
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -23,29 +22,29 @@ def test_index_route_still_serves_primary_app_entry():
 
 
 def test_generated_windows_launcher_uses_supervisor_handoff_flow():
-    model_manager_source = (REPO_ROOT / 'backend' / 'app' / 'services' / 'model_manager.py').read_text(encoding='utf-8')
+    launcher_layout_source = (REPO_ROOT / 'backend' / 'app' / 'services' / 'launcher_layout.py').read_text(encoding='utf-8')
 
-    assert 'def _windows_app_launcher_contents()' in model_manager_source
-    assert 'set "PINE_BACKGROUND_WAIT_SECONDS=180"' in model_manager_source
-    assert 'call :print_current_startup_status' in model_manager_source
-    assert 'set "PINE_LAUNCHER_RUN_ID=%RANDOM%%RANDOM%"' in model_manager_source
-    assert 'set "PINE_HIDDEN_CMD=%LOG_DIR%\\\\launcher-hidden-%PINE_LAUNCHER_RUN_ID%.cmd"' in model_manager_source
-    assert 'set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\\\launcher-runner.log"' in model_manager_source
-    assert 'call :run_diagnostic_launch' in model_manager_source
-    assert 'call :print_log_paths' in model_manager_source
-    assert 'call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"' in model_manager_source
-    assert 'call :wait_for_browser_lease 15' in model_manager_source
-    assert 'browser lease missing after primary open attempt; leaving diagnostics in logs only' in model_manager_source
-    assert 'timeout waiting for backend ready; leaving diagnostics in logs only' in model_manager_source
-    assert 'Diagnostic mode will not open extra browser tabs automatically.' in model_manager_source
-    assert "Start-Process -FilePath '%PINE_URL%'" in model_manager_source
-    assert 'rundll32.exe url.dll,FileProtocolHandler "%PINE_URL%"' in model_manager_source
-    assert "data.get^('lease_count'^) or 0" in model_manager_source
-    assert 'Launcher handoff log was never created' in model_manager_source
-    assert "Invoke-RestMethod -Uri 'http://127.0.0.1:5001/status' -TimeoutSec 2" in model_manager_source
-    assert "$data.supervisor_running -and $data.backend_ready" in model_manager_source
-    assert 'call :wait_for_background_launch_and_open' in model_manager_source
-    assert 'call "%BACKEND_DIR%WIN_Install.bat"' in model_manager_source
+    assert 'def _windows_app_launcher_contents()' in launcher_layout_source
+    assert 'set "PINE_BACKGROUND_WAIT_SECONDS=180"' in launcher_layout_source
+    assert 'call :print_current_startup_status' in launcher_layout_source
+    assert 'set "PINE_LAUNCHER_RUN_ID=%RANDOM%%RANDOM%"' in launcher_layout_source
+    assert 'set "PINE_HIDDEN_CMD=%LOG_DIR%\\\\launcher-hidden-%PINE_LAUNCHER_RUN_ID%.cmd"' in launcher_layout_source
+    assert 'set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\\\launcher-runner.log"' in launcher_layout_source
+    assert 'call :run_diagnostic_launch' in launcher_layout_source
+    assert 'call :print_log_paths' in launcher_layout_source
+    assert 'call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"' in launcher_layout_source
+    assert 'call :wait_for_browser_lease 15' in launcher_layout_source
+    assert 'browser lease missing after primary open attempt; leaving diagnostics in logs only' in launcher_layout_source
+    assert 'timeout waiting for backend ready; leaving diagnostics in logs only' in launcher_layout_source
+    assert 'Diagnostic mode will not open extra browser tabs automatically.' in launcher_layout_source
+    assert "Start-Process -FilePath '%PINE_URL%'" in launcher_layout_source
+    assert 'rundll32.exe url.dll,FileProtocolHandler "%PINE_URL%"' in launcher_layout_source
+    assert "data.get^('lease_count'^) or 0" in launcher_layout_source
+    assert 'Launcher handoff log was never created' in launcher_layout_source
+    assert "Invoke-RestMethod -Uri 'http://127.0.0.1:5001/status' -TimeoutSec 2" in launcher_layout_source
+    assert "$data.supervisor_running -and $data.backend_ready" in launcher_layout_source
+    assert 'call :wait_for_background_launch_and_open' in launcher_layout_source
+    assert 'call "%BACKEND_DIR%WIN_Install.bat"' in launcher_layout_source
 
 
 def test_windows_installer_checks_shortcut_creation_result():

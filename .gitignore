@@ -17,9 +17,11 @@ build/
 
 # User data and runtime state — never commit. Recordings and transcripts are
 # interview material; models are multi-GB downloads fetched during onboarding.
+# Anchored: an unanchored `projects/` also matched backend/app/api/projects/ and
+# silently kept that package out of every commit.
 /models/
-projects/
-backups/
+/projects/
+/backups/
 backend/data/
 backend/logs/
 pine_safety_backups/

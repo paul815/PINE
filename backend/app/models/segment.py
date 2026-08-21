@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from ..extensions import db
 
@@ -15,7 +15,7 @@ class Segment(db.Model):
     description = db.Column(db.Text, default='')
     screener_questions = db.Column(db.Text, default='')
     target_count = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(UTC))
 
     def to_dict(self, assigned_count=0):
         return {

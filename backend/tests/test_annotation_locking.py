@@ -4,14 +4,12 @@ import json
 import os
 import threading
 
-import pytest
-
 from app.services.annotations import (
+    _atomic_write_json,
+    _get_lock,
     get_annotations,
     save_annotations,
     update_annotations,
-    _get_lock,
-    _atomic_write_json,
 )
 
 
@@ -21,7 +19,7 @@ class TestAtomicWrite:
     def test_creates_file(self, project_dir):
         path = os.path.join(project_dir, 'test.json')
         _atomic_write_json(path, {'key': 'value'})
-        with open(path, 'r') as f:
+        with open(path) as f:
             assert json.load(f) == {'key': 'value'}
 
     def test_no_temp_files_left(self, project_dir):
@@ -34,7 +32,7 @@ class TestAtomicWrite:
         path = os.path.join(project_dir, 'test.json')
         _atomic_write_json(path, {'v': 1})
         _atomic_write_json(path, {'v': 2})
-        with open(path, 'r') as f:
+        with open(path) as f:
             assert json.load(f)['v'] == 2
 
 

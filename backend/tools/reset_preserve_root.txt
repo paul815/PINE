@@ -1,0 +1,25 @@
+# Entries a reset keeps at the REPO ROOT. One name per line; '#' starts a comment.
+#
+# Single source of truth for all three resets: backend/reset_win.bat,
+# backend/reset.command and the in-app reset in backend/app/api/settings.py all
+# read this file. Edit it here and nowhere else —
+# backend/tests/test_reset_preserve_list.py fails if a script grows its own copy.
+#
+# Everything not listed here is deleted, so add source and dev files, never user
+# data (projects/, backups/, backend/data/, backend/logs/).
+
+.editorconfig
+.gitattributes
+.github
+.git
+.gitignore
+.pre-commit-config.yaml
+.python-version
+AGENTS.md
+documentation
+LICENSE
+MAC_Install.command
+README.md
+WIN_Install.bat
+backend
+models

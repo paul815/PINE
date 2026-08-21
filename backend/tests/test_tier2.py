@@ -4,12 +4,8 @@ transfer ZIP extras, and concurrent uploads."""
 import json
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # 1. Model registry
@@ -21,9 +17,11 @@ class TestModelRegistry:
     def test_init_model_registry_creates_models(self, app):
         with app.app_context():
             from app.models.ml_model import MLModel
-            from app.services.model_manager import MODEL_REGISTRY, init_model_registry
-
-            from app.services.model_manager import _model_for_platform
+            from app.services.model_manager import (
+                MODEL_REGISTRY,
+                _model_for_platform,
+                init_model_registry,
+            )
             init_model_registry()
             models = MLModel.query.all()
             ids = {m.id for m in models}
@@ -72,12 +70,20 @@ class TestModelRegistry:
         assert _model_already_on_disk(missing, 1000) is False
 
     def test_get_models_for_setup_quality(self):
-        from app.services.model_manager import get_models_for_setup
+        from app.services.model_manager import get_default_stt_model, get_models_for_setup
 
         ids = get_models_for_setup(['transcription'])
-        assert 'whisperx-large-v3' in ids
+        assert get_default_stt_model() in ids
         assert 'pyannote-diarization' in ids
         assert 'gliner-pii' not in ids
+
+    def test_get_models_for_setup_parakeet_brings_vad(self):
+        from app.services.model_manager import get_default_stt_model, get_models_for_setup
+
+        ids = get_models_for_setup(['transcription'], 'parakeet-tdt-0.6b-v3-onnx')
+        assert 'parakeet-tdt-0.6b-v3-onnx' in ids
+        assert 'silero-vad-onnx' in ids
+        assert get_default_stt_model() not in ids
 
     def test_get_models_for_setup_with_pii(self):
         from app.services.model_manager import get_models_for_setup
@@ -105,9 +111,12 @@ class TestModelRegistry:
     def test_reconcile_statuses_promotes_on_disk(self, app, temp_dir):
         """Model marked 'not_downloaded' but files exist on disk → 'ready'."""
         with app.app_context():
-            from app.extensions import db
             from app.models.ml_model import MLModel
-            from app.services.model_manager import MODEL_REGISTRY, init_model_registry, reconcile_model_statuses
+            from app.services.model_manager import (
+                MODEL_REGISTRY,
+                init_model_registry,
+                reconcile_model_statuses,
+            )
 
             init_model_registry()
             model_id = 'pyannote-segmentation'
@@ -554,8 +563,11 @@ class TestConcurrentUpload:
         errors = []
 
         def upload(idx):
+            # Each thread gets its own client on purpose. A single FlaskClient
+            # is not thread-safe — sharing one here made this test fail roughly
+            # one run in six, on the test client rather than on the app.
             try:
-                r = client.post(
+                r = app.test_client().post(
                     f'/api/projects/{pid}/recordings',
                     data={'file': (BytesIO(b'FAKE_AUDIO'), f'recording_{idx}.mp3')},
                     content_type='multipart/form-data',
@@ -587,6 +599,42 @@ class TestConcurrentUpload:
             assert len(recs) == 3
             names = {r.stored_name for r in recs}
             assert len(names) == 3, f'Filename collision: {names}'
+
+    def test_same_filename_from_many_threads_never_collides(self, tmp_path):
+        """The name allocator itself, hammered directly.
+
+        The route-level test above uploads three *differently* named files, so
+        it never exercises the case that actually loses data: several uploads
+        of one filename arriving together. Before claim_free_path this was a
+        check-then-write race — every racer saw the name as free and the last
+        writer overwrote the others' audio.
+        """
+        from app.services.file_utils import claim_free_path
+
+        claimed = []
+        errors = []
+        start = threading.Barrier(8)
+
+        def claim():
+            try:
+                start.wait(timeout=5)
+                claimed.append(claim_free_path(str(tmp_path), 'interview.mp3'))
+            except Exception as exc:  # noqa: BLE001 - recorded and asserted below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=claim) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f'claim errors: {errors}'
+        paths = [p for p, _ in claimed]
+        names = [n for _, n in claimed]
+        assert len(set(paths)) == 8, f'Two threads got the same path: {sorted(names)}'
+        assert set(names) == {'interview.mp3'} | {f'interview_{i}.mp3' for i in range(2, 9)}
+        for path in paths:
+            assert os.path.exists(path), f'{path} was claimed but not created'
 
 
 # ---------------------------------------------------------------------------
@@ -624,8 +672,8 @@ class TestOnboardingAPI:
         assert isinstance(data['checks'], list)
         assert 'has_blockers' in data
 
-    def test_onboarding_set_language(self, client):
-        r = client.post('/api/onboarding/language',
+    def test_onboarding_set_stt_model(self, client):
+        r = client.post('/api/onboarding/stt-model',
                         json={})
         assert r.status_code == 200
         data = r.get_json()

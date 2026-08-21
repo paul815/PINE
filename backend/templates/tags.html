@@ -148,71 +148,11 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 })();
 </script>
 <style>
-@font-face { font-family: 'Space Grotesk'; font-weight: 300; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Light.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SpaceGrotesk-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Design tokens: light (default) ── */
 :root {
-  --bg:         hsl(220, 20%, 97%);
-  --fg:         hsl(220, 25%, 10%);
-  --card:       hsl(0, 0%, 100%);
-  --muted:      hsl(220, 15%, 94%);
-  --muted-fg:   hsl(220, 10%, 46%);
-  --accent:     hsl(152, 60%, 42%);
-  --accent-fg:  #fff;
-  --accent-dim: hsla(152, 60%, 42%, 0.10);
-  --accent-bd:  hsla(152, 60%, 42%, 0.25);
-  --border:     hsl(220, 15%, 88%);
-  --secondary:  hsl(220, 15%, 92%);
-  --destr:      hsl(0, 72%, 51%);
-  --destr-dim:  hsla(0, 72%, 51%, 0.10);
-  --destr-bd:   hsla(0, 72%, 51%, 0.25);
-  --warn:       hsl(38, 90%, 55%);
-  --warn-dim:   hsla(38, 90%, 55%, 0.10);
-  --warn-bd:    hsla(38, 90%, 55%, 0.25);
-  --sunken:     hsl(220, 20%, 95%);
-  --radius:     6px;
-  --font-body:  'Inter', sans-serif;
-  --font-mono:  'JetBrains Mono', monospace;
-
-  --tag-pain:     #c0392b;
-  --tag-pain-bg:  rgba(192,57,43,0.08);
-  --tag-pain-bd:  rgba(192,57,43,0.25);
-  --tag-ins:      #1a9650;
-  --tag-ins-bg:   rgba(26,150,80,0.08);
-  --tag-ins-bd:   rgba(26,150,80,0.25);
-  --tag-del:      #b06400;
-  --tag-del-bg:   rgba(176,100,0,0.08);
-  --tag-del-bd:   rgba(176,100,0,0.25);
-  --tag-conf:     #1a70b0;
-  --tag-conf-bg:  rgba(26,112,176,0.08);
-  --tag-conf-bd:  rgba(26,112,176,0.25);
-  --tag-fu:       #606078;
-  --tag-fu-bg:    rgba(96,96,120,0.06);
-  --tag-fu-bd:    rgba(96,96,120,0.20);
-
   --mod-lbl:   #2b7bbf;
   --p1-lbl:    #1e8a4a;
   --p2-lbl:    #8030b8;
@@ -223,40 +163,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
    :root-scoped: this page puts data-theme on .tag-group elements too, and an
    unscoped selector would repaint those groups with the dark palette. */
 :root[data-theme="dark"] {
-  --bg:         hsl(220, 20%, 7%);
-  --fg:         hsl(220, 15%, 93%);
-  --card:       hsl(220, 16%, 11%);
-  --muted:      hsl(220, 14%, 14%);
-  --muted-fg:   hsl(220, 10%, 54%);
-  --accent:     hsl(152, 55%, 45%);
-  --accent-dim: hsla(152, 55%, 45%, 0.12);
-  --accent-bd:  hsla(152, 55%, 45%, 0.28);
-  --border:     hsl(220, 16%, 17%);
-  --secondary:  hsl(220, 14%, 16%);
-  --destr:      hsl(0, 62%, 60%);
-  --destr-dim:  hsla(0, 62%, 60%, 0.12);
-  --destr-bd:   hsla(0, 62%, 60%, 0.28);
-  --warn:       hsl(38, 85%, 60%);
-  --warn-dim:   hsla(38, 85%, 60%, 0.10);
-  --warn-bd:    hsla(38, 85%, 60%, 0.25);
-  --sunken:     hsl(220, 18%, 9%);
-
-  --tag-pain:     #f04f4f;
-  --tag-pain-bg:  rgba(240,79,79,0.12);
-  --tag-pain-bd:  rgba(240,79,79,0.30);
-  --tag-ins:      #34c97a;
-  --tag-ins-bg:   rgba(52,201,122,0.10);
-  --tag-ins-bd:   rgba(52,201,122,0.28);
-  --tag-del:      #f5a623;
-  --tag-del-bg:   rgba(245,166,35,0.10);
-  --tag-del-bd:   rgba(245,166,35,0.28);
-  --tag-conf:     #5da8e0;
-  --tag-conf-bg:  rgba(93,168,224,0.10);
-  --tag-conf-bd:  rgba(93,168,224,0.28);
-  --tag-fu:       #a0a0b8;
-  --tag-fu-bg:    rgba(160,160,184,0.08);
-  --tag-fu-bd:    rgba(160,160,184,0.22);
-
   --mod-lbl:   #5da8e0;
   --p1-lbl:    #4dbe80;
   --p2-lbl:    #c07ae8;

@@ -6,7 +6,7 @@ status orchestration stays in ``app.services.transcription``. Tests below
 target whichever side owns the logic.
 """
 
-import threading
+import os
 from collections import namedtuple
 from unittest.mock import MagicMock, patch
 
@@ -356,8 +356,10 @@ class TestCancellation:
 
     def test_check_cancel_raises_when_set(self):
         from app.services.transcription import (
-            TranscriptionCancelled, _check_cancel,
-            _register_cancel, _unregister_cancel,
+            TranscriptionCancelled,
+            _check_cancel,
+            _register_cancel,
+            _unregister_cancel,
         )
         ev = _register_cancel(99990)
         ev.set()
@@ -367,7 +369,9 @@ class TestCancellation:
 
     def test_check_cancel_noop_when_not_set(self):
         from app.services.transcription import (
-            _check_cancel, _register_cancel, _unregister_cancel,
+            _check_cancel,
+            _register_cancel,
+            _unregister_cancel,
         )
         _register_cancel(99991)
         # Should NOT raise
@@ -376,7 +380,9 @@ class TestCancellation:
 
     def test_cancel_transcription_returns_true_when_active(self):
         from app.services.transcription import (
-            cancel_transcription, _register_cancel, _unregister_cancel,
+            _register_cancel,
+            _unregister_cancel,
+            cancel_transcription,
         )
         _register_cancel(99992)
         assert cancel_transcription(99992) is True
@@ -387,12 +393,13 @@ class TestCancellation:
         assert cancel_transcription(99993) is False
 
     def test_cancel_transcription_wakes_language_waiter(self):
+        import threading
+
         from app.services.transcription import (
-            cancel_transcription,
             _language_waiters,
             _language_waiters_lock,
+            cancel_transcription,
         )
-        import threading
         rid = 99994
         ev = threading.Event()
         with _language_waiters_lock:
@@ -573,6 +580,7 @@ class TestStubTorchcodec:
         """Python 3.13+ raises ValueError if torchcodec is in sys.modules but __spec__ is None
         (transformers checks this at import time)."""
         import importlib.util
+
         from ml_worker import compat
 
         self._clean()
@@ -594,7 +602,9 @@ class TestStubTorchcodec:
         self._clean()
 
     def test_stub_clears_broken_partial_import(self):
-        import sys, types
+        import sys
+        import types
+
         from ml_worker import compat
         self._clean()
         broken = types.ModuleType('torchcodec')
@@ -605,7 +615,9 @@ class TestStubTorchcodec:
 
     def test_stub_skips_when_real_works(self):
         """When real torchcodec loads AND decodes successfully, the shim should NOT be installed."""
-        import sys, types
+        import sys
+        import types
+
         from ml_worker import compat
         self._clean()
 
@@ -629,7 +641,9 @@ class TestStubTorchcodec:
     @needs_torch
     def test_audio_decoder_loads_wav(self, tmp_path):
         """The shim AudioDecoder should load audio via ffmpeg."""
-        import struct, wave
+        import struct
+        import wave
+
         from ml_worker import compat
         self._clean()
         compat.stub_torchcodec()
@@ -806,10 +820,10 @@ class TestMacModelChoice:
         assert normalize_stt_model_id('mlx-whisper-large-v3') == 'whisperx-large-v3'
         assert normalize_stt_model_id('whisperx-large-v3') == 'whisperx-large-v3'
 
-    @patch('app.services.model_manager.IS_MAC', True)
-    @patch('app.services.model_manager._is_package_installed')
+    @patch('app.services.pip_installer.IS_MAC', True)
+    @patch('app.services.pip_installer._is_package_installed')
     def test_check_ml_deps_never_asks_for_whisperx_on_mac(self, mock_is_installed):
-        from app.services.model_manager import check_ml_deps
+        from app.services.pip_installer import check_ml_deps
         mock_is_installed.return_value = False
         deps = check_ml_deps()
         assert 'whisperx' not in deps
@@ -852,6 +866,85 @@ class TestEngineSelection:
         assert device == 'cpu'
         assert compute_type == 'int8'
 
+    def test_parakeet_stays_on_cpu_even_with_a_card(self):
+        """The card is for diarization; two CUDA runtimes in one process is the bug."""
+        from ml_worker.engines import select_engine_config
+
+        engine, device, compute_type = select_engine_config(
+            'parakeet-tdt-0.6b-v3-onnx', prefer_mps=False,
+            detected_device='cuda', detected_compute='float16')
+
+        assert engine == 'onnx'
+        assert device == 'cpu'
+        assert compute_type == 'int8'
+
+    def test_parakeet_capabilities_skip_alignment(self):
+        from ml_worker.engines import engine_capabilities
+
+        caps = engine_capabilities('parakeet-tdt-0.6b-v3-onnx')
+        assert caps.word_timestamps is True     # TDT times its own tokens
+        assert caps.diarization == 'external'   # shared pyannote stage
+
+
+class TestParakeetSelectable:
+    """Parakeet is offered on every platform, unlike the per-platform Whispers."""
+
+    @patch('app.services.model_manager.IS_MAC', True)
+    def test_survives_normalize_on_mac(self):
+        from app.services.model_manager import normalize_stt_model_id
+        assert normalize_stt_model_id('parakeet-tdt-0.6b-v3-onnx') == 'parakeet-tdt-0.6b-v3-onnx'
+
+    @patch('app.services.model_manager.IS_MAC', False)
+    def test_survives_normalize_off_mac(self):
+        from app.services.model_manager import normalize_stt_model_id
+        assert normalize_stt_model_id('parakeet-tdt-0.6b-v3-onnx') == 'parakeet-tdt-0.6b-v3-onnx'
+
+    def test_unknown_model_still_falls_back(self):
+        from app.services.model_manager import get_default_stt_model, normalize_stt_model_id
+        assert normalize_stt_model_id('parakeet-something-else') == get_default_stt_model()
+
+    @patch('app.services.pip_installer._is_package_installed', return_value=False)
+    def test_deps_ask_for_onnx_not_whisperx(self, mock_installed):
+        from app.services.pip_installer import check_ml_deps
+
+        deps = check_ml_deps('parakeet-tdt-0.6b-v3-onnx')
+        assert 'onnx-asr' in deps
+        assert 'onnxruntime' in deps
+        assert 'whisperx' not in deps
+        # Diarization still rides on pyannote whichever engine transcribes.
+        assert 'pyannote-audio' in deps
+
+
+class TestParakeetSegmentMapping:
+    """onnx-asr hands back per-token stamps; the UI needs words."""
+
+    def test_relative_stamps_are_rebased_onto_the_recording(self):
+        from ml_worker.engines.onnx_engine import absolute_stamps
+
+        assert absolute_stamps([0.0, 0.4], 10.0, 12.0) == [10.0, 10.4]
+
+    def test_absolute_stamps_are_left_alone(self):
+        from ml_worker.engines.onnx_engine import absolute_stamps
+
+        assert absolute_stamps([10.0, 10.4], 10.0, 12.0) == [10.0, 10.4]
+
+    def test_tokens_group_into_words_with_times(self):
+        from ml_worker.engines.onnx_engine import tokens_to_words
+
+        words = tokens_to_words(
+            ['▁any', 'way', '▁we', '▁talked'], [1.0, 1.2, 1.5, 1.8], seg_end=2.4)
+
+        assert [w['word'] for w in words] == ['anyway', 'we', 'talked']
+        assert words[0]['start'] == 1.0
+        # A word ends where the next one starts; the last one ends with the segment.
+        assert words[0]['end'] == 1.5
+        assert words[-1]['end'] == 2.4
+
+    def test_empty_tokens_produce_no_words(self):
+        from ml_worker.engines.onnx_engine import tokens_to_words
+
+        assert tokens_to_words([], [], seg_end=1.0) == []
+
 
 # ---------------------------------------------------------------------------
 # Mac pipeline: _write_wav helper
@@ -863,6 +956,7 @@ class TestWriteWav:
     @needs_numpy
     def test_write_and_read_wav(self, tmp_path):
         import numpy as np
+
         from app.services.transcription import _write_wav
         audio = np.sin(np.linspace(0, 2 * np.pi * 440, 16000, dtype=np.float32))
         wav_path = str(tmp_path / 'test.wav')
@@ -874,3 +968,47 @@ class TestWriteWav:
             assert header == b'RIFF'
             f.seek(8)
             assert f.read(4) == b'WAVE'
+
+
+class TestModelPreflight:
+    """A model that was never downloaded is a setup problem, caught before the job."""
+
+    def _ready(self, app, model_id, models_path):
+        from app.extensions import db
+        from app.models.ml_model import MLModel
+        os.makedirs(os.path.join(models_path, model_id), exist_ok=True)
+        with app.app_context():
+            row = db.session.get(MLModel, model_id)
+            row.status = 'ready'
+            db.session.commit()
+
+    def test_missing_model_refuses_the_job(self, app):
+        from app.services.transcription.job_runner import _preflight_stt_model
+
+        with pytest.raises(RuntimeError) as exc:
+            _preflight_stt_model(app)
+        assert 'not installed' in str(exc.value)
+
+    def test_installed_model_passes(self, app, temp_dir):
+        from app.services.model_manager import get_default_stt_model
+        from app.services.transcription.job_runner import _preflight_stt_model
+
+        models_path = os.path.join(temp_dir, 'models')
+        self._ready(app, get_default_stt_model(), models_path)
+
+        assert _preflight_stt_model(app) == get_default_stt_model()
+
+    def test_parakeet_without_its_vad_refuses(self, app, temp_dir):
+        from app.extensions import db
+        from app.models.setting import Setting
+        from app.services.transcription.job_runner import _preflight_stt_model
+
+        models_path = os.path.join(temp_dir, 'models')
+        self._ready(app, 'parakeet-tdt-0.6b-v3-onnx', models_path)
+        with app.app_context():
+            Setting.set('stt_model_id', 'parakeet-tdt-0.6b-v3-onnx')
+            db.session.commit()
+
+        with pytest.raises(RuntimeError) as exc:
+            _preflight_stt_model(app)
+        assert 'silero-vad-onnx' in str(exc.value)

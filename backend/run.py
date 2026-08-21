@@ -1,4 +1,5 @@
 import warnings
+
 # Suppress pyannote torchcodec warning: we pass preloaded audio via whisperx.load_audio, never use torchcodec
 warnings.filterwarnings('ignore', message='torchcodec')
 warnings.filterwarnings('ignore', module=r'pyannote\.audio\.core\.io')
@@ -92,12 +93,13 @@ _clear_broken_proxy_placeholders()
 
 from app import create_app
 from app.extensions import socketio
+from app.ports import backend_port
 
 app = create_app()
 
 if __name__ == '__main__':
     _debug = os.environ.get('PINE_DEBUG', '').strip() in ('1', 'true', 'yes')
-    _port = int(os.environ.get('PINE_BACKEND_PORT', '5000'))
+    _port = backend_port()
     socketio.run(
         app,
         host='127.0.0.1',

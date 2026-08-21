@@ -15,7 +15,7 @@ import pytest
 from ml_worker.audio import load_audio_file, write_wav
 from ml_worker.engines.base import TranscribeOutput
 from ml_worker.errors import TranscriptionCancelled
-from ml_worker.multitrack import run_multitrack
+from ml_worker.multitrack import join_runs, run_multitrack
 from ml_worker.pipeline import PipelineEvents, TrackSpec, map_speakers
 from ml_worker.tracks import SAMPLE_RATE
 
@@ -381,3 +381,74 @@ def test_track_specs_come_back_sorted_from_the_wire():
     ])
 
     assert [t.speaker_name for t in job.track_specs()] == ['A', 'B']
+# ── one turn, one segment ──
+
+def _seg(start, end, text, speaker='TRACK_00', words=True):
+    seg = {'start': start, 'end': end, 'text': text, 'speaker': speaker}
+    if words:
+        seg['words'] = [{'word': text, 'start': start, 'end': end}]
+    return seg
+
+
+def test_a_turn_split_by_a_breath_is_joined_back_up():
+    joined = join_runs([_seg(0.0, 1.0, 'Речь о том'),
+                        _seg(1.4, 2.0, 'и наш канал')])
+
+    assert len(joined) == 1
+    assert joined[0]['text'] == 'Речь о том и наш канал'
+    assert (joined[0]['start'], joined[0]['end']) == (0.0, 2.0)
+    assert len(joined[0]['words']) == 2, 'the words come along'
+
+
+def test_a_real_pause_still_ends_the_segment():
+    joined = join_runs([_seg(0.0, 1.0, 'a'), _seg(5.0, 6.0, 'b')])
+
+    assert [s['text'] for s in joined] == ['a', 'b']
+
+
+def test_another_speaker_in_between_keeps_the_turns_apart():
+    """Joining across someone else would put a segment on top of their turn."""
+    joined = join_runs([
+        _seg(0.0, 1.0, 'a'),
+        _seg(1.1, 1.3, 'угу', speaker='TRACK_01'),
+        _seg(1.4, 2.0, 'b'),
+    ])
+
+    assert [s['text'] for s in joined] == ['a', 'угу', 'b']
+
+
+def test_joining_stops_at_the_length_cap():
+    segments = [_seg(i * 2.0, i * 2.0 + 1.0, str(i)) for i in range(30)]
+
+    joined = join_runs(segments, max_gap=1.5, max_len=10.0)
+
+    assert len(joined) > 1
+    assert max(s['end'] - s['start'] for s in joined) <= 10.0
+
+
+def test_a_segment_without_words_is_not_joined_to_one_with_them():
+    """The transcript is rebuilt from words; half a set would lose the rest."""
+    joined = join_runs([_seg(0.0, 1.0, 'a', words=False), _seg(1.2, 2.0, 'b')])
+
+    assert [s['text'] for s in joined] == ['a', 'b']
+
+
+def test_the_segments_handed_in_are_left_alone():
+    segments = [_seg(0.0, 1.0, 'a'), _seg(1.2, 2.0, 'b')]
+
+    join_runs(segments)
+
+    assert [s['end'] for s in segments] == [1.0, 2.0]
+
+
+def test_a_track_cut_in_two_comes_back_as_one_segment(tmp_path):
+    """End to end: two speech regions on one track, one line in the transcript."""
+    path = str(tmp_path / 'audio1234_Ivan.wav')
+    write_wav(path, _speech([(2.0, 5.0), (6.5, 9.0)], total=12.0))
+    specs = [TrackSpec(index=0, path=path, speaker_name='Ivan')]
+
+    segments, _, _ = run_multitrack(FakeEngine(), specs, 'ru', _events())
+
+    assert len(segments) == 1
+    assert segments[0]['start'] == pytest.approx(2.0, abs=0.5)
+    assert segments[0]['end'] == pytest.approx(9.0, abs=0.5)

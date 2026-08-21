@@ -37,51 +37,11 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 }).catch(() => { _applyTheme('system'); });
 </script>
 <style>
-@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/JetBrainsMono-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Inter-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Inter-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/Inter-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Inter-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/SourceSans3-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/SourceSans3-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/SourceSans3-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Source Sans 3'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/SourceSans3-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/OpenSans-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/OpenSans-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; src: url('{{ url_for("static", filename="fonts/OpenSans-SemiBold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/OpenSans-Bold.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 400; src: url('{{ url_for("static", filename="fonts/Roboto-Regular.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 500; src: url('{{ url_for("static", filename="fonts/Roboto-Medium.woff2") }}') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-weight: 700; src: url('{{ url_for("static", filename="fonts/Roboto-Bold.woff2") }}') format('woff2'); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Design tokens: light (default) ── */
 :root {
-  --bg:         hsl(220, 20%, 97%);
-  --fg:         hsl(220, 25%, 10%);
-  --card:       hsl(0, 0%, 100%);
-  --muted:      hsl(220, 15%, 94%);
-  --muted-fg:   hsl(220, 10%, 46%);
-  --accent:     hsl(152, 60%, 42%);
-  --accent-fg:  #fff;
-  --accent-dim: hsla(152, 60%, 42%, 0.10);
-  --accent-bd:  hsla(152, 60%, 42%, 0.25);
-  --accent-on-dim:   hsl(152, 60%, 27%);
-  --accent-bd-solid: hsl(152, 60%, 27%);
-  --border:     hsl(220, 15%, 88%);
-  --secondary:  hsl(220, 15%, 92%);
-  --destr:      hsl(0, 72%, 51%);
-  --destr-dim:  hsla(0, 72%, 51%, 0.10);
-  --destr-bd:   hsla(0, 72%, 51%, 0.25);
-  --warn:       hsl(38, 90%, 55%);
-  --warn-dim:   hsla(38, 90%, 55%, 0.10);
-  --warn-bd:    hsla(38, 90%, 55%, 0.25);
-  --sunken:     hsl(220, 20%, 95%);
-  --radius:     6px;
-  --font-body:  'Inter', sans-serif;
-  --font-mono:  'JetBrains Mono', monospace;
   /* Top bar height — right header title aligns to same horizontal rule as left column */
   --top-bar-h: 20px;
   --left-header-pad-y: 6px;
@@ -89,29 +49,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
   --search-in-h: 28px;
 }
 
-/* ── Design tokens: dark ── */
-[data-theme="dark"] {
-  --bg:         hsl(220, 20%, 7%);
-  --fg:         hsl(220, 15%, 93%);
-  --card:       hsl(220, 16%, 11%);
-  --muted:      hsl(220, 14%, 14%);
-  --muted-fg:   hsl(220, 10%, 54%);
-  --accent:     hsl(152, 55%, 45%);
-  --accent-fg:  #fff;
-  --accent-dim: hsla(152, 55%, 45%, 0.12);
-  --accent-bd:  hsla(152, 55%, 45%, 0.28);
-  --accent-on-dim:   hsl(152, 55%, 45%);
-  --accent-bd-solid: hsla(152, 55%, 45%, 0.55);
-  --border:     hsl(220, 16%, 17%);
-  --secondary:  hsl(220, 14%, 16%);
-  --destr:      hsl(0, 62%, 60%);
-  --destr-dim:  hsla(0, 62%, 60%, 0.12);
-  --destr-bd:   hsla(0, 62%, 60%, 0.28);
-  --warn:       hsl(38, 85%, 60%);
-  --warn-dim:   hsla(38, 85%, 60%, 0.10);
-  --warn-bd:    hsla(38, 85%, 60%, 0.25);
-  --sunken:     hsl(220, 18%, 9%);
-}
 
 html, body {
   height: 100%;
@@ -1001,6 +938,10 @@ label.att-upload-zone.drop-zone { display: block; }
     <div class="m-row"><span class="m-lbl">Include project details</span><div class="sw on" id="expProjectDetails" onclick="this.classList.toggle('on')"></div></div>
     <div class="m-row"><span class="m-lbl">Include participants details</span><div class="sw on" id="expParticipant" onclick="this.classList.toggle('on')"></div></div>
     <div class="m-row"><span class="m-lbl m-lbl-with-hint">Include LLM prompt<button type="button" class="hint-tip" aria-label="What Include LLM prompt does" title="When this is on, your saved instruction is added at the very beginning of exported files. Paste the export into an LLM (ChatGPT, Claude, etc.) and the model already knows your goal—synthesis across interviews, a one-recording summary, pulling themes, or a custom task—so you do not have to retype instructions each time.">?</button></span><div class="sw on" id="expPrompt" onclick="this.classList.toggle('on')"></div></div>
+    <div class="m-row" id="expSeparateRow">
+      <span class="m-lbl m-lbl-with-hint">Separate file per transcription<button type="button" class="hint-tip" aria-label="What Separate file per transcription does" title="Off: every selected transcription goes into one combined document. On: each transcription is exported as its own file and the whole set downloads as a ZIP archive.">?</button></span>
+      <div class="sw" id="expSeparate" onclick="if(!this.classList.contains('disabled'))this.classList.toggle('on')"></div>
+    </div>
     <div class="m-row" id="expPiiRow">
       <span class="m-lbl" id="expPiiLbl">Anonymize PII <span class="pii-export-time" id="expPiiTimeEstimate"></span></span>
       <div class="sw" id="expPii" onclick="if(!this.classList.contains('disabled'))this.classList.toggle('on')"></div>
@@ -2646,6 +2587,15 @@ function updateExportPiiTimeHint() {
   }
   span.textContent = '(~' + _formatPiiExportMinutesLabel(n) + ' min)';
 }
+function updateExportSeparateState() {
+  const sw = document.getElementById('expSeparate');
+  const row = document.getElementById('expSeparateRow');
+  if (!sw || !row) return;
+  const only1 = selectedExportRecordingIds().length < 2;
+  sw.classList.toggle('disabled', only1);
+  row.title = only1 ? 'Applies when more than one transcription is exported' : '';
+}
+function updateExportSelection() { updateExportPiiTimeHint(); updateExportSeparateState(); }
 async function openExport(pid) {
   exportProjectId = pid;
   try {
@@ -2653,6 +2603,7 @@ async function openExport(pid) {
     document.getElementById('exportModalTitle').textContent = 'Export "' + (data.name || 'Project') + '"';
   } catch (e) { toast('Could not load project: ' + (e.message || 'Unknown error'), true); return; }
   document.getElementById('exportOverlay').classList.add('show');
+  document.getElementById('expSeparate')?.classList.remove('on');
   setExportMode('all'); populateExportRecList();
   const piiSw = document.getElementById('expPii'); const piiRow = document.getElementById('expPiiRow');
   try {
@@ -2681,7 +2632,7 @@ async function openExport(pid) {
     const hint = piiRow.querySelector('.pii-hint'); if (hint) hint.remove();
     const timeEst = document.getElementById('expPiiTimeEstimate');
     if (timeEst) timeEst.style.display = piiAvail ? '' : 'none';
-    updateExportPiiTimeHint();
+    updateExportSelection();
     if (!piiAvail) { const h = document.createElement('span'); h.className = 'pii-hint'; h.style.cssText = 'font-size:0.846rem;color:var(--muted-fg);margin-left:6px'; h.textContent = '(not installed)'; document.getElementById('expPiiLbl')?.appendChild(h); }
   } catch (_) { piiSw.classList.add('disabled'); piiSw.classList.remove('on'); const te = document.getElementById('expPiiTimeEstimate'); if (te) te.style.display = 'none'; }
 }
@@ -2692,16 +2643,16 @@ function setExportMode(mode) {
   document.getElementById('exportTabSel').classList.toggle('on', !isAll);
   const listEl = document.getElementById('exportRecList'); listEl.style.display = isAll ? 'none' : 'flex';
   if (!isAll) populateExportRecList();
-  updateExportPiiTimeHint();
+  updateExportSelection();
 }
 function populateExportRecList() {
   const listEl = document.getElementById('exportRecList'); if (!listEl || !exportProjectId) return;
   const p = exportProjectData || findProject(exportProjectId); if (!p) return;
   const transcribed = (p.recordings || []).filter(r => r.transcription_status === 'transcribed');
   listEl.innerHTML = transcribed.length
-    ? transcribed.map(r => `<div class="export-rec-row checked" data-rec-id="${r.id}" onclick="this.classList.toggle('checked');updateExportPiiTimeHint()"><div class="export-rec-check"></div><span class="export-rec-name">${esc((r.original_name || 'Recording').replace(/\.[^.]+$/, ''))}</span><span class="export-rec-dur">${fmtDuration(r.duration_seconds)}</span></div>`).join('')
+    ? transcribed.map(r => `<div class="export-rec-row checked" data-rec-id="${r.id}" onclick="this.classList.toggle('checked');updateExportSelection()"><div class="export-rec-check"></div><span class="export-rec-name">${esc((r.original_name || 'Recording').replace(/\.[^.]+$/, ''))}</span><span class="export-rec-dur">${fmtDuration(r.duration_seconds)}</span></div>`).join('')
     : '<div style="padding:10px;font-size:0.923rem;color:var(--muted-fg);text-align:center">No transcribed recordings</div>';
-  updateExportPiiTimeHint();
+  updateExportSelection();
 }
 function pickFmt(btn) {
   exportFormat = btn.dataset.fmt || 'markdown';
@@ -2709,14 +2660,21 @@ function pickFmt(btn) {
   btn.classList.add('on');
   const hint = document.getElementById('fmtHint'); if (hint && btn.dataset.hint) hint.textContent = btn.dataset.hint;
 }
+function selectedExportRecordingIds() {
+  const p = exportProjectData || findProject(exportProjectId);
+  if (!p) return [];
+  if (document.getElementById('exportTabAll')?.classList.contains('on')) {
+    return (p.recordings || []).filter(r => r.transcription_status === 'transcribed').map(r => r.id);
+  }
+  return [...document.querySelectorAll('#exportRecList .export-rec-row.checked')]
+    .map(row => parseInt(row.dataset.recId, 10)).filter(id => !isNaN(id));
+}
 async function doProjectExport() {
   if (!exportProjectId) return;
   const p = exportProjectData || findProject(exportProjectId);
   if (!p) { toast('Project not found', true); return; }
   const isAll = document.getElementById('exportTabAll').classList.contains('on');
-  let recordingIds = [];
-  if (isAll) { recordingIds = (p.recordings || []).filter(r => r.transcription_status === 'transcribed').map(r => r.id); }
-  else { recordingIds = [...document.querySelectorAll('#exportRecList .export-rec-row.checked')].map(row => parseInt(row.dataset.recId, 10)).filter(id => !isNaN(id)); }
+  const recordingIds = selectedExportRecordingIds();
   if (!recordingIds.length) { toast(isAll ? 'No transcribed recordings to export' : 'Select at least one recording', true); return; }
   const fmt = exportFormat;
   const incC = document.getElementById('expComments')?.classList.contains('on') ?? true;
@@ -2725,6 +2683,7 @@ async function doProjectExport() {
   const incProjDet = document.getElementById('expProjectDetails')?.classList.contains('on') ?? true;
   const incPii = document.getElementById('expPii')?.classList.contains('on') ?? false;
   const incPrompt = document.getElementById('expPrompt')?.classList.contains('on') ?? true;
+  const sepFiles = document.getElementById('expSeparate')?.classList.contains('on') ?? false;
   let action;
   if (recordingIds.length === 1) {
     action = API + '/' + exportProjectId + '/recordings/' + recordingIds[0] + '/export';
@@ -2739,7 +2698,7 @@ async function doProjectExport() {
   params.set('include_project_details', incProjDet);
   params.set('remove_pii', incPii);
   params.set('include_prompt', incPrompt);
-  if (recordingIds.length > 1) params.set('recording_ids', recordingIds.join(','));
+  if (recordingIds.length > 1) { params.set('recording_ids', recordingIds.join(',')); params.set('separate_files', sepFiles); }
   const btn = document.getElementById('exportBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Exporting…'; }
   try {
@@ -3290,7 +3249,6 @@ function releaseLeaseAndQuit() {
     _postSupervisorJson('/shutdown', payload, true);
   } catch (e) {}
 }
-
 
 
 function setPythonLinkState(state, details = '') {

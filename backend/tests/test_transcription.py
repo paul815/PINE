@@ -3,8 +3,6 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
-
 from app.services.annotations import annotations_filename
 from app.services.transcription import (
     SPEAKER_LABELS,
