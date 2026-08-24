@@ -254,7 +254,7 @@ cd pine
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
-pip install pytest pytest-cov ruff pre-commit
+pip install pytest pytest-cov ruff
 ```
 
 On Windows the activation line is `.\.venv\Scripts\activate`. Dev tooling is deliberately absent from `requirements.txt` — a user's install carries no test runner or linter.
@@ -269,7 +269,6 @@ That is the full stack, the way the launchers start it. `python run.py` starts t
 cd backend && pytest
 cd backend && pytest --cov=app
 ruff check backend
-pre-commit install
 ```
 
 38 test modules, using an in-memory SQLite database and temp directories — they never touch real data. Heavy ML packages are not installed in CI, so the tests that need them skip. CI runs on Ubuntu (3.11 / 3.12 / 3.13) and Windows (3.12).

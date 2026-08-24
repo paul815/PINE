@@ -64,8 +64,8 @@ def test_gitattributes_pins_both_and_stays_in_the_repo_root():
         macos_installer,
     )
     assert windows_sweep and macos_sweep
-    assert 'AGENTS.md' in windows_sweep.group(1)
-    assert 'AGENTS.md' in macos_sweep.group(1)
+    assert 'LICENSE' in windows_sweep.group(1)
+    assert 'LICENSE' in macos_sweep.group(1)
     assert '.gitattributes' not in windows_sweep.group(1)
     assert '.gitattributes' not in macos_sweep.group(1)
     assert 'relocate_root_file ".gitattributes"' not in windows_installer

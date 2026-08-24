@@ -37,9 +37,7 @@ pine_safety_backups/
 /Documentation/dev-config/.editorconfig
 /Documentation/dev-config/.gitattributes
 /Documentation/dev-config/.gitignore
-/Documentation/dev-config/.pre-commit-config.yaml
 /Documentation/dev-config/.python-version
-/Documentation/dev-config/AGENTS.md
 /Documentation/dev-config/LICENSE
 
 # Test cache

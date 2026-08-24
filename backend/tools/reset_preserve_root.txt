@@ -13,8 +13,6 @@
 .github
 .git
 .gitignore
-.pre-commit-config.yaml
-AGENTS.md
 documentation
 LICENSE
 MAC_Install.command

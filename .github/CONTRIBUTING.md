@@ -21,8 +21,7 @@ cd pine
 python -m venv .venv
 source .venv/bin/activate          # Windows: .\.venv\Scripts\activate
 pip install -r backend/requirements.txt
-pip install pytest pytest-cov ruff pre-commit
-pre-commit install
+pip install pytest pytest-cov ruff
 ```
 
 Test tooling is intentionally missing from `requirements.txt`: a user's install
@@ -70,10 +69,11 @@ files; fail closed on corruption rather than silently truncating.
 `.command` and `.sh` must be LF — cmd.exe reads batch files by byte offset and
 macOS rejects a `.command` with CRLF. `.gitattributes` enforces it,
 `backend/scripts/check_line_endings.py` is the backstop, and it runs from both
-pre-commit and the test suite.
+CI and the test suite.
 
 **No mojibake.** `backend/scripts/check_mojibake.py` catches text that has been
-through a wrong-encoding round trip. Write files as UTF-8.
+through a wrong-encoding round trip. Write files as UTF-8. CI runs it; there is
+no pre-commit hook to install.
 
 **Style.** `ruff` config lives in `backend/pyproject.toml`. Line length is not
 enforced — the codebase wraps by meaning, not by column. Comments explain *why*,

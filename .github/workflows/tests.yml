@@ -40,3 +40,23 @@ jobs:
       - name: Run test suite
         working-directory: backend
         run: python -m pytest -q --tb=short
+
+  # These two used to hang off a pre-commit hook that nobody had installed, so
+  # neither actually ran. Both are standard library only and read the checkout
+  # as git wrote it, which is the state that matters for .gitattributes.
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check line endings
+        run: python backend/scripts/check_line_endings.py
+
+      - name: Check for mojibake
+        run: python backend/scripts/check_mojibake.py

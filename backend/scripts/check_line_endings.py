@@ -11,7 +11,7 @@ true on macOS: a .command with CRLF fails with "bad interpreter".
 .gitattributes pins both (`*.bat text eol=crlf`, `*.command text eol=lf`), but
 an editor, a plain `copy` from another checkout, or a tool that writes '\\n'
 can still land the wrong bytes in the working tree. This checker is the
-backstop; it runs from pre-commit and from the test suite.
+backstop; it runs from CI and from the test suite.
 """
 from __future__ import annotations
 
