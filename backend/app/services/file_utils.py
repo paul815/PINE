@@ -3,14 +3,45 @@
 import json
 import os
 import tempfile
+import time
+
+# os.replace is one atomic rename on POSIX, but on Windows it goes through
+# MoveFileExW, which does not queue behind whoever currently holds the
+# destination — it fails the call outright. ERROR_ACCESS_DENIED (5) and
+# ERROR_SHARING_VIOLATION (32) both mean "someone had it open for a moment":
+# another thread replacing the same file, the search indexer, an antivirus
+# scanner reading what we just wrote.
+_TRANSIENT_REPLACE_ERRORS = frozenset({5, 32})
+
+
+def _replace_atomically(tmp_path, path, attempts=10):
+    """os.replace, retried through Windows' transient replace failures.
+
+    Three recordings uploaded into one project at once all rewrite that
+    project's README.md, and two of the three replaces would collide: one
+    upload returned 500 with WinError 5 roughly one run in forty. The window
+    is microseconds wide, so the first backoff almost always wins; a real
+    permission problem still raises, just ~0.26s later.
+
+    On POSIX no exception carries .winerror, so this is a plain os.replace.
+    """
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except OSError as exc:
+            last = attempt == attempts - 1
+            if last or getattr(exc, 'winerror', None) not in _TRANSIENT_REPLACE_ERRORS:
+                raise
+            time.sleep(min(0.001 * (2 ** attempt), 0.05))
 
 
 def atomic_write_json(path, data):
     """Write JSON to a temp file then atomically replace the target.
 
     Uses tempfile.mkstemp in the same directory as the target so that
-    os.replace is guaranteed to be atomic (same filesystem).  If anything
-    goes wrong, the temp file is cleaned up and the original is untouched.
+    the replace stays on one filesystem.  If anything goes wrong, the temp
+    file is cleaned up and the original is untouched.
     """
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
@@ -18,7 +49,7 @@ def atomic_write_json(path, data):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, path)
+        _replace_atomically(tmp_path, path)
     except BaseException:
         try:
             os.unlink(tmp_path)
@@ -35,7 +66,7 @@ def atomic_write_text(path, text):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(text)
-        os.replace(tmp_path, path)
+        _replace_atomically(tmp_path, path)
     except BaseException:
         try:
             os.unlink(tmp_path)
