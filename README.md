@@ -1,149 +1,332 @@
-# PINE — Private Interview & Notes Environment
+<div align="center">
 
+<img src="backend/app/static/icons/pine.png" alt="" width="72" height="72">
+
+# PINE
+
+**Private Interview & Notes Environment**
+
+Interview transcription and analysis for UX researchers — running entirely on your own machine.
+
+[![tests](https://github.com/paul815/pine/actions/workflows/tests.yml/badge.svg)](https://github.com/paul815/pine/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/Python-3.11%E2%80%933.13-3776AB.svg)](https://www.python.org/)
-[![Platform: Windows | macOS | Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#setup)
+[![Platform: Windows | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#requirements)
+[![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/paul815/pine/releases)
 
-A **fully local** interview transcription tool for UX researchers. No recordings or conversation data leave your PC. All processing runs offline after model download.
+[Install](#install) · [Requirements](#requirements) · [Speed](#models-and-speed) · [Privacy](#privacy-and-network) · [Docs](#documentation)
 
-![PINE project screen](backend/tools/screenshots/home-light.png)
+</div>
+
+<!-- SCREENSHOTS — the images in backend/tools/screenshots/ are from an older build
+     that still carried the previous product name, so nothing is shown here yet.
+     Capture four fresh shots at 1280x800, save them to documentation/screenshots/,
+     and uncomment the block below:
+       1. projects-light.png  — a project with 3-4 recordings, brief filled in
+       2. recording-dark.png  — transcript with coloured codes and a comment open
+       3. codes-light.png     — the Codes screen with themes and quotes
+       4. settings-dark.png   — Backup & Restore section
+
+<p align="center">
+  <img src="documentation/screenshots/projects-light.png" alt="PINE projects screen" width="49%">
+  <img src="documentation/screenshots/recording-dark.png" alt="PINE recording screen with codes" width="49%">
+</p>
+-->
+
+Upload an interview, get a speaker-separated transcript, code it, and export something an LLM or a colleague can read. Nothing is uploaded anywhere: the models run on your hardware, and after setup the app works with the network off.
 
 ---
 
-## Overview
+## Why PINE
 
-PINE provides:
-
-- **Local transcription** — WhisperX + faster-whisper or Parakeet TDT (STT) + pyannote (speaker diarization); mlx-whisper on Apple Silicon
-- **Per-speaker tracks** — Zoom meeting folders and multi-channel files are transcribed track by track, so overlapping speech survives and diarization is skipped entirely. Speaker names come from the filenames
-- **Project management** — Organize recordings by research project
-- **Tagging & comments** — Highlight spans, apply tags, add researcher notes
-- **Attachments** — Upload any files to a project (PDFs, presentations, client feedback) with editable names and one-click download
-- **Export** — Markdown (LLM-ready) or ODT (LibreOffice/Google Docs)
-
-**Supported formats:** MP3, MP4, M4A, WAV, MKV, WebM, OGG, FLAC
+- **Confidential material stays confidential.** No cloud transcription service, no account, no per-minute billing. The kind of research that cannot legally leave the building — NDA interviews, medical, HR, internal strategy — can be transcribed at all.
+- **Built around research, not around audio files.** Projects carry an objective, research questions, hypotheses, an interview guide and participant segments. Highlights become *codes*, codes group into *themes*.
+- **Real speaker separation, and a shortcut when you have it.** pyannote diarizes single-file recordings; Zoom per-participant folders and multi-channel files skip diarization entirely, so overlapping speech survives and speaker names come from the filenames.
+- **Exports built for the next step.** Markdown with your codes and comments inline, optionally prefixed with your own LLM prompt, or ODT where codes and comments become real ODF annotations.
+- **Telemetry is switched off at the source.** `backend/run.py` disables HuggingFace, pyannote, OpenTelemetry and W&B reporting before the app is even imported.
 
 ---
 
-## Setup
+## Features
 
-### Prerequisites
+**Transcription**
 
-- **Python 3.11, 3.12, or 3.13**
-- **FFmpeg** (bundled via `static-ffmpeg`)
-- **HuggingFace account** — required for pyannote (accept license) and model downloads
-- **NVIDIA GPU** (optional) — CUDA recommended; falls back to CPU if unavailable
+- Whisper large-v3 (GPU / Apple Neural Engine), with the language set by hand or auto-detected
+- pyannote speaker diarization, running in parallel with transcription rather than after it
+- Per-speaker tracks for Zoom meeting folders and multi-channel files — no diarization needed
+- Chunking for long files, crash recovery for interrupted jobs, live progress over WebSocket with a learned ETA
+- Formats: MP3, MP4, M4A, WAV, MKV, WebM, OGG, FLAC
 
-> **Disk space:** models are several GB. Make sure you have room before starting onboarding.
+**Analysis**
 
-### Windows
+- Project brief: objective, research questions, hypotheses, stakeholders, methodology, interview guide — reorderable, edited in place
+- Participant segments with screener questions; assign recordings to a segment and filter by it
+- Codes on any span of text, with colours, plus researcher comments
+- Themes: group codes and review every quote per theme on the Codes screen (affinity mapping)
+- Edit the transcript, rename speakers, import codes from another project
+- Attachments: any project file (PDFs, decks, client feedback) with editable names
 
-Double-click **`WIN_Install.bat`** in the repository root (or run it from Explorer). On first run it creates `.venv`, installs dependencies from `backend/requirements.txt`, starts the server, and opens the browser.
+**Output**
 
-Alternatively, from a terminal with the venv activated:
+- Export one recording or a whole project as Markdown or ODT
+- Toggle comments, codes, project details, participant details
+- Two saved LLM prompts (project-level and single-recording) prepended to the export
+- Optional PII removal before export — GLiNER multilingual, with a sensitivity slider
+- Transfer package: a ZIP of transcripts, annotations and metadata without the media
 
-```powershell
-.\.venv\Scripts\activate
-python backend\run.py
+**Housekeeping**
+
+- Automatic backups on startup and on a schedule, with retention and optional media inclusion; restore takes a safety snapshot first
+- Link mode: keep recordings where they are on disk instead of copying them into the project
+- Single transcriptions: drop in one file without creating a project
+
+---
+
+## Requirements
+
+| | Minimum | Notes |
+|---|---|---|
+| **OS** | Windows 10/11, macOS | Metal acceleration needs macOS 12.3+; older versions run in CPU mode. Linux runs but is not packaged — see below |
+| **Python** | 3.11, 3.12 or 3.13 | The installers find it themselves |
+| **Disk** | 12 GB free | Checked during setup. Models ~3.1 GB, ML packages take the rest |
+| **RAM** | 10 GB recommended | Setup warns below that |
+| **GPU** | Optional | NVIDIA + CUDA is the fast path; 4 GB VRAM or less gets a warning. Apple Silicon uses MLX. No GPU means CPU fallback |
+| **HuggingFace account** | Required | Free. Needed to accept the pyannote licence and download models |
+
+Extra download on demand: PII model +1.8 GB.
+
+**Platform support**
+
+| Configuration | Status |
+|---|---|
+| Windows + NVIDIA GPU | Supported — primary target |
+| Windows, no GPU | Supported — CPU fallback, roughly 10x slower |
+| macOS, Apple Silicon | Supported — Whisper via MLX on the Neural Engine |
+| macOS, Intel | Works, CPU only |
+| Windows + AMD GPU | Falls back to CPU (ROCm not wired up) |
+| Linux | Experimental — `MAC_Install.command` sets it up, but it opens the browser with the macOS `open` command; start the app by hand |
+
+---
+
+## Install
+
+**1. Get the files.** Download the latest [release ZIP](https://github.com/paul815/pine/releases) and unpack it somewhere permanent — the app lives where you unpack it, so not a temp folder. Or clone it:
+
+```bash
+git clone https://github.com/paul815/pine.git
 ```
 
-### macOS / Linux
+**2. Run the launcher for your OS.** The same file does first-time setup and every later launch: it creates `.venv`, installs base dependencies, starts the app and opens the browser.
 
-Double-click **`MAC_Install.command`** in Finder, or from Terminal:
+- **Windows** — double-click **`WIN_Install.bat`**
+- **macOS** — double-click **`MAC_Install.command`** (first time: right-click → Open, to get past Gatekeeper)
 
 ```bash
 chmod +x MAC_Install.command
 ./MAC_Install.command
 ```
 
-Creates the venv and installs dependencies on first run, then starts the server and opens the browser at `http://pine.localhost:5000/launch` (or `http://127.0.0.1:5000`).
+The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab shuts the whole thing down.
 
-> **Note:** `WIN_Install.bat` and `MAC_Install.command` stay in the repo root. They handle both first-time setup and subsequent launches.
+<a id="unsigned-launcher"></a>
 
-### First launch
+> **Windows will flag the launcher.** `WIN_Install.bat` is an unsigned script, and Windows marks
+> everything unpacked from a downloaded ZIP as coming from the internet — so you get a "publisher
+> could not be verified" prompt, or on machines with Smart App Control a hard block. This is what
+> Windows does with every unsigned script; it says nothing about what is in this one.
+>
+> Two ways past it, best first:
+>
+> - **Clone instead of downloading.** Files created by git carry no such mark, so nothing is flagged.
+> - **Unblock after unpacking** — right-click `WIN_Install.bat` → Properties → tick **Unblock**. The
+>   mark sits on every unpacked file, so it is easier to clear the whole folder from PowerShell:
+>
+>   ```powershell
+>   Get-ChildItem -Path . -Recurse | Unblock-File
+>   ```
+>
+> Do **not** switch Smart App Control off to get past this — on Windows 11 it cannot be switched back
+> on without resetting the OS. The launcher is plain batch and does exactly what step 2 describes;
+> read it first if you would rather check than trust.
 
-1. **System check** — Verifies Python, FFmpeg, and hardware
-2. **Modules** — Transcription + diarization (required); optionally PII removal. This step also picks the transcription model
-3. **Storage** — Choose paths for models and projects
-4. **HuggingFace** — Token required for pyannote diarization model
-5. **Download** — Models download from HuggingFace
-6. **Ready** — Create projects and upload recordings
+**3. Walk through setup** — five steps, once:
 
-**Transcription models** — two choices, switchable later in Settings; the second one downloads on demand:
+| Step | What happens |
+|---|---|
+| System check | Python, disk, memory, GPU |
+| Modules | Pick the transcription model; optionally add PII removal |
+| Storage | Where models and projects live |
+| HuggingFace | Paste a token — needed for the pyannote diarization model |
+| Download | Models and ML packages, several GB, one time |
 
-| Model | Runs on | Size | Language |
-|---|---|---|---|
-| Whisper large-v3 (default) | GPU (Neural Engine on Mac) | ~3 GB | can be set by hand |
-| Parakeet TDT 0.6B v3 | CPU, leaving the card to speaker detection | ~0.7 GB | detected automatically |
-
-> **macOS:** Whisper runs through mlx-whisper (Apple Silicon optimised); Parakeet runs on the CPU as it does everywhere else.
+> **HuggingFace token:** create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (read access is enough) and accept the conditions on [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1). Without the accepted licence the download fails with a 401.
 
 ---
 
-## Usage
+## Models and speed
 
-| Screen | Purpose |
-|--------|---------|
-| **Projects** | Create projects, upload recordings, export all |
-| **Recording** | Video/audio player, transcript, tags, comments |
-| **Tags** | View tagged quotes grouped by tag (affinity mapping) |
-| **Settings** | Font size, theme, export defaults, model management |
+| Model | Runs on | Download | VRAM | Language |
+|---|---|---|---|---|
+| **Whisper large-v3** | GPU — Neural Engine on Apple Silicon | ~3 GB | 6.5 GB | Set it yourself, or auto-detect |
 
-**Workflow:** Create project → Upload recording → Wait for transcription → Open recording → Tag spans → Export or transfer.
+Measured on an RTX 4070 SUPER against real interview recordings — one hour of audio:
+
+| Configuration | Time for 1 hour |
+|---|---|
+| Whisper turbo, CPU int8 | ~17 min |
+| Whisper large-v3, CPU int8 | ~1 h 48 min |
+
+The graphics card is worth having: on the CPU, Whisper pays a 17–23x penalty. Full numbers and method: [documentation/stt-benchmark/](documentation/stt-benchmark/README.md) *(in Russian)*.
 
 ---
 
-## Privacy
+## Using PINE
 
-Recordings and transcripts stay on your machine. The app still opens outbound connections in these situations:
+| Screen | What it is for |
+|---|---|
+| **Projects** | Project brief, participant segments, recordings, upload, export |
+| **Recording** | Player, transcript, codes, comments, speaker names |
+| **Codes** | Every quote grouped by code and theme — affinity mapping |
+| **Settings** | Display, export defaults, model switching, PII, backups, shortcuts, reset |
 
-| Situation | Typical endpoints | Notes |
-|-----------|-------------------|--------|
-| **Onboarding / model download** | Hugging Face Hub, PyPI, PyTorch wheel indexes (`download.pytorch.org`) | Installs ML packages and pulls Whisper, pyannote, optional PII models. |
-| **Checking the Hugging Face token** | Hugging Face API | Validates the token when you save it during setup. |
-| **Check for updates** (Settings) | `api.github.com` | Only when you use the in-app update check. |
-| **Optional PII model install** | Hugging Face | If you install the GLiNER model from Settings. |
-| **WhisperX word alignment** (Windows / Linux) | Hugging Face Hub | After onboarding, transcription normally runs with Hub offline. For each **new** detected language, WhisperX may need to download a **language-specific wav2vec2** align model once; the app briefly allows Hub only during that download, then returns to offline mode. Cached languages do not hit the network. |
-| **Always allow Hub** | — | Set environment variable `PINE_ALLOW_HF_NETWORK=1` to skip Hub offline mode for transcription (not required for normal use). |
+Typical flow: create a project → fill in the brief → upload recordings → wait for transcription → open a recording → code the interesting spans → review on the Codes screen → export.
 
-Apple Silicon uses MLX for STT and does not use the WhisperX align path above.
+---
 
-**Threat model:** PINE is a single-user local application bound to `127.0.0.1:5000`. CORS is restricted to `127.0.0.1` and `pine.localhost` on the app's own port, but there is no authentication — treat it like any other local dev server and do not expose the port to a network you do not control. See [TODO.md](documentation/TODO.md) for tracked hardening items.
+## Your data
+
+| What | Where |
+|---|---|
+| Database | `backend/data/pine.db` |
+| Projects | `projects/<project>/` — media, `*_transcript.json`, `*_annotations.json`, `project_tags.json`, `attachments/` |
+| Models | `models/` |
+| Backups | `backups/` |
+| Logs | `backend/logs/` |
+
+Paths for models, projects and backups are chosen during setup and changeable in Settings. Annotations are plain JSON next to the transcript on purpose — a project folder is readable without PINE.
+
+- **Backups** — Settings → Backup & Restore. Automatic on startup and daily, weekly or monthly (weekly by default), keeping the last 3, 5, 10 or all. Media files are excluded unless you ask for them. Restoring writes a safety snapshot first and never overwrites your token or paths.
+- **Handing a project to a colleague** — the Transfer button packages transcripts, annotations and metadata as a ZIP, without the audio.
+- **Starting over** — Settings → Danger zone, or `backend/reset_win.bat` / `backend/reset.command`. To uninstall, delete the folder: nothing is written outside it except the shortcuts you asked for.
+
+---
+
+## Privacy and network
+
+Recordings and transcripts never leave your machine. The app does open outbound connections in these situations:
+
+| Situation | Endpoints | Notes |
+|---|---|---|
+| Setup / model download | HuggingFace Hub, PyPI, `download.pytorch.org` | Installs ML packages and downloads models |
+| Checking the HF token | HuggingFace API | Validates the token when you save it |
+| Check for updates | `api.github.com` | Only when you press the button in Settings |
+| Optional PII model | HuggingFace | Only if you install GLiNER |
+| WhisperX word alignment (Windows/Linux) | HuggingFace Hub | Transcription normally runs with the Hub offline. For each **new** language WhisperX downloads a wav2vec2 alignment model once; the app allows the Hub only for that download, then goes offline again. Apple Silicon uses MLX and never takes this path |
+
+Set `PINE_ALLOW_HF_NETWORK=1` to skip Hub offline mode entirely. Not needed for normal use.
+
+**Threat model.** PINE is a single-user local application. The backend binds to `127.0.0.1` (port 5000 by default, or the next free one) and CORS is limited to `127.0.0.1` and `pine.localhost` on that port — but the backend has **no authentication**, so treat it like any other local dev server and do not expose the port to a network you do not control. The supervisor's control API on port 5001 does require a per-run token. Known gaps are tracked in [TODO.md](documentation/TODO.md); to report a vulnerability see [SECURITY.md](.github/SECURITY.md).
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `401` or `403` while downloading models | The token lacks read access, or the pyannote licence has not been accepted. Accept it on the model page, then retry |
+| Setup finds no Python | Install 3.11–3.13 from python.org with "Add to PATH" ticked, then run the launcher again |
+| GPU ignored, everything is slow | System check reports what it found. A missing CUDA toolkit is the usual cause; without an NVIDIA card, CPU mode is expected |
+| Port 5000 busy | The supervisor picks the next free port automatically; open the URL printed in the console |
+| Browser never opens | Go to `http://127.0.0.1:5000/` by hand. On Linux this is expected — the launcher uses the macOS `open` command |
+| Transcription stuck | A watchdog kills a hung worker and the recording returns to the queue. Details in `backend/logs/` |
+| Install broken beyond repair | `backend/reset_win.bat` or `backend/reset.command`, then run the launcher again |
+| "Smart App Control blocked a file that may be unsafe", or "publisher could not be verified" | Windows blocks unsigned scripts unpacked from a downloaded ZIP — see [the note on the unsigned launcher](#unsigned-launcher). Cloning instead of downloading avoids it entirely |
+
+Filing an issue? Attach the relevant file from `backend/logs/` and the System check output.
 
 ---
 
 ## Development
 
 ```bash
-# Run the test suite (34 modules, 558 tests)
-cd backend && pytest
-
-# With coverage
-cd backend && pytest --cov=app
+git clone https://github.com/paul815/pine.git
+cd pine
+python -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+pip install pytest pytest-cov ruff pre-commit
 ```
 
-Tests use an in-memory SQLite DB and temp directories — they never touch real data.
+On Windows the activation line is `.\.venv\Scripts\activate`. Dev tooling is deliberately absent from `requirements.txt` — a user's install carries no test runner or linter.
 
-### Technical notes
+```bash
+cd backend && python supervisor.py
+```
 
-- **Data location:** `backend/data/` (SQLite DB), `projects/` (per-project folders)
-- **Models:** stored in `models/` (configurable in onboarding)
-- **Port:** `127.0.0.1:5000` (local only)
+That is the full stack, the way the launchers start it. `python run.py` starts the backend alone, without the supervisor.
 
-`models/`, `projects/`, `backend/data/` and `backend/logs/` are gitignored — they hold user recordings and multi-GB downloads, never source.
+```bash
+cd backend && pytest
+cd backend && pytest --cov=app
+ruff check backend
+pre-commit install
+```
 
-### Documentation
+38 test modules, using an in-memory SQLite database and temp directories — they never touch real data. Heavy ML packages are not installed in CI, so the tests that need them skip. CI runs on Ubuntu (3.11 / 3.12 / 3.13) and Windows (3.12).
 
-| Doc | Contents |
-|-----|----------|
-| [ARCHITECTURE.md](documentation/ARCHITECTURE.md) | System design, data model, transcription pipeline |
-| [API.md](documentation/API.md) | Full endpoint reference and data shapes |
-| [DESIGN.md](documentation/DESIGN.md) | UI design system and tokens |
-| [TODO.md](documentation/TODO.md) | Roadmap and known gaps |
-| [AGENTS.md](documentation/AGENTS.md) | Guidance for AI coding agents |
+**How it fits together**
+
+```mermaid
+flowchart LR
+    L["WIN_Install.bat<br/>MAC_Install.command"] --> S["supervisor.py<br/>ports, restarts, auto-shutdown"]
+    S -->|spawns| B["Flask backend<br/>127.0.0.1:5000"]
+    BR["Browser tab<br/>pine.localhost"] <-->|HTTP + WebSocket| B
+    B --> DB[("SQLite<br/>pine.db")]
+    B --> FS["projects/<br/>transcripts + annotations JSON"]
+    B <-->|JSON over a pipe| W["ml_worker process<br/>torch lives only here"]
+    W --> ASR["WhisperX / MLX"]
+    W --> DIA["pyannote diarization"]
+```
+
+The ML process is separate on purpose: a CUDA crash or an out-of-memory kill takes down the worker, not the app. The web process imports no ML libraries at all.
 
 ---
 
+## Documentation
+
+| Doc | Contents |
+|---|---|
+| [ARCHITECTURE.md](documentation/ARCHITECTURE.md) | System design, data model, transcription pipeline |
+| [API.md](documentation/API.md) | Endpoint reference and data shapes |
+| [DESIGN.md](documentation/DESIGN.md) | UI design system and tokens |
+| [TODO.md](documentation/TODO.md) | Architecture review, roadmap, known gaps |
+| [stt-benchmark/](documentation/stt-benchmark/README.md) | Model comparison behind the default choice *(Russian)* |
+| [Manual Tests Flow.md](<documentation/Manual Tests Flow.md>) | Manual QA script |
+| [AGENTS.md](documentation/AGENTS.md) | Guidance for AI coding agents |
+| [CONTRIBUTING.md](.github/CONTRIBUTING.md) | How to set up, test and submit changes |
+| [SECURITY.md](.github/SECURITY.md) | Reporting a vulnerability |
+
+Deeper audits live in `documentation/` as well: `ARCHITECTURE_AUDIT.md`, `ARCHITECTURE_REVIEW_2026-07.md`, `backend-decomposition-audit.md`, `dependency-audit.md`.
+
+---
+
+## Limitations
+
+Stated plainly, so nothing is a surprise:
+
+- No authentication on the backend — single user, local machine, by design
+- AMD GPUs fall back to CPU; ROCm is not wired up
+- Linux is unpackaged and untested as a target
+- Schema changes use lightweight `ALTER TABLE` migrations, not Alembic
+- The HuggingFace token is stored unencrypted in the local database
+- One transcription at a time — the queue is GPU-bound by nature
+
+---
+
+## Contributing
+
+Bug reports are welcome, and reports from researchers using this on real interviews are the most useful kind. Start with [CONTRIBUTING.md](.github/CONTRIBUTING.md) and open an [issue](https://github.com/paul815/pine/issues).
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026. Bundled fonts and the models PINE downloads carry their own licences — see [THIRD_PARTY_LICENSES.md](documentation/THIRD_PARTY_LICENSES.md).
