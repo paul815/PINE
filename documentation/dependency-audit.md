@@ -43,14 +43,14 @@
 ### 2.3 Оправданно (тянет pyannote/whisperx, убрать нельзя)
 lightning, pytorch-lightning, torchmetrics, optuna+alembic+Mako+colorlog,
 matplotlib-стек, scikit-learn, scipy, torch-audiomentations, torch_pitch_shift,
-julius, asteroid-filterbanks, nltk, ctranslate2, faster-whisper, transformers,
-tokenizers, av, torchcodec, triton-windows.
+julius, asteroid-filterbanks, nltk, ctranslate2, faster-whisper, onnxruntime
+(VAD внутри faster-whisper), transformers, tokenizers, av, torchcodec,
+triton-windows.
 `pandas` вдобавок используется напрямую — `ml_worker/diarize.py:126`.
 
 ### 2.4 Сделано правильно
-`onnxruntime`/`onnx-asr` (только под Parakeet, намеренно CPU-сборка — чтобы не держать
-два CUDA-рантайма в одном процессе), `gliner` (только под PII), `mlx-whisper` (только Mac).
-Всё это в `MODEL_OPTIONAL_PACKAGES`, а не в обязательных.
+`gliner` (только под PII), `mlx-whisper` (только Mac) — в `MODEL_OPTIONAL_PACKAGES`,
+а не в обязательных: установка, которая этих моделей не использует, за них не платит.
 
 ## 3. requirements-lock.txt загрязнён (чинится за минуту)
 В lock попал издательский тулчейн с машины разработчика — он никогда не должен
@@ -83,7 +83,7 @@ Lock лаунчерами не используется (только как с�
 
 ## 7. Модели
 Обязательные: STT под платформу + pyannote community-1 + wespeaker.
-Опциональные: silero-vad, gliner-pii, parakeet.
+Опциональные: gliner-pii.
 
 ### 7.1 pyannote/segmentation-3.0 — убран (на проверке)
 Кэшированный конфиг пайплайна на диске

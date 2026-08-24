@@ -33,9 +33,6 @@ class JobEnv:
     model_dir: str
     diarize_dir: str
     pyannote_cache: str
-    # Speech-boundary model for the ONNX engine; empty for the Whisper engines,
-    # which cut the audio themselves.
-    vad_dir: str = ''
     hf_token: str = ''
     hf_offline: bool = False
     # How far off the shipped cost model this machine has been measured

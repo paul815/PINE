@@ -77,14 +77,6 @@ class TestModelRegistry:
         assert 'pyannote-diarization' in ids
         assert 'gliner-pii' not in ids
 
-    def test_get_models_for_setup_parakeet_brings_vad(self):
-        from app.services.model_manager import get_default_stt_model, get_models_for_setup
-
-        ids = get_models_for_setup(['transcription'], 'parakeet-tdt-0.6b-v3-onnx')
-        assert 'parakeet-tdt-0.6b-v3-onnx' in ids
-        assert 'silero-vad-onnx' in ids
-        assert get_default_stt_model() not in ids
-
     def test_get_models_for_setup_with_pii(self):
         from app.services.model_manager import get_models_for_setup
 

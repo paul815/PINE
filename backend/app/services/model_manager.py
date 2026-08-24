@@ -89,32 +89,6 @@ MODEL_REGISTRY = {
         'language': 'multi',
         'platform': 'darwin',       # Mac only
     },
-    'parakeet-tdt-0.6b-v3-onnx': {
-        'name': 'Parakeet TDT 0.6B v3 (ONNX, CPU)',
-        'function': 'stt',
-        'repo_id': 'istupakov/parakeet-tdt-0.6b-v3-onnx',
-        # int8 encoder + decoder + preprocessor + vocab. The fp32 encoder and its
-        # 2.4 GB weight blob are skipped below: this engine runs on the CPU,
-        # where int8 is both smaller and faster.
-        'ignore_patterns': [
-            'encoder-model.onnx',
-            'encoder-model.onnx.data',
-            'decoder_joint-model.onnx',
-        ],
-        'size_bytes': 671_000_000,
-        'required': True,
-        'language': 'multi',
-        'platform': 'all',          # Windows / Linux / Mac — onnxruntime covers all three
-    },
-    'silero-vad-onnx': {
-        'name': 'Silero VAD (speech boundaries)',
-        'function': 'vad',
-        'repo_id': 'istupakov/silero-vad-onnx',
-        'size_bytes': 7_000_000,
-        'required': False,
-        'language': None,
-        'platform': 'all',
-    },
     'pyannote-diarization': {
         'name': 'pyannote speaker-diarization-community-1',
         'function': 'diarization',
@@ -356,10 +330,6 @@ STT_MODEL_QUALITY = 'whisperx-large-v3'
 
 MLX_STT_MODEL_QUALITY = 'mlx-whisper-large-v3'
 
-STT_MODEL_PARAKEET = 'parakeet-tdt-0.6b-v3-onnx'
-
-VAD_MODEL_ID = 'silero-vad-onnx'
-
 LEGACY_STT_MODEL_ID_ALIASES = {
     'whisperx-large-v3-turbo': STT_MODEL_QUALITY,
     'mlx-whisper-large-v3-turbo': MLX_STT_MODEL_QUALITY,
@@ -371,11 +341,7 @@ def get_default_stt_model():
 
 def supported_stt_models():
     """STT model IDs a user may choose on this platform, best-quality first."""
-    return (get_default_stt_model(), STT_MODEL_PARAKEET)
-
-def stt_model_extra_ids(stt_model_id):
-    """Models a given STT choice cannot work without."""
-    return [VAD_MODEL_ID] if stt_model_id == STT_MODEL_PARAKEET else []
+    return (get_default_stt_model(),)
 
 def normalize_stt_model_id(stt_model_id):
     """Map legacy/foreign/invalid STT IDs onto one this platform can run.
@@ -383,7 +349,6 @@ def normalize_stt_model_id(stt_model_id):
     Mac is mlx-only for Whisper: ``whisperx-large-v3`` is never registered (see
     ``_model_for_platform``) and WhisperX is never pip-installed there, so letting
     that ID through only produces ``No module named 'whisperx'`` at transcribe time.
-    Parakeet runs everywhere and passes through unchanged.
     """
     model_id = (stt_model_id or '').strip()
     if model_id in LEGACY_STT_MODEL_ID_ALIASES:
@@ -398,7 +363,6 @@ def get_models_for_setup(modules, stt_model_id=None):
     stt_model = normalize_stt_model_id(stt_model_id) if stt_model_id else get_default_stt_model()
     ids = [
         stt_model,
-        *stt_model_extra_ids(stt_model),
         'pyannote-diarization',
     ]
 

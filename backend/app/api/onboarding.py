@@ -21,7 +21,6 @@ from ..services.model_manager import (
     get_models_for_setup,
     normalize_stt_model_id,
     play_install_complete_sound,
-    stt_model_extra_ids,
     supported_stt_models,
     validate_hf_token,
 )
@@ -110,14 +109,11 @@ def status():
         'completed': completed,
         'modules': modules,
         'stt_model_id': stt_model_id,
-        # What the model step offers, best-quality first. Sizes include anything
-        # the model cannot run without, so the step can quote one number.
+        # What the model step offers, best-quality first.
         'stt_models': [{
             'id': model_id,
             'name': MODEL_REGISTRY.get(model_id, {}).get('name', model_id),
-            'size_bytes': sum(
-                MODEL_REGISTRY.get(mid, {}).get('size_bytes', 0)
-                for mid in [model_id, *stt_model_extra_ids(model_id)]),
+            'size_bytes': MODEL_REGISTRY.get(model_id, {}).get('size_bytes', 0),
         } for model_id in supported_stt_models()],
         'is_mac': IS_MAC,
         'models_path': Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH']),

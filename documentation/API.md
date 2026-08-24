@@ -116,8 +116,7 @@ All JSON responses use `Content-Type: application/json`. Errors return `{ "error
 |--------|----------|-------------|
 | GET | `` | All settings + `hf_token_masked`, `models`, `stt_models` |
 | PATCH | `` | Update; body `{ "font_size", "theme", "export_default_*" }`. `stt_model_id` returns **409** when that model is not installed |
-| POST | `/stt-model/install` | Download a transcription model; body `{ "model_id" }` (Parakeet pulls its VAD along) |
-| POST | `/stt-model/remove` | Delete one; **409** if it is the model in use or a transcription is running |
+| POST | `/stt-model/install` | Download the transcription model; body `{ "model_id" }` |
 | POST | `/pii-model/install` | Download the optional GLiNER PII model after onboarding |
 | POST | `/pii-model/remove` | Delete it and free the disk space |
 | POST | `/check-update` | Ask GitHub whether a newer PINE release exists |

@@ -820,6 +820,10 @@ class TestMacModelChoice:
         assert normalize_stt_model_id('mlx-whisper-large-v3') == 'whisperx-large-v3'
         assert normalize_stt_model_id('whisperx-large-v3') == 'whisperx-large-v3'
 
+    def test_unknown_model_falls_back_to_the_default(self):
+        from app.services.model_manager import get_default_stt_model, normalize_stt_model_id
+        assert normalize_stt_model_id('no-such-model') == get_default_stt_model()
+
     @patch('app.services.pip_installer.IS_MAC', True)
     @patch('app.services.pip_installer._is_package_installed')
     def test_check_ml_deps_never_asks_for_whisperx_on_mac(self, mock_is_installed):
@@ -865,85 +869,6 @@ class TestEngineSelection:
         assert engine == 'whisperx'
         assert device == 'cpu'
         assert compute_type == 'int8'
-
-    def test_parakeet_stays_on_cpu_even_with_a_card(self):
-        """The card is for diarization; two CUDA runtimes in one process is the bug."""
-        from ml_worker.engines import select_engine_config
-
-        engine, device, compute_type = select_engine_config(
-            'parakeet-tdt-0.6b-v3-onnx', prefer_mps=False,
-            detected_device='cuda', detected_compute='float16')
-
-        assert engine == 'onnx'
-        assert device == 'cpu'
-        assert compute_type == 'int8'
-
-    def test_parakeet_capabilities_skip_alignment(self):
-        from ml_worker.engines import engine_capabilities
-
-        caps = engine_capabilities('parakeet-tdt-0.6b-v3-onnx')
-        assert caps.word_timestamps is True     # TDT times its own tokens
-        assert caps.diarization == 'external'   # shared pyannote stage
-
-
-class TestParakeetSelectable:
-    """Parakeet is offered on every platform, unlike the per-platform Whispers."""
-
-    @patch('app.services.model_manager.IS_MAC', True)
-    def test_survives_normalize_on_mac(self):
-        from app.services.model_manager import normalize_stt_model_id
-        assert normalize_stt_model_id('parakeet-tdt-0.6b-v3-onnx') == 'parakeet-tdt-0.6b-v3-onnx'
-
-    @patch('app.services.model_manager.IS_MAC', False)
-    def test_survives_normalize_off_mac(self):
-        from app.services.model_manager import normalize_stt_model_id
-        assert normalize_stt_model_id('parakeet-tdt-0.6b-v3-onnx') == 'parakeet-tdt-0.6b-v3-onnx'
-
-    def test_unknown_model_still_falls_back(self):
-        from app.services.model_manager import get_default_stt_model, normalize_stt_model_id
-        assert normalize_stt_model_id('parakeet-something-else') == get_default_stt_model()
-
-    @patch('app.services.pip_installer._is_package_installed', return_value=False)
-    def test_deps_ask_for_onnx_not_whisperx(self, mock_installed):
-        from app.services.pip_installer import check_ml_deps
-
-        deps = check_ml_deps('parakeet-tdt-0.6b-v3-onnx')
-        assert 'onnx-asr' in deps
-        assert 'onnxruntime' in deps
-        assert 'whisperx' not in deps
-        # Diarization still rides on pyannote whichever engine transcribes.
-        assert 'pyannote-audio' in deps
-
-
-class TestParakeetSegmentMapping:
-    """onnx-asr hands back per-token stamps; the UI needs words."""
-
-    def test_relative_stamps_are_rebased_onto_the_recording(self):
-        from ml_worker.engines.onnx_engine import absolute_stamps
-
-        assert absolute_stamps([0.0, 0.4], 10.0, 12.0) == [10.0, 10.4]
-
-    def test_absolute_stamps_are_left_alone(self):
-        from ml_worker.engines.onnx_engine import absolute_stamps
-
-        assert absolute_stamps([10.0, 10.4], 10.0, 12.0) == [10.0, 10.4]
-
-    def test_tokens_group_into_words_with_times(self):
-        from ml_worker.engines.onnx_engine import tokens_to_words
-
-        words = tokens_to_words(
-            ['▁any', 'way', '▁we', '▁talked'], [1.0, 1.2, 1.5, 1.8], seg_end=2.4)
-
-        assert [w['word'] for w in words] == ['anyway', 'we', 'talked']
-        assert words[0]['start'] == 1.0
-        # A word ends where the next one starts; the last one ends with the segment.
-        assert words[0]['end'] == 1.5
-        assert words[-1]['end'] == 2.4
-
-    def test_empty_tokens_produce_no_words(self):
-        from ml_worker.engines.onnx_engine import tokens_to_words
-
-        assert tokens_to_words([], [], seg_end=1.0) == []
 
 
 # ---------------------------------------------------------------------------
@@ -997,18 +922,3 @@ class TestModelPreflight:
         self._ready(app, get_default_stt_model(), models_path)
 
         assert _preflight_stt_model(app) == get_default_stt_model()
-
-    def test_parakeet_without_its_vad_refuses(self, app, temp_dir):
-        from app.extensions import db
-        from app.models.setting import Setting
-        from app.services.transcription.job_runner import _preflight_stt_model
-
-        models_path = os.path.join(temp_dir, 'models')
-        self._ready(app, 'parakeet-tdt-0.6b-v3-onnx', models_path)
-        with app.app_context():
-            Setting.set('stt_model_id', 'parakeet-tdt-0.6b-v3-onnx')
-            db.session.commit()
-
-        with pytest.raises(RuntimeError) as exc:
-            _preflight_stt_model(app)
-        assert 'silero-vad-onnx' in str(exc.value)

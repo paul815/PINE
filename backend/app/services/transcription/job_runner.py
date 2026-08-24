@@ -49,7 +49,6 @@ def _preflight_stt_model(app):
     from ..model_manager import (
         get_default_stt_model,
         normalize_stt_model_id,
-        stt_model_extra_ids,
     )
 
     with app.app_context():
@@ -57,15 +56,14 @@ def _preflight_stt_model(app):
             Setting.get('stt_model_id', get_default_stt_model()))
         models_path = Setting.get('models_path', app.config['DEFAULT_MODELS_PATH'])
 
-        for model_id in [stt_model_id, *stt_model_extra_ids(stt_model_id)]:
-            row = db.session.get(MLModel, model_id)
-            path = (row.path if row and row.path else '') or os.path.join(models_path, model_id)
-            if row is None or row.status != 'ready' or not os.path.isdir(path):
-                raise RuntimeError(
-                    f'Transcription model "{model_id}" is not installed. '
-                    'Open Settings -> Transcription process and install it, '
-                    'or switch to a model that is ready.'
-                )
+        row = db.session.get(MLModel, stt_model_id)
+        path = (row.path if row and row.path else '') or os.path.join(models_path, stt_model_id)
+        if row is None or row.status != 'ready' or not os.path.isdir(path):
+            raise RuntimeError(
+                f'Transcription model "{stt_model_id}" is not installed. '
+                'Open Settings -> Transcription process and install it, '
+                'or switch to a model that is ready.'
+            )
     return stt_model_id
 
 
@@ -116,7 +114,6 @@ def _learn_progress_scale(stt_model_id, multitrack, measured):
 def _resolve_job(app, recording_id):
     """Build (env_dict, job_dict) for the pipeline. Returns None if the recording is gone."""
     from ..model_manager import (
-        VAD_MODEL_ID,
         get_default_stt_model,
         normalize_stt_model_id,
         pyannote_hub_cache_root,
@@ -189,7 +186,6 @@ def _resolve_job(app, recording_id):
         'stt_model_id': stt_model_id,
         'model_dir': os.path.join(models_path, stt_model_id),
         'diarize_dir': diarize_dir,
-        'vad_dir': os.path.join(models_path, VAD_MODEL_ID),
         'pyannote_cache': pyannote_hub_cache_root(models_path),
         'hf_token': hf_token,
         'hf_offline': onboarding_complete,
@@ -455,7 +451,7 @@ def run_transcription_job(app, recording_id):
 
     stt_model_id = _preflight_stt_model(app)
 
-    missing = ensure_transcription_dependencies(stt_model_id)
+    missing = ensure_transcription_dependencies()
     if missing:
         pip_pkgs = ' '.join(missing)
         raise RuntimeError(

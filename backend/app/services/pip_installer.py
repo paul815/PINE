@@ -58,16 +58,10 @@ else:
     PIP_INSTALL_TARGETS = ['torchruntime', 'torchaudio', 'whisperx']
 
 # Optional pip packages required by specific models (beyond REQUIRED_PACKAGES).
-# Parakeet's runtime lives here rather than in REQUIRED_PACKAGES so an install
-# that only ever uses Whisper is not blocked on a package it does not need —
-# and so onnxruntime is the plain CPU build. onnxruntime-gpu carries its own
-# CUDA and cuDNN wheels, which is two CUDA runtimes in one process with torch.
+# A runtime lives here rather than in REQUIRED_PACKAGES so an install that never
+# uses the model it belongs to is not blocked on a package it does not need.
 MODEL_OPTIONAL_PACKAGES = {
     'gliner-pii': [('gliner', 'gliner', 'PII detection')],
-    'parakeet-tdt-0.6b-v3-onnx': [
-        ('onnx_asr', 'onnx-asr', 'Parakeet transcription (ONNX)'),
-        ('onnxruntime', 'onnxruntime', 'ONNX inference runtime (CPU)'),
-    ],
 }
 
 def _is_package_installed(import_name):
@@ -110,46 +104,30 @@ _TRANSCRIPTION_IMPORTS = [
     ('pyannote.audio', 'pyannote-audio'),
 ]
 
-# Parakeet needs neither WhisperX nor faster-whisper, but diarization still
-# rides on torch and pyannote whichever engine transcribes.
-_ONNX_TRANSCRIPTION_IMPORTS = [
-    ('torch',          'torch'),
-    ('onnx_asr',       'onnx-asr'),
-    ('onnxruntime',    'onnxruntime'),
-    ('pyannote.audio', 'pyannote-audio'),
-]
-
-def _transcription_imports(stt_model_id=None):
-    """Imports that must resolve before transcription can start.
-
-    Depends on the engine behind ``stt_model_id``; without one, the platform's
-    Whisper engine is assumed.
-    """
-    from ml_worker.engines import ENGINE_ONNX, engine_kind_for_model
-    if stt_model_id and engine_kind_for_model(stt_model_id) == ENGINE_ONNX:
-        return list(_ONNX_TRANSCRIPTION_IMPORTS)
+def _transcription_imports():
+    """Imports that must resolve before transcription can start."""
     return list(_MAC_TRANSCRIPTION_IMPORTS if IS_MAC else _TRANSCRIPTION_IMPORTS)
 
-def check_ml_deps(stt_model_id=None):
+def check_ml_deps():
     """Return a list of pip package names that are missing.
 
     Call this before starting transcription to surface a clear error instead
     of a cryptic ImportError.  Returns an empty list when all deps are present.
     """
-    return [pip for imp, pip in _transcription_imports(stt_model_id)
+    return [pip for imp, pip in _transcription_imports()
             if not _is_package_installed(imp)]
 
-def ensure_transcription_dependencies(stt_model_id=None):
+def ensure_transcription_dependencies():
     """Install any missing transcription pip packages, then re-check.
 
     Upgrades can add new required packages (e.g. pyannote-audio on Mac after dropping
     WhisperX) while onboarding stays marked complete; this self-heals on first transcribe.
     """
-    for imp, pip in _transcription_imports(stt_model_id):
+    for imp, pip in _transcription_imports():
         if not _is_package_installed(imp):
             log.info('Installing missing transcription dependency: %s', pip)
             _install_package_if_missing(imp, pip)
-    return check_ml_deps(stt_model_id)
+    return check_ml_deps()
 
 def _install_package_if_missing(import_name, pip_name):
     """Install pip package if not already installed. Returns True if installed or already present."""

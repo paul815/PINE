@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is PINE
 
-PINE (Private Interview & Notes Environment) is a fully local, offline Flask desktop web app for product researchers. All audio/transcript processing runs on the user's machine — no data leaves the PC. Speech-to-text is WhisperX or Parakeet TDT (the user's choice); speaker diarization is pyannote.
+PINE (Private Interview & Notes Environment) is a fully local, offline Flask desktop web app for product researchers. All audio/transcript processing runs on the user's machine — no data leaves the PC. Speech-to-text is WhisperX; speaker diarization is pyannote.
 
 ## Running the app
 
@@ -61,8 +61,7 @@ backend/
                   # launcher_layout, pip_installer, annotations, multitrack_ingest, pii,
                   # backup, system_check, ffmpeg_setup, transcript_format
   ml_worker/      # ML process. torch/whisperx/pyannote/mlx live only here
-    engines/      # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon),
-                  # onnx_engine (Parakeet TDT through onnx-asr, CPU only)
+    engines/      # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon)
   templates/      # Jinja2: main.html, recording.html, tags.html, manage_tags.html,
                   # settings.html, onboarding.html
   data/           # pine.db (created at runtime)
@@ -87,7 +86,7 @@ projects/         # Per-project folders (configurable path)
 
 ### Model management
 - `MODEL_REGISTRY` in `services/model_manager.py` defines all available models. Required: pyannote-diarization, pyannote-segmentation, and one transcription model. Optional: gliner-pii — offered during onboarding, and installable or removable afterwards from Settings.
-- **Two transcription models to choose from**, in onboarding and in Settings: `whisperx-large-v3` (`mlx-whisper-large-v3` on Mac) is the default and runs on the accelerator; `parakeet-tdt-0.6b-v3-onnx` runs on the CPU through `onnx-asr` and brings `silero-vad-onnx` with it. `supported_stt_models()` lists what this platform may offer and `normalize_stt_model_id()` rejects everything else. Deliberately plain `onnxruntime`, never `onnxruntime-gpu`: its bundled CUDA/cuDNN wheels would be a second CUDA runtime inside the process that already loads torch — and the card is wanted for diarization, which runs in parallel with the STT stage.
+- **One transcription model per platform**, offered in onboarding and in Settings: `whisperx-large-v3` (`mlx-whisper-large-v3` on Mac), which runs on the accelerator. `supported_stt_models()` lists what this platform may offer and `normalize_stt_model_id()` rejects everything else.
 - Heavy ML deps (torch, whisperx, pyannote, gliner) are **not** in `requirements.txt` — they are installed dynamically by `model_manager.py` at download time.
 - Models are downloaded from HuggingFace Hub during onboarding; pyannote requires a HF token (stored in SQLite).
 
@@ -140,7 +139,7 @@ Base URL: `http://127.0.0.1:5000`
 - `GET/POST /api/projects/<id>/recordings/<rid>/export` — export single recording
 - `GET/POST /api/projects/<id>/export` — export multiple recordings from a project
 - `GET/POST/DELETE /api/backup` — backup/restore with manifest, selective project restore
-- `GET/PATCH /api/settings` — font size, theme, export defaults; `POST /api/settings/stt-model/install|remove` manages the transcription models (switching to one that is not installed returns 409); `POST /api/settings/pii-model/install|remove` manages the optional GLiNER model
+- `GET/PATCH /api/settings` — font size, theme, export defaults; `POST /api/settings/stt-model/install` re-downloads the transcription model (switching to one that is not installed returns 409); `POST /api/settings/pii-model/install|remove` manages the optional GLiNER model
 - `GET/POST /api/utils/*` — native file/folder pickers, desktop and Start-menu shortcuts, `inspect-multitrack`, update check, runtime status
 - `POST /api/quit` — graceful shutdown
 

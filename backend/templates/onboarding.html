@@ -234,10 +234,9 @@ body { font-size: inherit; }
 .mod-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.4; }
 .stt-choice { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .stt-opt {
-  display: grid; grid-template-columns: auto auto 1fr; align-items: baseline;
-  gap: 8px; cursor: pointer; font-size: 0.923rem; line-height: 1.4;
+  display: grid; grid-template-columns: auto 1fr; align-items: baseline;
+  gap: 8px; font-size: 0.923rem; line-height: 1.4;
 }
-.stt-opt input { accent-color: var(--accent); align-self: center; }
 .stt-opt-name { color: var(--fg); font-weight: 500; white-space: nowrap; }
 .stt-opt-note { color: var(--muted-fg); }
 .total-row {
@@ -1104,32 +1103,24 @@ function updateTotal() {
   if (baseEl) baseEl.textContent = '~' + ((sttMB + diarMB) / 1000).toFixed(1) + ' GB';
 }
 let isMac = false;         // set from /status API
-let sttModels = [];        // choices offered on this platform, from /status
+let sttModels = [];        // what this platform offers, from /status
 let sttModelId = '';       // the one this setup will download
 
-// What separates the two: where the work happens and what that costs.
+// Where the work happens and what that costs.
 const STT_MODEL_NOTES = {
-  'whisperx-large-v3': 'Highest accuracy · runs on the GPU · language can be set by hand',
-  'mlx-whisper-large-v3': 'Highest accuracy · runs on the Neural Engine · language can be set by hand',
-  'parakeet-tdt-0.6b-v3-onnx':
-    'Runs on the CPU, leaving the card to speaker detection · ~6× faster · language detected automatically',
+  'whisperx-large-v3': 'Runs on the GPU · language can be set by hand',
+  'mlx-whisper-large-v3': 'Runs on the Neural Engine · language can be set by hand',
 };
 
 function renderSttChoice() {
   const host = document.getElementById('sttChoice');
   if (!host) return;
-  host.innerHTML = sttModels.map(m => `
-    <label class="stt-opt">
-      <input type="radio" name="sttModel" value="${m.id}" ${m.id === sttModelId ? 'checked' : ''}
-             onchange="pickSttModel('${m.id}')" />
-      <span class="stt-opt-name">${m.name}</span>
-      <span class="stt-opt-note">${STT_MODEL_NOTES[m.id] || ''}</span>
-    </label>`).join('');
-}
-
-function pickSttModel(modelId) {
-  sttModelId = modelId;
-  updateTotal();
+  const model = (sttModels || []).find(m => m.id === sttModelId) || sttModels[0];
+  host.innerHTML = model ? `
+    <div class="stt-opt">
+      <span class="stt-opt-name">${model.name}</span>
+      <span class="stt-opt-note">${STT_MODEL_NOTES[model.id] || ''}</span>
+    </div>` : '';
 }
 
 function onModulesStepShow() {

@@ -31,7 +31,6 @@ from ..services.model_manager import (
     get_default_stt_model,
     normalize_stt_model_id,
     remove_model,
-    stt_model_extra_ids,
     supported_stt_models,
 )
 
@@ -860,13 +859,11 @@ def get_settings():
     result['models'] = [m.to_dict() for m in models if m.id in MODEL_REGISTRY]
 
     # The transcription models this platform can offer, best-quality first, with
-    # the download size the settings UI quotes (Parakeet drags its VAD along).
+    # the download size the settings UI quotes.
     result['stt_models'] = [{
         'id': model_id,
         'name': MODEL_REGISTRY.get(model_id, {}).get('name', model_id),
-        'size_bytes': sum(
-            MODEL_REGISTRY.get(mid, {}).get('size_bytes', 0)
-            for mid in [model_id, *stt_model_extra_ids(model_id)]),
+        'size_bytes': MODEL_REGISTRY.get(model_id, {}).get('size_bytes', 0),
         'installed': _stt_model_installed(model_id),
     } for model_id in supported_stt_models()]
 
@@ -969,18 +966,9 @@ def check_update():
 
 
 def _stt_model_installed(stt_model_id):
-    """True when the model and everything it needs are downloaded and ready."""
-    for model_id in [stt_model_id, *stt_model_extra_ids(stt_model_id)]:
-        row = db.session.get(MLModel, model_id)
-        if row is None or row.status != 'ready':
-            return False
-    return True
-
-
-def _transcription_in_flight():
-    """True while any recording is mid-transcription — models must stay put."""
-    return db.session.query(Recording.id).filter(
-        Recording.transcription_status == 'transcribing').first() is not None
+    """True when the model is downloaded and ready."""
+    row = db.session.get(MLModel, stt_model_id)
+    return row is not None and row.status == 'ready'
 
 
 @settings_bp.route('/stt-model/install', methods=['POST'])
@@ -997,37 +985,9 @@ def install_stt_model():
 
     hf_token = Setting.get('hf_token')
     app = current_app._get_current_object()
-    model_ids = [model_id, *stt_model_extra_ids(model_id)]
+    model_ids = [model_id]
     download_models(app, model_ids, models_path, hf_token=hf_token, finish_onboarding=False)
     return jsonify({'ok': True, 'model_ids': model_ids})
-
-
-@settings_bp.route('/stt-model/remove', methods=['POST'])
-def remove_stt_model():
-    """Remove a transcription model that is installed but not in use."""
-    data = request.get_json(force=True) or {}
-    model_id = str(data.get('model_id', '')).strip()
-    if model_id not in supported_stt_models():
-        return jsonify({'error': f'Unknown transcription model "{model_id}"'}), 400
-
-    current = normalize_stt_model_id(Setting.get('stt_model_id', get_default_stt_model()))
-    if model_id == current:
-        return jsonify({'error': 'That model is the one in use — switch first'}), 409
-    if _transcription_in_flight():
-        return jsonify({'error': 'A transcription is running — try again when it finishes'}), 409
-
-    models_path = Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH'])
-    if not models_path:
-        return jsonify({'error': 'Models path not configured'}), 400
-
-    removed = [model_id]
-    remove_model(model_id, models_path)
-    # The VAD only exists for Parakeet; drop it with the model that needed it.
-    for extra in stt_model_extra_ids(model_id):
-        if extra not in stt_model_extra_ids(current):
-            remove_model(extra, models_path)
-            removed.append(extra)
-    return jsonify({'ok': True, 'removed': removed})
 
 
 @settings_bp.route('/pii-model/install', methods=['POST'])

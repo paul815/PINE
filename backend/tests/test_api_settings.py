@@ -576,58 +576,39 @@ class TestSttModelChoice:
             db.session.commit()
 
     def test_get_settings_lists_choices(self, client):
+        from app.services.model_manager import get_default_stt_model
+
         data = client.get('/api/settings').get_json()
         ids = [m['id'] for m in data['stt_models']]
-        assert 'parakeet-tdt-0.6b-v3-onnx' in ids
+        assert get_default_stt_model() in ids
         assert all('installed' in m for m in data['stt_models'])
 
     def test_switch_rejected_while_model_missing(self, client):
-        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        from app.services.model_manager import get_default_stt_model
+
+        r = client.patch('/api/settings', json={'stt_model_id': get_default_stt_model()})
         assert r.status_code == 409
         assert 'not installed' in r.get_json()['error']
 
     def test_switch_allowed_once_installed(self, app, client):
-        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
-        self._mark_ready(app, 'silero-vad-onnx')
+        from app.services.model_manager import get_default_stt_model
 
-        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
+        model_id = get_default_stt_model()
+        self._mark_ready(app, model_id)
+
+        r = client.patch('/api/settings', json={'stt_model_id': model_id})
         assert r.status_code == 200
-        assert client.get('/api/settings').get_json()['stt_model_id'] == 'parakeet-tdt-0.6b-v3-onnx'
-
-    def test_parakeet_without_its_vad_is_not_installed(self, app, client):
-        """The VAD is not optional — Parakeet cannot cut speech without it."""
-        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
-
-        r = client.patch('/api/settings', json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
-        assert r.status_code == 409
+        assert client.get('/api/settings').get_json()['stt_model_id'] == model_id
 
     def test_install_rejects_unknown_model(self, client):
         r = client.post('/api/settings/stt-model/install', json={'model_id': 'whisper-tiny'})
         assert r.status_code == 400
 
-    def test_cannot_remove_the_model_in_use(self, client):
+    def test_remove_endpoint_is_gone(self, client):
+        """One model per platform, and it is always the one in use — nothing to remove."""
         from app.services.model_manager import get_default_stt_model
 
         r = client.post('/api/settings/stt-model/remove',
                         json={'model_id': get_default_stt_model()})
-        assert r.status_code == 409
-        assert 'in use' in r.get_json()['error']
+        assert r.status_code == 404
 
-    def test_cannot_remove_while_transcribing(self, app, client):
-        from app.extensions import db
-        from app.models.project import Project
-        from app.models.recording import Recording
-
-        self._mark_ready(app, 'parakeet-tdt-0.6b-v3-onnx')
-        with app.app_context():
-            project = Project(name='p', folder_name='p')
-            db.session.add(project)
-            db.session.commit()
-            db.session.add(Recording(project_id=project.id, original_name='a.mp3',
-                                     stored_name='a.mp3', transcription_status='transcribing'))
-            db.session.commit()
-
-        r = client.post('/api/settings/stt-model/remove',
-                        json={'model_id': 'parakeet-tdt-0.6b-v3-onnx'})
-        assert r.status_code == 409
-        assert 'transcription is running' in r.get_json()['error']

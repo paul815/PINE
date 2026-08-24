@@ -138,13 +138,11 @@ The single-file path is untouched: no tracks means the pyannote flow, unchanged.
 ### Model Management
 
 - **Registry:** `MODEL_REGISTRY` in `model_manager.py` defines available models
-- **Required:** pyannote-diarization, pyannote-segmentation, and one transcription
-  model — whisperx-large-v3 (mlx-whisper-large-v3 on Mac) by default, or
-  parakeet-tdt-0.6b-v3-onnx with its silero-vad-onnx
-- **Transcription model choice:** picked during onboarding, switchable in Settings
-  (`/api/settings/stt-model/install` | `/remove`). Whisper runs on the
-  accelerator; Parakeet runs on the CPU through `onnx-asr`, which leaves the card
-  to diarization and keeps a second CUDA runtime out of the worker process
+- **Required:** pyannote-diarization, pyannote-segmentation, and the transcription
+  model for the platform — whisperx-large-v3 (mlx-whisper-large-v3 on Mac)
+- **Transcription model:** downloaded during onboarding, re-installable from
+  Settings (`/api/settings/stt-model/install`) if that download never finished;
+  it runs on the accelerator
 - **Optional:** gliner-pii (PII removal) — installable and removable after
   onboarding from Settings (`/api/settings/pii-model/install` | `/remove`)
 - **Download:** HuggingFace Hub; pip installs torch/whisperx/pyannote on first run

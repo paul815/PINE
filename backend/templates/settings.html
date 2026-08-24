@@ -1168,14 +1168,11 @@ async function saveExportPromptRecording() {
 }
 
 /* ============ Transcription model ============ */
-// What each model is for, in the terms that decide the choice: where it runs,
-// what it costs on the card, and what it does about language.
+// What the model is: where it runs, what it costs on the card, and what it
+// does about language.
 const STT_MODEL_NOTES = {
   'whisperx-large-v3': 'Runs on the GPU · 6.5 GB VRAM · you can set the language yourself',
   'mlx-whisper-large-v3': 'Runs on the Neural Engine · you can set the language yourself',
-  'parakeet-tdt-0.6b-v3-onnx':
-    'Runs on the CPU, leaving the whole card to speaker detection · ~6× faster · '
-    + '25 languages, detected automatically (cannot be set by hand)',
 };
 
 let _sttSocket = null;
@@ -1184,21 +1181,13 @@ let _sttPendingId = null;
 function renderSttModels() {
   const host = document.getElementById('sttModelList');
   if (!host) return;
-  const current = settings.stt_model_id || '';
   host.innerHTML = (settings.stt_models || []).map(m => {
-    const checked = m.id === current ? 'checked' : '';
     const note = STT_MODEL_NOTES[m.id] || '';
     const action = m.installed
-      ? (m.id === current
-          ? '<span class="assistive-text">In use</span>'
-          : `<button class="btn-outline" onclick="removeSttModel('${m.id}')">Remove</button>`)
+      ? '<span class="assistive-text">In use</span>'
       : `<button class="btn-outline" onclick="installSttModel('${m.id}')">Install</button>`;
     return `
-      <label class="row" style="align-items:flex-start;gap:12px;cursor:pointer">
-        <input type="radio" name="sttModel" value="${m.id}" ${checked}
-               ${m.installed ? '' : 'disabled'}
-               onchange="selectSttModel('${m.id}')"
-               style="margin-top:3px;accent-color:var(--accent);flex-shrink:0" />
+      <div class="row" style="align-items:flex-start;gap:12px">
         <div style="flex:1">
           <div class="row-lbl">${m.name}</div>
           <div class="row-sub row-sub-tight">${note}</div>
@@ -1207,39 +1196,8 @@ function renderSttModels() {
           <div class="model-size">${fmtBytes(m.size_bytes || 0)}</div>
           ${action}
         </div>
-      </label>`;
+      </div>`;
   }).join('');
-}
-
-async function selectSttModel(modelId) {
-  const res = await fetch(API, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stt_model_id: modelId }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    toast(err.error || 'Could not switch model');
-    await loadSettings();
-    return;
-  }
-  showSaved('sec-stt');
-  await loadSettings();
-}
-
-async function removeSttModel(modelId) {
-  if (!confirm('Remove this transcription model? You can install it again later.')) return;
-  try {
-    const res = await fetch(API + '/stt-model/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model_id: modelId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Remove failed');
-    toast('Model removed');
-    await loadSettings();
-  } catch (e) { toast('Failed: ' + e.message); }
 }
 
 async function installSttModel(modelId) {
@@ -1255,7 +1213,7 @@ async function installSttModel(modelId) {
       if (_sttPendingId) document.getElementById('sttProgressText').textContent = d.line;
     });
     _sttSocket.on('download:progress', d => {
-      // The VAD rides along with Parakeet; both report under their own ids.
+      // The PII model has its own progress row; everything else feeds this bar.
       if (_sttPendingId && d.total_bytes > 0 && d.model_id !== 'gliner-pii') {
         const pct = Math.min((d.downloaded_bytes / d.total_bytes) * 100, 100);
         document.getElementById('sttBar').style.width = pct.toFixed(1) + '%';

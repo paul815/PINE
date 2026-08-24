@@ -72,15 +72,6 @@ class TestOnboardingAPI:
         data = r.get_json()
         assert data.get('ok') is True
 
-    def test_onboarding_stt_model_picks_parakeet(self, client):
-        r = client.post('/api/onboarding/stt-model',
-                        json={'stt_model_id': 'parakeet-tdt-0.6b-v3-onnx'})
-        assert r.status_code == 200
-        data = r.get_json()
-        assert data['stt_model_id'] == 'parakeet-tdt-0.6b-v3-onnx'
-        # The VAD rides along: Parakeet cannot cut speech without it.
-        assert 'silero-vad-onnx' in data['model_ids']
-
     def test_onboarding_stt_model_rejects_unknown(self, client):
         r = client.post('/api/onboarding/stt-model', json={'stt_model_id': 'no-such-model'})
         assert r.status_code == 200
@@ -88,7 +79,9 @@ class TestOnboardingAPI:
         assert r.get_json()['stt_model_id'] == get_default_stt_model()
 
     def test_onboarding_status_lists_models(self, client):
+        from app.services.model_manager import get_default_stt_model
+
         data = client.get('/api/onboarding/status').get_json()
         ids = [m['id'] for m in data['stt_models']]
-        assert 'parakeet-tdt-0.6b-v3-onnx' in ids
+        assert get_default_stt_model() in ids
         assert all(m['size_bytes'] > 0 for m in data['stt_models'])
