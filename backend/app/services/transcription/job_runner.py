@@ -449,7 +449,9 @@ def run_transcription_job(app, recording_id):
         repair_torch_companion_wheels_if_needed,
     )
 
-    stt_model_id = _preflight_stt_model(app)
+    # Called for the refusal, not the id: _resolve_job re-reads and normalises
+    # the same setting into env_dict['stt_model_id'] below.
+    _preflight_stt_model(app)
 
     missing = ensure_transcription_dependencies()
     if missing:
