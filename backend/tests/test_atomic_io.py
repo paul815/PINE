@@ -15,7 +15,6 @@ The two halves report the same condition differently, and that is the part
 worth guarding: os.replace fails from the Win32 API and carries .winerror,
 open() fails from the C runtime with EACCES and no .winerror at all.
 """
-import builtins
 import errno
 import json
 import os
@@ -23,7 +22,7 @@ import threading
 
 import pytest
 
-from app.services import file_utils
+from app.services import file_utils, windows_io
 from app.services.file_utils import (
     _WRITE_ATTEMPTS,
     _is_transient,
@@ -48,6 +47,33 @@ def _crt_error(err_no=errno.EACCES):
 
 def _tmp_leftovers(directory):
     return [n for n in os.listdir(directory) if n.endswith('.tmp')]
+
+
+@pytest.fixture(scope='module')
+def renames_over_open_files(tmp_path_factory):
+    """Can this machine rename over a file somebody is holding?
+
+    A plain rename(2) does on POSIX. On Windows it needs 1607 or newer and a
+    filesystem that implements FileRenameInfoEx — a checkout on an exFAT
+    stick answers no, falls back to os.replace, and the two guarantees that
+    depend on this stop holding.
+
+    This runs the real thing rather than reasoning from os.name: hold the
+    destination open exactly as a reader would, and see whether the write
+    path can still replace it. Inferring it from the platform would have
+    called a Windows machine POSIX-safe the moment anything stubbed the
+    module out.
+    """
+    directory = tmp_path_factory.mktemp('rename-probe')
+    src, dst = directory / 'src', directory / 'dst'
+    src.write_text('src', encoding='utf-8')
+    dst.write_text('dst', encoding='utf-8')
+    with file_utils._open_for_read(str(dst), 'utf-8'):
+        try:
+            file_utils._rename(str(src), str(dst))
+        except OSError:
+            return False
+    return True
 
 
 class TestWhatCountsAsTransient:
@@ -80,6 +106,18 @@ class TestWhatCountsAsTransient:
 
 
 class TestWriteSide:
+    """The retry loop, over the os.replace path it falls back to.
+
+    Windows normally renames through windows_io now, so these pin AVAILABLE
+    off: this is the path taken on POSIX, on Windows before 1607, and on any
+    volume without FileRenameInfoEx. TestRenameFallback and
+    test_a_held_file_can_still_be_replaced cover the other one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _use_the_os_replace_path(self, monkeypatch):
+        monkeypatch.setattr(windows_io, 'AVAILABLE', False)
+
     @pytest.mark.parametrize('winerror', [5, 32])
     def test_a_transient_replace_failure_is_retried(self, tmp_path, monkeypatch, winerror):
         target = tmp_path / 'README.md'
@@ -136,16 +174,16 @@ class TestReadSide:
         monkeypatch.setattr(os, 'name', 'nt')
         target = tmp_path / 'project_tags.json'
         atomic_write_json(str(target), {'tags': ['kept']})
-        real_open = builtins.open
+        real_opener = file_utils._open_for_read
         calls = []
 
-        def flaky_open(*args, **kwargs):
-            calls.append(args[0] if args else kwargs.get('file'))
+        def flaky_open(path, encoding):
+            calls.append(path)
             if len(calls) <= 2:
                 raise _crt_error()
-            return real_open(*args, **kwargs)
+            return real_opener(path, encoding)
 
-        monkeypatch.setattr(builtins, 'open', flaky_open)
+        monkeypatch.setattr(file_utils, '_open_for_read', flaky_open)
 
         assert atomic_read_json(str(target)) == {'tags': ['kept']}
         assert len(calls) == 3
@@ -153,13 +191,13 @@ class TestReadSide:
     def test_a_missing_file_surfaces_at_once(self, tmp_path, monkeypatch):
         """ENOENT is an answer, not a transient — retrying it wastes 200ms."""
         calls = []
-        real_open = builtins.open
+        real_opener = file_utils._open_for_read
 
-        def counting_open(*args, **kwargs):
-            calls.append(args[0] if args else kwargs.get('file'))
-            return real_open(*args, **kwargs)
+        def counting_open(path, encoding):
+            calls.append(path)
+            return real_opener(path, encoding)
 
-        monkeypatch.setattr(builtins, 'open', counting_open)
+        monkeypatch.setattr(file_utils, '_open_for_read', counting_open)
         with pytest.raises(FileNotFoundError):
             atomic_read_text(str(tmp_path / 'absent.json'))
 
@@ -179,8 +217,68 @@ class TestReadSide:
         assert atomic_read_text(str(target)) == 'line one\nline two\n'
 
 
+class TestRenameFallback:
+    """POSIX-semantics rename is not available everywhere, and must not be assumed.
+
+    Windows before 1607 does not know FileRenameInfoEx, and neither does a
+    project folder on an exFAT stick. Both report it as a Win32 error, and the
+    difference between "this volume cannot" and "this went wrong" decides
+    whether a write quietly falls back or loudly fails.
+    """
+
+    @pytest.mark.parametrize('winerror', sorted(windows_io.RENAME_UNSUPPORTED))
+    def test_an_unsupported_volume_falls_back_to_os_replace(
+        self, tmp_path, monkeypatch, winerror,
+    ):
+        monkeypatch.setattr(windows_io, 'AVAILABLE', True)
+        monkeypatch.setattr(
+            windows_io, 'rename_posix',
+            lambda src, dst: (_ for _ in ()).throw(_win32_error(winerror)),
+            raising=False,
+        )
+        target = tmp_path / 'README.md'
+        atomic_write_text(str(target), 'fell back cleanly')
+
+        assert target.read_text(encoding='utf-8') == 'fell back cleanly'
+        assert not _tmp_leftovers(tmp_path)
+
+    def test_any_other_rename_error_is_not_swallowed(self, tmp_path, monkeypatch):
+        """Falling back on everything would hide a genuine failure to write."""
+        monkeypatch.setattr(windows_io, 'AVAILABLE', True)
+        monkeypatch.setattr(
+            windows_io, 'rename_posix',
+            lambda src, dst: (_ for _ in ()).throw(_win32_error(1234)),
+            raising=False,
+        )
+        with pytest.raises(OSError):
+            atomic_write_text(str(tmp_path / 'README.md'), 'nope')
+
+        assert not _tmp_leftovers(tmp_path)
+
+
 class TestUnderContention:
     """The real races, unmocked. On Windows these are what used to break."""
+
+    @pytest.mark.skipif(os.name != 'nt', reason='the replace window is a Windows behaviour')
+    def test_a_held_file_can_still_be_replaced(self, tmp_path, renames_over_open_files):
+        """The whole point, in one place, against the real Win32 calls.
+
+        Before this, holding the file was enough to make the write fail. Both
+        halves are needed and both are checked: the reader shares delete so
+        the rename is allowed, and the rename has POSIX semantics so the
+        reader keeps its own view until it closes.
+        """
+        if not renames_over_open_files:
+            pytest.skip('this volume or Windows build has no FileRenameInfoEx')
+        target = str(tmp_path / 'project_tags.json')
+        atomic_write_json(target, {'tags': ['old']})
+
+        with file_utils._open_for_read(target, 'utf-8') as held:
+            atomic_write_json(target, {'tags': ['new']})
+            assert json.loads(held.read()) == {'tags': ['old']}
+
+        assert atomic_read_json(target) == {'tags': ['new']}
+        assert not _tmp_leftovers(tmp_path)
 
     def test_many_writers_rewriting_one_file_never_fail(self, tmp_path):
         target = str(tmp_path / 'README.md')
@@ -203,17 +301,22 @@ class TestUnderContention:
         assert os.path.getsize(target) > 0
         assert not _tmp_leftovers(tmp_path)
 
-    def test_readers_and_a_writer_coexist(self, tmp_path):
+    def test_readers_and_a_writer_coexist(self, tmp_path, renames_over_open_files):
         """Readers polling a file while it is rewritten — the app's own shape.
 
         Both sides are asserted. An earlier version of this test watched only
         the readers, and passed while the writer thread was dying quietly.
 
-        The pauses are the point, not padding: readers that never let go
-        starve the writer no matter how long it retries, because a held handle
-        blocks MoveFileExW outright. That is a real limit of the retry and it
-        is documented rather than papered over.
+        There are deliberately no pauses. With retries alone, readers looping
+        this tightly starved the writer — 5 writes lost in 750 — because a
+        held handle blocked MoveFileExW outright. Sharing delete on the read
+        and renaming with POSIX semantics on the write removed that, so the
+        tight loop is now the assertion rather than the caveat. Where the
+        rename is unavailable the old limit is still real, so the tight loop
+        is not a fair thing to demand.
         """
+        if not renames_over_open_files:
+            pytest.skip('this volume or Windows build has no FileRenameInfoEx')
         target = str(tmp_path / 'project_tags.json')
         atomic_write_json(target, {'tags': ['seed']})
         stop = threading.Event()
@@ -225,7 +328,6 @@ class TestUnderContention:
             try:
                 for n in range(60):
                     atomic_write_json(target, {'tags': [f'tag-{n}'] * 40})
-                    stop.wait(0.002)
             except Exception as exc:  # noqa: BLE001
                 write_errors.append(exc)
             finally:
@@ -238,7 +340,6 @@ class TestUnderContention:
                 except Exception as exc:  # noqa: BLE001
                     read_errors.append(exc)
                     return
-                stop.wait(0.001)
 
         writer = threading.Thread(target=rewrite)
         readers = [threading.Thread(target=read) for _ in range(3)]

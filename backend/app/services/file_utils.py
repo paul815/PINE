@@ -6,19 +6,22 @@ import os
 import tempfile
 import time
 
+from . import windows_io
+
 # A rename is one atomic step on POSIX: readers see the old inode or the new
 # one, and a second renamer simply wins or loses. Windows goes through
 # MoveFileExW instead, and for the moment it takes to swap the file in it
 # refuses everybody — the other replacer and every would-be reader alike get
 # ERROR_ACCESS_DENIED (5) or ERROR_SHARING_VIOLATION (32). The search indexer
 # and antivirus scanners open these files too, so the window is not only ours.
+#
+# windows_io closes the window for the handles we own; this stays as the
+# backstop, for the handles we do not and for volumes it cannot help on.
 _TRANSIENT_WINDOWS_ERRORS = frozenset({5, 32})
 
-# A reader holding one of these files blocks a replace outright: CPython opens
-# without FILE_SHARE_DELETE, so MoveFileExW cannot get its DELETE access until
-# the last handle closes. Reads are short, so the gap to aim for is
-# microseconds wide and a 1ms sleep steps straight over it — spin first, then
-# back off for the case where the holder is something slower than us.
+# The gap to aim for is microseconds wide, so a 1ms sleep steps straight over
+# it — spin first, then back off for the case where the holder is something
+# slower than us, like a scanner reading what we have only just written.
 _SPINS_BEFORE_SLEEPING = 5
 
 # Writers need the longer budget: they are the side being blocked, and the
@@ -65,14 +68,38 @@ def _through_the_replace_window(operation, attempts):
                 time.sleep(min(0.0005 * (2 ** backoff), 0.02))
 
 
-def _replace_atomically(tmp_path, path):
-    """os.replace, retried through Windows' transient replace failures.
+def _rename(tmp_path, path):
+    """Rename with POSIX semantics where Windows offers them, os.replace where not.
 
     Three recordings uploaded into one project at once all rewrite that
     project's README.md, and two of the three replaces would collide: one
     upload returned 500 with WinError 5 roughly one run in forty.
+
+    The fallback is not a formality — a project folder on an exFAT stick
+    cannot do FileRenameInfoEx, and neither can Windows before 1607. Falling
+    through leaves exactly the behaviour this module had before, retries and
+    all, so the worst case is no worse than it was.
     """
-    _through_the_replace_window(lambda: os.replace(tmp_path, path), _WRITE_ATTEMPTS)
+    if windows_io.AVAILABLE:
+        try:
+            windows_io.rename_posix(tmp_path, path)
+            return
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) not in windows_io.RENAME_UNSUPPORTED:
+                raise
+    os.replace(tmp_path, path)
+
+
+def _replace_atomically(tmp_path, path):
+    """_rename, retried through whatever transient refusals are left."""
+    _through_the_replace_window(lambda: _rename(tmp_path, path), _WRITE_ATTEMPTS)
+
+
+def _open_for_read(path, encoding):
+    """The one place that decides how these files get opened."""
+    if windows_io.AVAILABLE:
+        return windows_io.open_shared(path, encoding=encoding)
+    return open(path, encoding=encoding)
 
 
 def atomic_read_text(path, encoding='utf-8'):
@@ -85,10 +112,12 @@ def atomic_read_text(path, encoding='utf-8'):
     default dict and writes *that* back over real speaker labels. A transient
     failure to read therefore turned into permanent data loss.
 
-    Reads whole, so a caller can never be handed half a file.
+    Reads whole, so a caller can never be handed half a file. On Windows it
+    also shares delete, so holding the file for the length of the read does
+    not push the writer into its retries.
     """
     def read():
-        with open(path, encoding=encoding) as fh:
+        with _open_for_read(path, encoding) as fh:
             return fh.read()
 
     return _through_the_replace_window(read, _READ_ATTEMPTS)
