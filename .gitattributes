@@ -2,10 +2,14 @@
 * text=auto
 
 # Launchers are line-ending sensitive: a .command with CRLF fails on macOS
-# with "bad interpreter", a .bat with LF can misparse under cmd.exe.
+# with "bad interpreter", and cmd.exe reads .bat/.cmd by byte offset, so
+# LF there loses the offsets and label lookup fails. Without a rule the
+# working-tree bytes follow the checkout platform: Windows autocrlf hides
+# it, Linux and the CI runners do not.
 *.command text eol=lf
 *.sh      text eol=lf
 *.bat     text eol=crlf
+*.cmd     text eol=crlf
 
 # Binary assets — never diff or convert.
 *.png  binary
