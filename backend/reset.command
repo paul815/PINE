@@ -133,7 +133,7 @@ rm -f ../backend/data/onboarding_complete.flag
 rm -f ../"Launch Pine.bat" ../"Launch Pine.command" ../"Launch Pine.vbs" ../"Launch_WIN.bat" ../"Launch_MAC.command"
 
 # Restore dev files moved during install
-for f in AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version; do
+for f in AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml; do
   [[ -f "../documentation/dev-config/$f" && ! -f "../$f" ]] && mv "../documentation/dev-config/$f" "../$f" 2>/dev/null || true
 done
 rmdir ../documentation/dev-config 2>/dev/null || true

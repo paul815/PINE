@@ -71,7 +71,7 @@ for %%L in ("Launch Pine.bat" "Launch Pine.command" "Launch Pine.vbs" "Launch_WI
 )
 
 REM Restore dev files moved during install
-for %%F in (AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml .python-version) do (
+for %%F in (AGENTS.md LICENSE .editorconfig .gitattributes .gitignore .pre-commit-config.yaml) do (
     if exist "..\documentation\dev-config\%%F" if not exist "..\%%F" move "..\documentation\dev-config\%%F" "..\%%F" >nul 2>&1
 )
 if exist "..\documentation\dev-config\" rd "..\documentation\dev-config" >nul 2>&1

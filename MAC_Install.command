@@ -115,7 +115,7 @@ ensure_venv() {
   # labels in an LF batch file -- WIN_Install.bat then dies at "call :open_browser"
   # and the window closes with no browser.
   mkdir -p "$ROOT_DIR/documentation/dev-config"
-  for f in AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml .python-version; do
+  for f in AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml; do
     [[ -f "$ROOT_DIR/$f" ]] && mv "$ROOT_DIR/$f" "$ROOT_DIR/documentation/dev-config/$f" 2>/dev/null || true
   done
 

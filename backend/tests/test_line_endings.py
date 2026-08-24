@@ -4,6 +4,7 @@ An LF-only WIN_Install.bat makes cmd.exe fail its label lookup: the visible
 window dies at "call :open_browser", closes without a message, and the browser
 never opens. A CRLF .command breaks the macOS launcher the same way.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -51,8 +52,22 @@ def test_gitattributes_pins_both_and_stays_in_the_repo_root():
     windows_installer = (REPO_ROOT / 'WIN_Install.bat').read_text(encoding='utf-8')
     macos_installer = (REPO_ROOT / 'MAC_Install.command').read_text(encoding='utf-8')
 
-    assert 'for %%F in (AGENTS.md LICENSE .editorconfig .gitignore' in windows_installer
-    assert 'for f in AGENTS.md LICENSE .editorconfig .gitignore' in macos_installer
+    # Read the sweep list out of each installer rather than pinning its names:
+    # the list grows as root files are added, and only one thing about it is
+    # load-bearing here.
+    windows_sweep = re.search(
+        r'for %%F in \(([^)]*)\) do \(\s*if exist "%PINE_ROOT_DIR%%%F" move',
+        windows_installer,
+    )
+    macos_sweep = re.search(
+        r'for f in ([^;]*); do\s*\[\[ -f "\$ROOT_DIR/\$f" \]\] && mv',
+        macos_installer,
+    )
+    assert windows_sweep and macos_sweep
+    assert 'AGENTS.md' in windows_sweep.group(1)
+    assert 'AGENTS.md' in macos_sweep.group(1)
+    assert '.gitattributes' not in windows_sweep.group(1)
+    assert '.gitattributes' not in macos_sweep.group(1)
     assert 'relocate_root_file ".gitattributes"' not in windows_installer
     assert 'relocate_root_file ".gitattributes"' not in macos_installer
 

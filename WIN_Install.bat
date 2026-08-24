@@ -143,7 +143,7 @@ if "%NEED_SETUP%"=="1" (
     REM "call :open_browser" and the window closes with no browser. Move it away and
     REM the next git checkout rewrites the installers as LF.
     if not exist "%PINE_ROOT_DIR%documentation\dev-config\" mkdir "%PINE_ROOT_DIR%documentation\dev-config\"
-    for %%F in (AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml .python-version) do (
+    for %%F in (AGENTS.md LICENSE .editorconfig .gitignore .pre-commit-config.yaml) do (
         if exist "%PINE_ROOT_DIR%%%F" move "%PINE_ROOT_DIR%%%F" "%PINE_ROOT_DIR%documentation\dev-config\%%F" >nul 2>&1
     )
 
