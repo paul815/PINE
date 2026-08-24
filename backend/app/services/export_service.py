@@ -1,9 +1,10 @@
 """Export transcript to Markdown or ODT."""
 
-import json
 import logging
 import os
 from datetime import datetime
+
+from .file_utils import atomic_read_json
 
 DEFAULT_EXPORT_PROMPT = """Prompt for Full Project Export (Multiple Interviews)
 You will receive a research project export that may include:
@@ -609,8 +610,7 @@ def export_recording_markdown(app, project_id, recording_id, opts):
         if not os.path.isfile(transcript_path):
             return None, 'Transcript not found'
 
-        with open(transcript_path, encoding='utf-8') as f:
-            transcript = json.load(f)
+        transcript = atomic_read_json(transcript_path)
 
         from .annotations import annotation_recording_ref, get_annotations, get_project_tags
         ann = get_annotations(project_dir, annotation_recording_ref(recording))
@@ -721,8 +721,7 @@ def export_project_markdown(app, project_id, recording_ids, opts):
             if not os.path.isfile(transcript_path):
                 continue
 
-            with open(transcript_path, encoding='utf-8') as f:
-                transcript = json.load(f)
+            transcript = atomic_read_json(transcript_path)
 
             from .annotations import annotation_recording_ref, get_annotations
             ann = get_annotations(project_dir, annotation_recording_ref(recording))

@@ -1,39 +1,102 @@
-"""Shared file I/O utilities for safe, atomic writes."""
+"""Shared file I/O utilities for safe, atomic writes and reads."""
 
+import errno
 import json
 import os
 import tempfile
 import time
 
-# os.replace is one atomic rename on POSIX, but on Windows it goes through
-# MoveFileExW, which does not queue behind whoever currently holds the
-# destination — it fails the call outright. ERROR_ACCESS_DENIED (5) and
-# ERROR_SHARING_VIOLATION (32) both mean "someone had it open for a moment":
-# another thread replacing the same file, the search indexer, an antivirus
-# scanner reading what we just wrote.
-_TRANSIENT_REPLACE_ERRORS = frozenset({5, 32})
+# A rename is one atomic step on POSIX: readers see the old inode or the new
+# one, and a second renamer simply wins or loses. Windows goes through
+# MoveFileExW instead, and for the moment it takes to swap the file in it
+# refuses everybody — the other replacer and every would-be reader alike get
+# ERROR_ACCESS_DENIED (5) or ERROR_SHARING_VIOLATION (32). The search indexer
+# and antivirus scanners open these files too, so the window is not only ours.
+_TRANSIENT_WINDOWS_ERRORS = frozenset({5, 32})
+
+# A reader holding one of these files blocks a replace outright: CPython opens
+# without FILE_SHARE_DELETE, so MoveFileExW cannot get its DELETE access until
+# the last handle closes. Reads are short, so the gap to aim for is
+# microseconds wide and a 1ms sleep steps straight over it — spin first, then
+# back off for the case where the holder is something slower than us.
+_SPINS_BEFORE_SLEEPING = 5
+
+# Writers need the longer budget: they are the side being blocked, and the
+# side whose failure reaches the user as a 500 or a lost edit. A read that
+# gives up is refetched by the next request.
+_WRITE_ATTEMPTS = 60
+_READ_ATTEMPTS = 20
 
 
-def _replace_atomically(tmp_path, path, attempts=10):
+def _is_transient(exc):
+    """Is this the replace window, or a real refusal?
+
+    The two halves of the problem report it differently, which is easy to get
+    wrong: os.replace fails from the Win32 API and carries .winerror, so 5 and
+    32 are visible. open() fails from the C runtime, which has already
+    flattened both to EACCES and sets no .winerror at all — matching on
+    .winerror alone silently never retries a single read.
+
+    When .winerror is there it is the authoritative answer, so an error that
+    is genuinely something else is not retried on an errno coincidence. POSIX
+    never reaches the errno branch: EACCES there means what it says.
+    """
+    winerror = getattr(exc, 'winerror', None)
+    if winerror is not None:
+        return winerror in _TRANSIENT_WINDOWS_ERRORS
+    return os.name == 'nt' and exc.errno == errno.EACCES
+
+
+def _through_the_replace_window(operation, attempts):
+    """Run *operation*, retrying the moment Windows spends swapping a file.
+
+    A real permission problem still raises, just about a second later at the
+    write budget. On POSIX no exception carries .winerror, so nothing here is
+    ever retried.
+    """
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except OSError as exc:
+            if attempt == attempts - 1 or not _is_transient(exc):
+                raise
+            if attempt >= _SPINS_BEFORE_SLEEPING:
+                backoff = attempt - _SPINS_BEFORE_SLEEPING
+                time.sleep(min(0.0005 * (2 ** backoff), 0.02))
+
+
+def _replace_atomically(tmp_path, path):
     """os.replace, retried through Windows' transient replace failures.
 
     Three recordings uploaded into one project at once all rewrite that
     project's README.md, and two of the three replaces would collide: one
-    upload returned 500 with WinError 5 roughly one run in forty. The window
-    is microseconds wide, so the first backoff almost always wins; a real
-    permission problem still raises, just ~0.26s later.
-
-    On POSIX no exception carries .winerror, so this is a plain os.replace.
+    upload returned 500 with WinError 5 roughly one run in forty.
     """
-    for attempt in range(attempts):
-        try:
-            os.replace(tmp_path, path)
-            return
-        except OSError as exc:
-            last = attempt == attempts - 1
-            if last or getattr(exc, 'winerror', None) not in _TRANSIENT_REPLACE_ERRORS:
-                raise
-            time.sleep(min(0.001 * (2 ** attempt), 0.05))
+    _through_the_replace_window(lambda: os.replace(tmp_path, path), _WRITE_ATTEMPTS)
+
+
+def atomic_read_text(path, encoding='utf-8'):
+    """Read a file that atomic_write_* may be replacing underneath us.
+
+    The mirror of _replace_atomically, and the more dangerous half. An open()
+    that lands in the window raises PermissionError, and every caller of these
+    files reads defensively: attachments come back empty, tags and themes
+    vanish from the analysis screen, and update_annotations merges into a
+    default dict and writes *that* back over real speaker labels. A transient
+    failure to read therefore turned into permanent data loss.
+
+    Reads whole, so a caller can never be handed half a file.
+    """
+    def read():
+        with open(path, encoding=encoding) as fh:
+            return fh.read()
+
+    return _through_the_replace_window(read, _READ_ATTEMPTS)
+
+
+def atomic_read_json(path, encoding='utf-8'):
+    """atomic_read_text, parsed. Raises json.JSONDecodeError on a bad file."""
+    return json.loads(atomic_read_text(path, encoding=encoding))
 
 
 def atomic_write_json(path, data):

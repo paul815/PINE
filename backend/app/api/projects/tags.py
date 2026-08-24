@@ -22,6 +22,7 @@ from ...services.annotations import (
     save_project_themes,
     update_annotations,
 )
+from ...services.file_utils import atomic_read_json
 from ...services.speaker_blocks import merge_speaker_blocks
 from .common import _projects_root, _touch_project, projects_bp
 
@@ -102,8 +103,7 @@ def _cached_json(path):
     if cached and cached[0] == mt:
         return cached[1]
     try:
-        with open(path, encoding='utf-8') as f:
-            data = json.load(f)
+        data = atomic_read_json(path)
         # Simple bounded cache: drop everything once it grows too large rather
         # than leak one entry per file touched over the server's lifetime.
         if len(_tq_cache) >= _TQ_CACHE_MAX:

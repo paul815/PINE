@@ -20,7 +20,7 @@ from ...services.annotations import (
     get_project_themes,
     save_annotations,
 )
-from ...services.file_utils import atomic_write_text, claim_free_path
+from ...services.file_utils import atomic_read_json, atomic_write_text, claim_free_path
 from .common import (
     ALLOWED_EXTENSIONS,
     _delete_recording_annotation_files,
@@ -351,8 +351,7 @@ def get_recording(project_id, recording_id):
     if recording.transcription_status == 'transcribed' and recording.transcript_path:
         transcript_file = os.path.join(project_dir, recording.transcript_path)
         if os.path.isfile(transcript_file):
-            with open(transcript_file, encoding='utf-8') as f:
-                data['transcript'] = json.load(f)
+            data['transcript'] = atomic_read_json(transcript_file)
 
     data['tags'] = get_project_tags(project_dir)
     data['themes'] = get_project_themes(project_dir)
@@ -445,10 +444,7 @@ def get_transcript(project_id, recording_id):
     if not os.path.isfile(transcript_file):
         return jsonify({'error': 'Transcript file missing'}), 404
 
-    import json as _json
-    with open(transcript_file, encoding='utf-8') as f:
-        data = _json.load(f)
-    return jsonify(data)
+    return jsonify(atomic_read_json(transcript_file))
 
 @projects_bp.route('/<int:project_id>/recordings/<int:recording_id>/transcript/replace', methods=['POST'])
 def replace_transcript_text(project_id, recording_id):
@@ -476,8 +472,7 @@ def replace_transcript_text(project_id, recording_id):
     if not os.path.isfile(transcript_file):
         return jsonify({'error': 'Transcript file missing'}), 404
 
-    with open(transcript_file, encoding='utf-8') as f:
-        transcript = json.load(f)
+    transcript = atomic_read_json(transcript_file)
 
     project_dir = os.path.join(_projects_root(), project.folder_name)
     ann_ref = annotation_recording_ref(recording)

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from flask import jsonify, request, send_file
 from ...extensions import db
 from ...models.project import Project
-from ...services.file_utils import atomic_write_text
+from ...services.file_utils import atomic_read_json, atomic_write_text
 from .common import _projects_root, projects_bp
 
 def _attachments_dir(project_dir):
@@ -20,8 +20,7 @@ def _load_attachments(project_dir):
     if not os.path.isfile(path):
         return []
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f)
+        return atomic_read_json(path)
     except (OSError, json.JSONDecodeError):
         return []
 

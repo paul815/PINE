@@ -5,6 +5,7 @@ import os
 import re
 import threading
 
+from .file_utils import atomic_read_json as _atomic_read_json
 from .file_utils import atomic_write_json as _atomic_write_json
 
 # Per-file locks to serialize read-modify-write on annotation JSON files.
@@ -172,8 +173,7 @@ def get_project_tags(project_dir):
     path = _project_tags_path(project_dir)
     if os.path.isfile(path):
         try:
-            with open(path, encoding='utf-8') as f:
-                return normalize_tags(json.load(f))
+            return normalize_tags(_atomic_read_json(path))
         except (json.JSONDecodeError, OSError):
             pass
     return []
@@ -189,8 +189,7 @@ def get_project_themes(project_dir):
     path = _project_themes_path(project_dir)
     if os.path.isfile(path):
         try:
-            with open(path, encoding='utf-8') as f:
-                return normalize_themes(json.load(f))
+            return normalize_themes(_atomic_read_json(path))
         except (json.JSONDecodeError, OSError):
             pass
     return []
@@ -218,8 +217,7 @@ def get_annotations(project_dir, recording_stored_name):
     with lock:
         if os.path.isfile(path):
             try:
-                with open(path, encoding='utf-8') as f:
-                    return json.load(f)
+                return _atomic_read_json(path)
             except (json.JSONDecodeError, OSError):
                 pass
         return _default_annotations()
@@ -244,8 +242,7 @@ def update_annotations(project_dir, recording_stored_name, updates):
     with lock:
         if os.path.isfile(path):
             try:
-                with open(path, encoding='utf-8') as f:
-                    ann = json.load(f)
+                ann = _atomic_read_json(path)
             except (json.JSONDecodeError, OSError):
                 ann = _default_annotations()
         else:
