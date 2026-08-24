@@ -688,7 +688,7 @@ class TestStubTorchcodec:
 class TestDiarizeOutputUnwrap:
     """Ensure the native Diarizer.run unwraps DiarizeOutput-style pyannote results."""
 
-    @needs_numpy
+    @needs_torch
     def test_unwraps_diarize_output(self):
         """Pipeline returning DiarizeOutput should feed assign_speakers_simple."""
         from dataclasses import dataclass
