@@ -145,7 +145,50 @@ class TestScriptsShareTheLists:
             assert 'nothing was deleted' in read_script(path), f'{path} has no guard'
 
 
-@pytest.mark.skipif(shutil.which('bash') is None, reason='bash not available')
+def _bash_candidates():
+    """Every bash worth trying, best guess first."""
+    yield shutil.which('bash')
+    if sys.platform != 'win32':
+        return
+    # Git for Windows ships a real bash, so locate it from git itself rather
+    # than from ProgramFiles, which is not set in every environment that runs
+    # this suite (a Git Bash shell is one of them).
+    git = shutil.which('git')
+    roots = [os.path.dirname(os.path.dirname(git))] if git else []
+    roots.append(os.path.join(r'C:\Program Files', 'Git'))
+    for root in roots:
+        yield os.path.join(root, 'bin', 'bash.exe')
+        yield os.path.join(root, 'usr', 'bin', 'bash.exe')
+
+
+def _find_working_bash():
+    """Path to a bash that actually runs, or None.
+
+    Finding the name on PATH is not enough on Windows. The GitHub runner has
+    C:\\Windows\\System32\\bash.exe -- the WSL launcher -- ahead of Git's bash,
+    and with no distribution installed it exits 1 after printing "Use
+    'wsl.exe --install <Distro>' to install." in UTF-16. shutil.which happily
+    returns it, and the test then reports a broken shell as a broken parser.
+    So probe each candidate and take the first that answers, which on the
+    runner is the bash Git for Windows ships: the check keeps running there
+    rather than skipping.
+    """
+    for candidate in _bash_candidates():
+        if not candidate or not os.path.exists(candidate):
+            continue
+        try:
+            done = subprocess.run([candidate, '-c', 'exit 0'], capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if done.returncode == 0:
+            return candidate
+    return None
+
+
+BASH = _find_working_bash()
+
+
+@pytest.mark.skipif(BASH is None, reason='no working bash on this machine')
 class TestShellParserAgreesWithPython:
     def _read_via_bash(self, list_path):
         source = read_script(RESET_COMMAND)
@@ -153,7 +196,7 @@ class TestShellParserAgreesWithPython:
         assert body, 'read_preserve_list() not found in reset.command'
         script = body.group(0) + '\nread_preserve_list "$1"\n'
         done = subprocess.run(
-            ['bash', '-s', '--', list_path],
+            [BASH, '-s', '--', list_path],
             input=script,
             capture_output=True,
             text=True,
