@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -52,9 +53,20 @@ def test_backend_ready_reflects_http_probe(monkeypatch):
 
 
 def test_resolve_backend_python_prefers_console_python_for_pythonw(monkeypatch):
+    """pythonw.exe has no console, so the backend is started with python.exe.
+
+    The swap only ever happens on Windows, but it is plain path work, so it is
+    worth exercising everywhere.  The directory has to be built with the
+    running platform's separator: PosixPath(r"C:\\test\\pythonw.exe") is a
+    single name with backslashes in it, .name never equals "pythonw.exe", and
+    the test would assert against a swap that could not have happened.
+    """
+    launcher = Path(r"C:\test\pythonw.exe") if os.name == "nt" else Path("/test/pythonw.exe")
+
     monkeypatch.setattr(Path, "exists", lambda self: self.name.lower() == "python.exe")
-    resolved = BackendSupervisor._resolve_backend_python(Path(r"C:\test\pythonw.exe"))
-    assert resolved == Path(r"C:\test\python.exe")
+    resolved = BackendSupervisor._resolve_backend_python(launcher)
+
+    assert resolved == launcher.with_name("python.exe")
 
 
 def test_configure_logging_skips_stream_handler_without_stderr(monkeypatch):
