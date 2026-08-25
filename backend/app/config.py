@@ -1,6 +1,8 @@
 import logging
 import os
 import secrets
+import tempfile
+import time
 
 log = logging.getLogger(__name__)
 
@@ -9,6 +11,72 @@ ROOT_DIR = os.path.dirname(BACKEND_DIR)
 
 
 SECRET_KEY_FILENAME = 'secret_key'
+
+
+def _read_key(path):
+    """The key stored at *path*, or '' when the file is missing or still empty."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def _wait_for_key(path, attempts=50, pause=0.01):
+    """Re-read *path* while it is still empty, for up to attempts * pause.
+
+    Only the fallback in _claim_key_file can publish an empty file, and only
+    for the moment between creating it and writing to it. Half a second is
+    several orders of magnitude more than that window, and a start that waited
+    it out and still found nothing is better off with a session-only key than
+    with a wait that never ends.
+    """
+    for _ in range(attempts):
+        existing = _read_key(path)
+        if existing:
+            return existing
+        time.sleep(pause)
+    return ''
+
+
+def _claim_key_file(path, data_dir, key):
+    """Publish *key* at *path*; return False when another start got there first.
+
+    The file has to become visible with the key already in it. Creating it
+    empty with O_EXCL and writing a moment later looks atomic but is not: a
+    second start arriving inside that window finds the name taken, reads
+    nothing, and keeps its own key -- which is the exact outcome the exclusive
+    create exists to prevent. So the key goes into a temporary file first and
+    the name is claimed with a link, which fails instead of clobbering when
+    someone else already holds it.
+    """
+    fd, tmp_path = tempfile.mkstemp(prefix=SECRET_KEY_FILENAME + '.', dir=data_dir)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(key.encode('utf-8'))
+        try:
+            os.link(tmp_path, path)
+            return True
+        except FileExistsError:
+            return False
+        except OSError:
+            # No hard links here -- a FAT/exFAT install directory. Fall back to
+            # the two-step create: it still settles who wins the name, and the
+            # empty window it reopens is what _wait_for_key covers.
+            try:
+                fallback_fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                return False
+            try:
+                os.write(fallback_fd, key.encode('utf-8'))
+            finally:
+                os.close(fallback_fd)
+            return True
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 def resolve_secret_key(data_dir):
@@ -28,30 +96,18 @@ def resolve_secret_key(data_dir):
         return from_env
 
     path = os.path.join(data_dir, SECRET_KEY_FILENAME)
-    try:
-        with open(path, encoding='utf-8') as f:
-            existing = f.read().strip()
-        if existing:
-            return existing
-    except OSError:
-        pass
+    existing = _read_key(path)
+    if existing:
+        return existing
 
     key = secrets.token_urlsafe(48)
     try:
         os.makedirs(data_dir, exist_ok=True)
-        # O_EXCL: two workers starting together must not each write a key and
-        # leave the loser using one that is no longer on disk.
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        try:
-            os.write(fd, key.encode('utf-8'))
-        finally:
-            os.close(fd)
-    except FileExistsError:
-        try:
-            with open(path, encoding='utf-8') as f:
-                return f.read().strip() or key
-        except OSError:
+        # Two starts together must not each write a key and leave the loser
+        # using one that is no longer on disk.
+        if _claim_key_file(path, data_dir, key):
             return key
+        return _wait_for_key(path) or key
     except OSError:
         log.warning('Could not persist the secret key to %s; using a session-only key', path)
     return key

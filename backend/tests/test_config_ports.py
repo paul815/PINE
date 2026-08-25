@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 
 from app.config import resolve_secret_key
 from app.ports import (
@@ -55,6 +56,29 @@ class TestSecretKey:
 
         on_disk = (tmp_path / 'secret_key').read_text(encoding='utf-8').strip()
         assert set(keys) == {on_disk}
+
+    def test_a_start_that_finds_an_empty_key_file_waits_for_the_winner(self, tmp_path, monkeypatch):
+        """The same race as above, pinned without depending on the scheduler.
+
+        An empty secret_key is what the winner of the race leaves behind for
+        the moment between creating the file and writing to it.  A start that
+        arrives inside that window used to read nothing and walk off with its
+        own key; it has to wait for the key that is actually being published.
+        """
+        monkeypatch.delenv('SECRET_KEY', raising=False)
+        path = tmp_path / 'secret_key'
+        path.write_text('', encoding='utf-8')
+
+        def finish_the_write():
+            time.sleep(0.05)
+            path.write_text('the-winners-key', encoding='utf-8')
+
+        writer = threading.Thread(target=finish_the_write)
+        writer.start()
+        try:
+            assert resolve_secret_key(str(tmp_path)) == 'the-winners-key'
+        finally:
+            writer.join()
 
     def test_unwritable_dir_still_yields_a_key(self, tmp_path, monkeypatch):
         """A read-only install must not stop the app from starting."""
