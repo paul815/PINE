@@ -167,6 +167,32 @@ def atomic_write_text(path, text):
         raise
 
 
+def save_upload_atomically(file_storage, path):
+    """Stream an upload into a sibling temp file, then swap it into *path*.
+
+    ``file_storage.save(path)`` writes straight to the final name, so a backend
+    that dies mid-upload — or a browser that drops a 300 MB request — leaves a
+    truncated file under the real recording name. Everything downstream then
+    treats that stump as the recording: on 2026-08-26 a restart re-queued one
+    and ffmpeg failed on it with a CalledProcessError the user had to decode.
+    Writing beside the destination and replacing it means the final name only
+    ever appears complete; an interrupted upload leaves a .part nothing reads.
+    """
+    directory = os.path.dirname(path) or '.'
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=directory, prefix='.upload-', suffix='.part')
+    os.close(fd)
+    try:
+        file_storage.save(tmp_path)
+        _replace_atomically(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def claim_free_path(directory, filename, max_tries=10000):
     """Reserve a non-colliding path inside *directory* and return it.
 

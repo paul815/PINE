@@ -20,7 +20,12 @@ from ...services.annotations import (
     get_project_themes,
     save_annotations,
 )
-from ...services.file_utils import atomic_read_json, atomic_write_text, claim_free_path
+from ...services.file_utils import (
+    atomic_read_json,
+    atomic_write_text,
+    claim_free_path,
+    save_upload_atomically,
+)
 from .common import (
     ALLOWED_EXTENSIONS,
     _delete_recording_annotation_files,
@@ -72,7 +77,7 @@ def upload_single_transcription():
     os.makedirs(project_dir, exist_ok=True)
 
     dest, safe_name = claim_free_path(project_dir, safe_name)
-    file.save(dest)
+    save_upload_atomically(file, dest)
 
     file_size = os.path.getsize(dest)
     duration = _probe_duration(dest)
@@ -160,7 +165,7 @@ def upload_recording(project_id):
 
     # Claims the name atomically — see claim_free_path on why exists() is not enough
     dest, safe_name = claim_free_path(project_dir, safe_name)
-    file.save(dest)
+    save_upload_atomically(file, dest)
 
     # Move MP4 moov atom to front for instant browser playback
     if ext == 'mp4':

@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import threading
+import time
 
 from ml_worker.engines import ENGINE_WHISPERX, engine_kind_for_model
 from ml_worker.errors import TranscriptionCancelled
@@ -200,6 +201,57 @@ def _resolve_job(app, recording_id):
         'tracks': tracks,
     }
     return env, job
+
+
+# Media arrives from more places than the upload endpoint: requeue_interrupted
+# re-queues whatever a crash left behind, linked recordings live wherever the
+# user put them, and a project folder is a folder — people drop files into it
+# and sync clients write into it. So the queue can reach a file that is still
+# being copied. Handing that to ffmpeg produces a CalledProcessError the user
+# has to decode (seen 2026-08-26); waiting out the copy, or naming the real
+# problem, does not.
+MEDIA_SETTLE_TIMEOUT_SEC = 20.0
+MEDIA_SETTLE_INTERVAL_SEC = 1.0
+# Untouched for this long means no copy is in flight, so a job that arrives
+# after the writer is done starts without paying the poll.
+MEDIA_QUIET_SEC = 2.0
+
+
+def _wait_until_readable(path):
+    """Block until *path* is a complete file, or say why it is not."""
+    deadline = time.monotonic() + MEDIA_SETTLE_TIMEOUT_SEC
+    previous_size = None
+    while True:
+        try:
+            info = os.stat(path)
+        except OSError:
+            info = None
+
+        if info is not None and info.st_size > 0:
+            settled = (time.time() - info.st_mtime >= MEDIA_QUIET_SEC
+                       or info.st_size == previous_size)
+            if settled:
+                return
+            previous_size = info.st_size
+
+        if time.monotonic() >= deadline:
+            if info is None:
+                raise RuntimeError(f'Recording file is missing: {path}')
+            if info.st_size == 0:
+                raise RuntimeError(f'Recording file is empty: {path}')
+            raise RuntimeError(
+                'Recording file is still being written — it kept growing for '
+                f'{MEDIA_SETTLE_TIMEOUT_SEC:.0f}s: {path}')
+
+        time.sleep(MEDIA_SETTLE_INTERVAL_SEC)
+
+
+def _wait_for_media(job_dict):
+    """Refuse to start on media that is missing, empty or half-copied."""
+    paths = [job_dict['audio_path']]
+    paths += [track['path'] for track in job_dict.get('tracks') or []]
+    for path in paths:
+        _wait_until_readable(path)
 
 
 def _play_awaiting_input_sound(app):
@@ -466,6 +518,8 @@ def run_transcription_job(app, recording_id):
     if resolved is None:
         return
     env_dict, job_dict = resolved
+
+    _wait_for_media(job_dict)
 
     if engine_kind_for_model(env_dict['stt_model_id']) == ENGINE_WHISPERX:
         if not repair_torch_companion_wheels_if_needed():
