@@ -28,7 +28,14 @@ _auto_backup_thread = None
 _auto_backup_stop = None
 _auto_backup_lock = threading.Lock()
 
-# Settings keys that must NOT be overwritten during restore.
+# Settings keys that belong to *this* installation, not to the backup.
+#
+# They are filtered in both directions. On restore, because a backup must not
+# repoint this install at another machine's paths. On write, because a backup
+# ZIP travels: onto a USB stick, into a cloud-synced folder, to whoever the user
+# asks for help. hf_token is a live HuggingFace credential, and models_path /
+# projects_path are local filesystem layout — neither has any business leaving
+# the machine inside an archive nobody expects to hold secrets.
 _SENSITIVE_KEYS = frozenset({
     'hf_token', 'models_path', 'projects_path', 'onboarding_complete',
 })
@@ -324,7 +331,11 @@ def _create_backup_inner(app, include_audio, project_folders=None, label=None,
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         _emit('backup:progress', {'stage': 'db', 'percent': 5, 'message': 'Exporting database...'})
 
-        all_settings = {row.key: row.value for row in Setting.query.all()}
+        all_settings = {
+            row.key: row.value
+            for row in Setting.query.all()
+            if row.key not in _SENSITIVE_KEYS
+        }
         _writestr_with_checksum(
             zf,
             'db/settings.json',

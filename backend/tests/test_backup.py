@@ -93,6 +93,37 @@ class TestCreateBackup:
             assert 'db/projects.json' in names
             assert 'db/segments.json' in names
 
+    def test_backup_carries_no_credentials_or_local_paths(self, app, client):
+        """A backup ZIP travels; the HuggingFace token must not travel with it.
+
+        Backups get copied to USB sticks, dropped into synced folders and sent
+        to whoever is helping. Restore already refuses to apply these keys, but
+        that only protects the machine reading the archive -- the secret was
+        still written into it. Filter at the point of writing instead.
+        """
+        from app.models.setting import Setting
+        with app.app_context():
+            Setting.set('hf_token', 'hf_thisisalivecredential')
+            Setting.set('models_path', r'C:\Users\someone\models')
+            Setting.set('theme', 'dark')
+
+        from app.services.backup_service import _create_backup_inner
+        with app.app_context():
+            result = _create_backup_inner(app, include_audio=False)
+
+        zip_path = os.path.join(app.config['ROOT_DIR'], 'backups', result['filename'])
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            settings = json.loads(zf.read('db/settings.json'))
+            raw = b''.join(zf.read(name) for name in zf.namelist())
+
+        assert 'hf_token' not in settings
+        assert 'models_path' not in settings
+        # ...and nowhere else in the archive either.
+        assert b'hf_thisisalivecredential' not in raw
+
+        # The settings a backup exists to carry are still there.
+        assert settings['theme'] == 'dark'
+
     def test_create_backup_with_project(self, app, client):
         """Backup includes project files (transcripts, annotations, tags)."""
         proj = _create_project(client, 'My Research')
