@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "audit:contrast": "node tools/contrast-audit.js"
+    "audit:contrast": "node tools/contrast-audit.js",
+    "audit:design": "node tools/design-audit.js"
   },
   "devDependencies": {
     "axe-core": "^4.11.0",
