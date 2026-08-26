@@ -127,7 +127,7 @@ range and has to pass an explicit count (or run with different env values).
 | POST | `/pii-model/remove` | Delete it and free the disk space |
 | POST | `/check-update` | Ask GitHub whether a newer PINE release exists |
 | POST | `/reset` | Reset settings to defaults |
-| GET | `/app-launch` | Whether PINE is registered to launch at login |
+| GET | `/app-launch` | Both shortcut states in one call: `{ "prompt_dismissed", "start_menu": { "supported", "added", "label", "description" }, "desktop": {…} }`. `prompt_dismissed` drives the first-run offer in the sidebar; adding either shortcut sets it |
 | GET/POST | `/start-menu`, `/start-menu/add`, `/start-menu/remove` | Windows Start-menu shortcut |
 | GET/POST | `/desktop`, `/desktop/add`, `/desktop/remove` | Desktop shortcut |
 

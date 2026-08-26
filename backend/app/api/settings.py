@@ -90,6 +90,7 @@ ALLOWED_KEYS = {
     'last_open_project_id',
     'transcription_complete_sound_enabled',
     'transcription_complete_sound_volume',
+    'app_launch_prompt_dismissed',
 }
 
 ALLOWED_FONT_FAMILIES = {'system', 'inter', 'source-sans-3', 'open-sans', 'roboto'}
@@ -119,6 +120,7 @@ DEFAULTS = {
     'last_open_project_id': '',
     'transcription_complete_sound_enabled': 'true',
     'transcription_complete_sound_volume': '70',
+    'app_launch_prompt_dismissed': 'false',
 }
 
 
@@ -276,6 +278,10 @@ LEGACY_MAC_SHORTCUT_NAMES = ('PINE.command', 'MAC_Install.command', 'Launch Pine
 # INSTALLER_STORAGE_DIR is imported from launcher_layout — that module owns the layout.
 START_MENU_ENABLED_KEY = 'start_menu_launcher_enabled'
 DESKTOP_ENABLED_KEY = 'desktop_launcher_enabled'
+# Set once the user has answered the first-run shortcut prompt for good, either
+# by adding a shortcut or by choosing not to be asked again. Closing the card
+# deliberately leaves it alone, so the offer comes back on the next launch.
+APP_LAUNCH_PROMPT_DISMISSED_KEY = 'app_launch_prompt_dismissed'
 
 
 def _is_windows():
@@ -711,6 +717,17 @@ def _set_launcher_enabled(setting_key, enabled):
     Setting.set(setting_key, 'true' if enabled else 'false')
 
 
+def _mark_app_launch_prompt_answered():
+    """Retire the first-run shortcut offer once a shortcut has been created.
+
+    Set from the add endpoints rather than from the card alone, so adding a
+    shortcut in Settings counts as an answer too. Removing it later does not
+    bring the offer back — the user has seen the controls and knows where
+    they live.
+    """
+    Setting.set(APP_LAUNCH_PROMPT_DISMISSED_KEY, 'true')
+
+
 def _launcher_added_state(setting_key, paths):
     added = _any_launcher_added(paths)
     if _launcher_enabled(setting_key) != added:
@@ -725,6 +742,10 @@ def app_launch_status():
     desktop_paths = _desktop_launcher_paths()
     desktop_legacy_paths = _legacy_desktop_launcher_paths() + _legacy_desktop_bat_paths()
     return jsonify({
+        # Carried here rather than left to a second /api/settings round trip:
+        # the first-run card needs the flag and the two states together before
+        # it can decide whether to show at all.
+        'prompt_dismissed': Setting.get(APP_LAUNCH_PROMPT_DISMISSED_KEY, 'false') == 'true',
         'start_menu': {
             'supported': _start_menu_supported(),
             'added': _launcher_added_state(
@@ -774,6 +795,7 @@ def add_start_menu_entry():
 
     _cleanup_legacy_start_menu_entry()
     _set_launcher_enabled(START_MENU_ENABLED_KEY, True)
+    _mark_app_launch_prompt_answered()
 
     return jsonify({'ok': True, 'added': True})
 
@@ -818,6 +840,7 @@ def add_desktop_entry():
         return jsonify({'error': 'Could not create Desktop shortcut.'}), 500
     _cleanup_legacy_desktop_entry()
     _set_launcher_enabled(DESKTOP_ENABLED_KEY, True)
+    _mark_app_launch_prompt_answered()
     return jsonify({'ok': True, 'added': True})
 
 

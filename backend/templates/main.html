@@ -272,6 +272,36 @@ body { font-size: inherit; }
 .stx-popover-title { font-size: 1rem; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
 .stx-popover-desc { font-size: 0.846rem; color: var(--muted-fg); margin-bottom: 12px; }
 
+/* ── First-run shortcut offer ──
+   The anchor is a zero-height flex item sitting directly above .left-footer,
+   so the card floats over the project list instead of pushing it, and its
+   left/right edges track the column while the user drags the resize handle. */
+.launch-prompt-anchor { position: relative; height: 0; flex-shrink: 0; }
+.launch-prompt {
+  display: none; position: absolute; left: 8px; right: 8px; bottom: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 14px; z-index: var(--z-popover);
+}
+.launch-prompt.open { display: block; animation: stxFadeUp 0.15s ease both; }
+.launch-prompt-hdr { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.launch-prompt-title { font-size: 1rem; font-weight: 600; color: var(--fg); }
+.launch-prompt-desc { font-size: 0.846rem; color: var(--muted-fg); line-height: 1.45; margin-top: 2px; }
+.launch-prompt-close {
+  flex-shrink: 0; background: none; border: none; padding: 2px;
+  border-radius: var(--radius-sm); color: var(--muted-fg);
+  cursor: pointer; display: inline-flex; align-items: center;
+}
+.launch-prompt-close:hover { background: var(--muted); color: var(--fg); }
+.launch-prompt-close svg { width: 12px; height: 12px; }
+.launch-prompt-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
+.launch-prompt-row + .launch-prompt-row { border-top: 1px solid var(--border); }
+.launch-prompt-row-lbl { flex: 1; font-size: 0.923rem; color: var(--fg); }
+.launch-prompt-row-state { font-size: 0.846rem; color: var(--accent-on-dim); }
+.launch-prompt-foot {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end;
+}
+
 .lang-confirm-overlay {
   display: none; position: fixed; inset: 0; z-index: var(--z-max);
   background: rgba(0,0,0,0.45); align-items: center; justify-content: center;
@@ -1019,6 +1049,37 @@ label.att-upload-zone.drop-zone { display: block; }
                accept=".mp3,.mp4,.m4a,.wav,.mkv,.webm,.ogg,.flac" multiple />
         <div class="single-tx-list-hdr" id="singleTxListHeader" style="display:none">Previous transcriptions</div>
         <div class="single-tx-list" id="singleTxList"></div>
+      </div>
+    </div>
+
+    <!-- First-run shortcut offer -->
+    <div class="launch-prompt-anchor">
+      <div class="launch-prompt" id="launchPrompt" role="dialog" aria-labelledby="launchPromptTitle">
+        <div class="launch-prompt-hdr">
+          <div style="flex:1">
+            <div class="launch-prompt-title" id="launchPromptTitle">Add a shortcut to PINE?</div>
+            <div class="launch-prompt-desc">Start PINE without digging out its folder every time.</div>
+          </div>
+          <button class="launch-prompt-close" id="launchPromptClose"
+                  title="Close — PINE will offer again next time" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="launch-prompt-row" id="launchPromptDesktopRow" style="display:none">
+          <span class="launch-prompt-row-lbl" id="launchPromptDesktopLabel">Desktop shortcut</span>
+          <span class="launch-prompt-row-state" id="launchPromptDesktopState" style="display:none">Added</span>
+          <button class="btn-outline btn-sm" id="launchPromptDesktopBtn">Add</button>
+        </div>
+        <div class="launch-prompt-row" id="launchPromptStartMenuRow" style="display:none">
+          <span class="launch-prompt-row-lbl" id="launchPromptStartMenuLabel">Start Menu</span>
+          <span class="launch-prompt-row-state" id="launchPromptStartMenuState" style="display:none">Added</span>
+          <button class="btn-outline btn-sm" id="launchPromptStartMenuBtn">Add</button>
+        </div>
+        <div class="launch-prompt-foot">
+          <button class="lf-btn btn-sm" id="launchPromptNever">Don’t ask again</button>
+        </div>
       </div>
     </div>
 
@@ -3743,6 +3804,100 @@ async function deleteSingleTx(rid) {
   });
 })();
 
+// ── First-run shortcut offer ──
+// Sits above the footer until the user answers it for good. Adding a shortcut
+// — here or in Settings — retires it server-side, and so does "Don't ask
+// again"; closing the card only hides it for this session, so the offer comes
+// back on the next launch. The row labels come from the server because the
+// second one is "Start Menu" on Windows and "Applications" on macOS.
+const _launchPromptKinds = {
+  desktop: {
+    api: 'desktop', rowId: 'launchPromptDesktopRow', labelId: 'launchPromptDesktopLabel',
+    stateId: 'launchPromptDesktopState', btnId: 'launchPromptDesktopBtn',
+  },
+  start_menu: {
+    api: 'start-menu', rowId: 'launchPromptStartMenuRow', labelId: 'launchPromptStartMenuLabel',
+    stateId: 'launchPromptStartMenuState', btnId: 'launchPromptStartMenuBtn',
+  },
+};
+
+async function initLaunchPrompt() {
+  let data;
+  try {
+    const res = await fetch('/api/settings/app-launch');
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (_) { return; }
+  if (data.prompt_dismissed) return;
+
+  let offered = 0;
+  for (const kind of Object.keys(_launchPromptKinds)) {
+    const cfg = _launchPromptKinds[kind];
+    const info = data[kind] || {};
+    // Already on disk, or the platform has nowhere to put it: nothing to offer.
+    if (!info.supported || info.added) continue;
+    if (info.label) document.getElementById(cfg.labelId).textContent = info.label;
+    document.getElementById(cfg.rowId).style.display = 'flex';
+    document.getElementById(cfg.btnId).addEventListener('click', () => addLaunchShortcut(kind));
+    offered++;
+  }
+  if (!offered) return;
+  document.getElementById('launchPrompt').classList.add('open');
+}
+
+async function addLaunchShortcut(kind) {
+  const cfg = _launchPromptKinds[kind];
+  const btn = document.getElementById(cfg.btnId);
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const res = await fetch('/api/settings/' + cfg.api + '/add', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.added) throw new Error(data.error || 'Could not create the shortcut.');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = original;
+    toast(e.message, true);
+    return;
+  }
+  // The button goes rather than greys out — its absence is what the check below
+  // reads to decide whether any offered row is still unanswered.
+  btn.remove();
+  document.getElementById(cfg.stateId).style.display = 'inline';
+
+  const pending = Object.values(_launchPromptKinds).some(c =>
+    document.getElementById(c.rowId).style.display !== 'none' && document.getElementById(c.btnId)
+  );
+  if (!pending) setTimeout(closeLaunchPrompt, 900);
+}
+
+function closeLaunchPrompt() {
+  document.getElementById('launchPrompt').classList.remove('open');
+}
+
+function dismissLaunchPromptForGood() {
+  closeLaunchPrompt();
+  fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_launch_prompt_dismissed: 'true' }),
+  }).catch(() => {});
+}
+
+(function bindLaunchPrompt() {
+  const card = document.getElementById('launchPrompt');
+  document.getElementById('launchPromptClose').addEventListener('click', closeLaunchPrompt);
+  document.getElementById('launchPromptNever').addEventListener('click', dismissLaunchPromptForGood);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && card.classList.contains('open')) closeLaunchPrompt();
+  });
+  document.addEventListener('mousedown', e => {
+    if (card.classList.contains('open') && !card.contains(e.target)) closeLaunchPrompt();
+  });
+})();
+
 // ── Init ──
 (function init() {
   const params = new URLSearchParams(window.location.search);
@@ -3755,6 +3910,7 @@ async function deleteSingleTx(rid) {
   startPythonLinkMonitor();
   startLeaseHeartbeat();
   loadProjects(projectId);
+  initLaunchPrompt();
 })();
 
 // ── Attachments ──

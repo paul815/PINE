@@ -409,6 +409,52 @@ class TestSettingsAPI:
         assert data3['start_menu']['added'] is True
         assert data3['desktop']['added'] is True
 
+    def test_app_launch_prompt_retires_once_a_shortcut_is_added(self, client, monkeypatch, tmp_path):
+        """The first-run offer stops coming back after the user adds a shortcut.
+
+        main.html shows the card on every launch while `prompt_dismissed` is
+        false, so the flag has to flip on the add itself — not only when the
+        card's own "Don't ask again" is clicked, or adding from the Settings
+        page would leave the offer nagging about a shortcut already on disk.
+        """
+        from app.api import settings as settings_api
+
+        launch_bat = tmp_path / 'Launch Pine.bat'
+        launch_bat.write_text('@echo off\n', encoding='utf-8')
+        desktop = tmp_path / 'Desktop' / 'Launch Pine.lnk'
+        desktop.parent.mkdir(parents=True, exist_ok=True)
+
+        monkeypatch.setattr(settings_api, '_is_windows', lambda: True)
+        monkeypatch.setattr(settings_api, '_is_macos', lambda: False)
+        monkeypatch.setattr(settings_api, '_launch_win_bat_path', lambda: str(launch_bat))
+        monkeypatch.setattr(settings_api, '_start_menu_launcher_path', lambda: None)
+        monkeypatch.setattr(settings_api, '_desktop_launcher_path', lambda: str(desktop))
+        monkeypatch.setattr(settings_api, '_desktop_launcher_paths', lambda: [str(desktop)])
+        monkeypatch.setattr(settings_api, '_legacy_start_menu_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_launcher_paths', list)
+        monkeypatch.setattr(settings_api, '_legacy_desktop_bat_paths', list)
+        monkeypatch.setattr(
+            settings_api,
+            '_write_launcher_file',
+            lambda p: Path(p).write_text('shortcut', encoding='utf-8'),
+        )
+
+        assert client.get('/api/settings/app-launch').get_json()['prompt_dismissed'] is False
+
+        assert client.post('/api/settings/desktop/add').status_code == 200
+
+        assert client.get('/api/settings/app-launch').get_json()['prompt_dismissed'] is True
+
+    def test_app_launch_prompt_can_be_dismissed_without_adding_anything(self, client):
+        """"Don't ask again" goes through the ordinary settings PATCH."""
+        r = client.patch(
+            '/api/settings',
+            json={'app_launch_prompt_dismissed': 'true'},
+        )
+        assert r.status_code == 200
+        assert client.get('/api/settings').get_json()['app_launch_prompt_dismissed'] == 'true'
+        assert client.get('/api/settings/app-launch').get_json()['prompt_dismissed'] is True
+
     def test_app_launch_status_clears_stale_start_menu_flag_when_shortcut_missing(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
         from app.extensions import db
