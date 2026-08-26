@@ -259,6 +259,65 @@ def _run_startup_checks(app):
         db.session.commit()
         log.warning('Found %d recording(s) with missing transcript files', orphans)
 
+#: Hostnames that can only ever mean this machine. ``.localhost`` is reserved
+#: for loopback by RFC 6761, which is what makes ``pine.localhost`` safe to
+#: accept alongside the numeric spellings.
+_LOOPBACK_HOSTNAMES = frozenset({'127.0.0.1', 'localhost', '::1'})
+
+
+def _hostname_of(authority):
+    """The host part of ``host:port`` (or ``[::1]:5000``), port removed."""
+    authority = (authority or '').strip()
+    if authority.startswith('['):
+        end = authority.find(']')
+        return authority[1:end] if end != -1 else authority[1:]
+    return authority.rsplit(':', 1)[0] if ':' in authority else authority
+
+
+def _is_local_hostname(hostname):
+    """True when *hostname* resolves to this machine and no DNS can move it."""
+    name = (hostname or '').strip().lower()
+    if not name:
+        return False
+    return name in _LOOPBACK_HOSTNAMES or name.endswith('.localhost')
+
+
+def _extra_allowed_hostnames():
+    """Hostnames the operator vouched for through ``PINE_ALLOWED_HOSTS``.
+
+    The escape hatch for the one setup the loopback rule cannot see as local:
+    a reverse proxy that fronts PINE under a real name. Empty by default.
+    """
+    raw = os.environ.get('PINE_ALLOWED_HOSTS', '')
+    return {part.strip().lower() for part in raw.split(',') if part.strip()}
+
+
+def _host_is_allowed(host_header):
+    """Whether a request arriving under this ``Host`` may be served at all.
+
+    PINE listens on 127.0.0.1, so every legitimate request names a loopback
+    host. A request naming anything else got here through somebody else's DNS
+    record: the rebinding attack, where a page on evil.com re-points its own
+    name at 127.0.0.1, waits out the TTL, and then reads the whole API as
+    *same-origin* — at which point CORS is never consulted at all.
+    """
+    hostname = _hostname_of(host_header).lower()
+    return _is_local_hostname(hostname) or hostname in _extra_allowed_hostnames()
+
+
+def _origin_is_allowed(origin, same_origin, allowed_origins):
+    """Whether a state-changing request may carry this ``Origin``.
+
+    A browser attaches ``Origin`` to every POST/PATCH/DELETE, cross-site ones
+    included, so a foreign value here is the CSRF signature: some other page
+    driving this API in the user's session. Requests without the header are
+    not browsers — urllib, the launcher, the test client — and are left alone.
+    """
+    if not origin:
+        return True
+    return origin == same_origin or origin in allowed_origins
+
+
 def _launch_page_html():
     """Return a launcher page that avoids popup flows on Windows browsers."""
     return (
@@ -317,6 +376,31 @@ def create_app(config_class=Config):
     CORS(app, origins=ALLOWED_ORIGINS)
     db.init_app(app)
     socketio.init_app(app)
+
+    # ── Who is allowed to talk to a loopback server ──
+    # CORS above decides who may *read* a reply. These two checks decide who
+    # gets served at all: the Host check closes DNS rebinding (which bypasses
+    # CORS entirely by becoming same-origin), the Origin check closes CSRF on
+    # the endpoints CORS lets through without a preflight — multipart uploads
+    # and every POST that acts on its URL alone.
+    @app.before_request
+    def _reject_foreign_host_or_origin():
+        if not _host_is_allowed(request.host):
+            log.warning('Refused %s %s: foreign Host %r',
+                        request.method, request.path, request.host)
+            return jsonify({'error': 'Invalid host'}), 403
+
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return None
+
+        origin = request.headers.get('Origin')
+        if not _origin_is_allowed(origin, f'{request.scheme}://{request.host}',
+                                  ALLOWED_ORIGINS):
+            log.warning('Refused %s %s: cross-site Origin %r',
+                        request.method, request.path, origin)
+            return jsonify({'error': 'Cross-site request refused'}), 403
+
+        return None
 
     from .api import backup_bp, onboarding_bp, projects_bp, settings_bp, utils_bp
     app.register_blueprint(onboarding_bp, url_prefix='/api/onboarding')
