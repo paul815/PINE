@@ -39,6 +39,9 @@ class MLWorkerClient:
     def __init__(self):
         self._proc = None
         self._send_lock = threading.Lock()
+        # Guards spawning only. Deliberately not the module lock: kill() must
+        # stay callable while a start is in flight — see get_client().
+        self._start_lock = threading.Lock()
 
     def alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -53,6 +56,12 @@ class MLWorkerClient:
     def ensure_started(self):
         if self.alive():
             return
+        with self._start_lock:
+            if self.alive():
+                return
+            self._start()
+
+    def _start(self):
         # The worker shells out to bare 'ffmpeg', so it has to be on PATH before
         # the env below is snapshotted -- add_paths() edits this process's PATH,
         # and the child only ever sees the copy. Normally a no-op: the model
@@ -175,15 +184,24 @@ def get_client() -> MLWorkerClient:
     with _client_lock:
         if _client is None:
             _client = MLWorkerClient()
-        _client.ensure_started()
-        return _client
+        client = _client
+    # Started outside the module lock on purpose. ensure_started can block for a
+    # long time — it downloads ffmpeg on a fresh venv, then waits for the
+    # worker's first line with no timeout. Holding this lock across that made
+    # kill_worker() wait for the very hang it was woken up to break, so the
+    # watchdog thread stopped there and never restarted the transcription
+    # worker. The client's own _start_lock still keeps starts single-file.
+    client.ensure_started()
+    return client
 
 
 def kill_worker():
     """Hard-kill the worker process (watchdog path). Next job respawns it."""
     with _client_lock:
-        if _client is not None:
-            _client.kill()
+        client = _client
+    # Same reason: the kill itself must not sit behind the module lock.
+    if client is not None:
+        client.kill()
 
 
 def notify_cancel(recording_id):
