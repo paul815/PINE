@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..ports import DEFAULT_BACKEND_PORT, DEFAULT_SUPERVISOR_PORT
 from .launcher_state import clear_onboarding_complete
 
 log = logging.getLogger(__name__)
@@ -69,9 +70,74 @@ def _first_existing_launcher(root: Path, *launcher_names: str):
                 return candidate
     return None
 
+def _make_executable(path: Path):
+    """Give a launcher its execute bit — the thing macOS needs to run a .command."""
+    if path.suffix.lower() not in {'.bat', '.command'}:
+        return
+    path.chmod(path.stat().st_mode | 0o111)
+
+def _copy_launcher(source: Path, target: Path, what: str) -> bool:
+    """Copy a launcher into place, executable, without letting a failure escape.
+
+    Every caller wants the same thing and the same failure mode: the layout
+    shuffle is cosmetic, so a locked file or a read-only folder must degrade to
+    a log line rather than take down the request that triggered it.
+    """
+    try:
+        shutil.copy2(source, target)
+        _make_executable(target)
+        return True
+    except OSError as exc:
+        log.warning('Failed to %s %s -> %s: %s', what, source, target, exc)
+        return False
+
+def _remove_launcher(path: Path, what: str):
+    """Delete a launcher if it is there; log and carry on if it will not go."""
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError as exc:
+        log.warning('Failed to remove %s %s: %s', what, path, exc)
+
+def _settings_api():
+    """The settings API module, or None when it cannot be imported.
+
+    Both shortcut helpers reach into it for ``_write_launcher_file``, and both
+    have to tolerate it being unavailable: this module is imported during app
+    startup, early enough that an import error here must not be fatal.
+    """
+    try:
+        from ..api import settings as settings_api
+        return settings_api
+    except Exception as exc:
+        log.warning('Could not import settings API for launcher shortcuts: %s', exc)
+        return None
+
+def _write_shortcut(settings_api, shortcut_path):
+    """Write one Windows .lnk, turning the usual failures into a log line."""
+    try:
+        settings_api._write_launcher_file(str(shortcut_path))
+    except (subprocess.CalledProcessError, OSError) as exc:
+        log.warning('Failed to write launcher shortcut %s: %s', shortcut_path, exc)
+
 def _windows_app_launcher_contents() -> str:
-    """Dedicated post-onboarding launcher generated under backend/."""
-    return """@echo off
+    """Dedicated post-onboarding launcher generated under backend/.
+
+    The port numbers are stamped in from ``app.ports`` rather than written out
+    again here: they are only the *starting* guess anyway, since the supervisor
+    scans upward when 5000/5001 are taken and records what it actually bound in
+    ``data/supervisor.port``. The script reads that file (``:resolve_ports``)
+    for the same reason WIN_Install.bat does — probing and opening a hardcoded
+    port sends the user to whatever else happens to be listening there.
+    """
+    return _WIN_APP_LAUNCHER_TEMPLATE.replace(
+        '@BACKEND_PORT@', str(DEFAULT_BACKEND_PORT),
+    ).replace(
+        '@SUPERVISOR_PORT@', str(DEFAULT_SUPERVISOR_PORT),
+    )
+
+
+_WIN_APP_LAUNCHER_TEMPLATE = """@echo off
 setlocal EnableDelayedExpansion
 title PINE - Private Interview ^& Notes Environment
 cd /d "%~dp0"
@@ -85,6 +151,7 @@ for %%D in ("%BACKEND_DIR%..") do set "PINE_ROOT_DIR=%%~fD\\"
 set "VENV_DIR=%BACKEND_DIR%.venv"
 set "LOG_DIR=%BACKEND_DIR%logs"
 set "ONBOARDING_FLAG=%BACKEND_DIR%data\\onboarding_complete.flag"
+set "PINE_PORT_FILE=%BACKEND_DIR%data\\supervisor.port"
 set "PINE_BACKGROUND_WAIT_SECONDS=180"
 set "PINE_LAUNCHER_RUN_ID=%RANDOM%%RANDOM%"
 set "PINE_STAGE_FILE=%LOG_DIR%\\launcher-stage.txt"
@@ -166,6 +233,15 @@ set "PINE_STAGE=%~1"
 call :log_launcher_event "stage: %PINE_STAGE%"
 goto :eof
 
+:sleep_one_second
+REM Deliberately not "timeout /t": the hidden instance runs with its stdio
+REM redirected into a log, and timeout exits immediately rather than wait when
+REM stdin is not a console -- which silently turns every loop built on it into a
+REM busy spin that reports a timeout in milliseconds. WIN_Install.bat hit this
+REM exact failure and settled on ping; the loops below are the same shape.
+ping -n 2 127.0.0.1 >nul 2>&1
+goto :eof
+
 :latest_log_path
 set "%~1="
 for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "$f = Get-ChildItem -LiteralPath '%LOG_DIR%' -Filter '%~2' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName; if ($f) { Write-Output $f }"`) do set "%~1=%%L"
@@ -189,13 +265,50 @@ if defined PINE_LATEST_BACKEND_LOG (
 )
 goto :eof
 
+:resolve_ports
+REM The ports the supervisor actually bound. It scans upward from the defaults
+REM when they are busy (see supervisor.py _find_free_port) and writes the chosen
+REM pair to data\\supervisor.port. Without reading it, every probe below and the
+REM browser URL point at whatever else is listening on the default port.
+REM The same file carries the token every supervisor POST has to present, so
+REM this is also what makes /shutdown and /restart below work at all.
+REM Safe to call from inside a wait loop: once the file has been read the flag
+REM short-circuits the rest, so this costs three python starts per launch.
+if not defined PINE_BACKEND_PORT set "PINE_BACKEND_PORT=@BACKEND_PORT@"
+if not defined PINE_SUP_PORT set "PINE_SUP_PORT=@SUPERVISOR_PORT@"
+if defined PINE_PORTS_RESOLVED goto :eof
+if not exist "%PINE_PORT_FILE%" goto :eof
+for /f "delims=" %%p in ('python -c "import json,os; print(json.load(open(os.environ['PINE_PORT_FILE'])).get('backend_port',@BACKEND_PORT@))" 2^>nul') do set "PINE_BACKEND_PORT=%%p"
+for /f "delims=" %%p in ('python -c "import json,os; print(json.load(open(os.environ['PINE_PORT_FILE'])).get('supervisor_port',@SUPERVISOR_PORT@))" 2^>nul') do set "PINE_SUP_PORT=%%p"
+REM Through the environment rather than the command line: a token in an argv
+REM shows up in anyone's process list, and these calls run in a loop.
+for /f "delims=" %%p in ('python -c "import json,os; print(json.load(open(os.environ['PINE_PORT_FILE'])).get('token',''))" 2^>nul') do set "PINE_SUP_TOKEN=%%p"
+set "PINE_PORTS_RESOLVED=1"
+call :log_launcher_event "ports resolved backend=!PINE_BACKEND_PORT! supervisor=!PINE_SUP_PORT!"
+goto :eof
+
+:start_supervisor_process
+if exist "%VENV_DIR%\\Scripts\\pythonw.exe" (
+    start "" "%VENV_DIR%\\Scripts\\pythonw.exe" supervisor.py
+) else if exist "%VENV_DIR%\\Scripts\\python.exe" (
+    powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath '%VENV_DIR%\\Scripts\\python.exe' -ArgumentList 'supervisor.py'" >nul
+) else (
+    powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath 'python' -ArgumentList 'supervisor.py'" >nul
+)
+goto :eof
+
 :ensure_supervisor_ready
 call :write_stage "checking for existing supervisor"
-python -c "import json, urllib.request; data=json.loads^(urllib.request.urlopen^('http://127.0.0.1:5001/status', timeout=0.5^).read^(^).decode^(^)^); raise SystemExit^(0 if data.get^('supervisor_running'^) and not data.get^('backend_running'^) else 1^)" 2>nul
+call :resolve_ports
+REM A supervisor with no backend behind it is the state a crashed session
+REM leaves. Shutting it down here is what lets the fresh one below start
+REM cleanly. The probe and its errorlevel test stay adjacent on purpose.
+python -c "import json, urllib.request; data=json.loads^(urllib.request.urlopen^('http://127.0.0.1:!PINE_SUP_PORT!/status', timeout=0.5^).read^(^).decode^(^)^); raise SystemExit^(0 if data.get^('supervisor_running'^) and not data.get^('backend_running'^) else 1^)" 2>nul
 if not errorlevel 1 (
     call :log_launcher_event "stale supervisor detected; requesting shutdown"
-    python -c "import urllib.request; req=urllib.request.Request^('http://127.0.0.1:5001/shutdown', method='POST'^); urllib.request.urlopen^(req, timeout=0.5^)" 2>nul
-    timeout /t 1 /nobreak >nul
+    python -c "import os, urllib.request; req=urllib.request.Request^('http://127.0.0.1:!PINE_SUP_PORT!/shutdown', method='POST', headers={'X-Pine-Supervisor-Token': os.environ.get^('PINE_SUP_TOKEN', ''^)}^); urllib.request.urlopen^(req, timeout=0.5^)" 2>nul
+    if errorlevel 1 call :log_launcher_event "stale supervisor shutdown refused; continuing without it"
+    call :sleep_one_second
 )
 
 call :probe_supervisor_status
@@ -206,17 +319,14 @@ if not errorlevel 1 (
 
 call :write_stage "starting supervisor"
 call :log_launcher_event "supervisor start attempted"
-if exist "%VENV_DIR%\\Scripts\\pythonw.exe" (
-    start "" "%VENV_DIR%\\Scripts\\pythonw.exe" supervisor.py
-) else if exist "%VENV_DIR%\\Scripts\\python.exe" (
-    powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath '%VENV_DIR%\\Scripts\\python.exe' -ArgumentList 'supervisor.py'" >nul
-) else (
-    powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath 'python' -ArgumentList 'supervisor.py'" >nul
-)
+call :start_supervisor_process
 
 set SUP_WAIT=0
 :wait_supervisor_ready
+REM 300ms granularity, so this one wait keeps PowerShell: ping cannot go below
+REM a second, and 50 whole seconds of it would be a visible startup delay.
 powershell -NoProfile -Command "Start-Sleep -Milliseconds 300" >nul
+call :resolve_ports
 call :probe_supervisor_status
 if not errorlevel 1 (
     call :write_stage "supervisor status reachable"
@@ -225,13 +335,7 @@ if not errorlevel 1 (
 set /a SUP_WAIT+=1
 if !SUP_WAIT! EQU 30 (
     call :log_launcher_event "supervisor status still unavailable; retrying launch"
-    if exist "%VENV_DIR%\\Scripts\\pythonw.exe" (
-        start "" "%VENV_DIR%\\Scripts\\pythonw.exe" supervisor.py
-    ) else if exist "%VENV_DIR%\\Scripts\\python.exe" (
-        powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath '%VENV_DIR%\\Scripts\\python.exe' -ArgumentList 'supervisor.py'" >nul
-    ) else (
-        powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath 'python' -ArgumentList 'supervisor.py'" >nul
-    )
+    call :start_supervisor_process
 )
 if !SUP_WAIT! GEQ 50 (
     call :write_stage "supervisor start timed out"
@@ -254,7 +358,10 @@ if not errorlevel 1 (
 )
 call :write_stage "requesting backend restart"
 call :log_launcher_event "backend restart requested via supervisor"
-    python -c "import urllib.request; req=urllib.request.Request^('http://127.0.0.1:5001/restart', method='POST'^); urllib.request.urlopen^(req, timeout=5^)" 2>nul
+REM Token-gated like /shutdown; PINE_SUP_TOKEN comes from :resolve_ports. The
+REM errorlevel branch below still matters -- an unreachable or already-exiting
+REM supervisor lands there too.
+python -c "import os, urllib.request; req=urllib.request.Request^('http://127.0.0.1:!PINE_SUP_PORT!/restart', method='POST', headers={'X-Pine-Supervisor-Token': os.environ.get^('PINE_SUP_TOKEN', ''^)}^); urllib.request.urlopen^(req, timeout=5^)" 2>nul
 if errorlevel 1 (
     call :log_launcher_event "backend restart request failed; rechecking backend readiness"
     call :write_stage "backend restart request failed; rechecking readiness"
@@ -277,7 +384,7 @@ if !WAIT_COUNT! GEQ 300 (
     call :write_stage "backend readiness timed out"
     exit /b 1
 )
-timeout /t 1 /nobreak >nul
+call :sleep_one_second
 call :probe_supervisor_backend_ready
 if errorlevel 1 (
     set /a WAIT_COUNT+=1
@@ -292,7 +399,7 @@ if not defined WAIT_READY_GRACE set "WAIT_READY_GRACE=10"
 set WAIT_READY_GRACE_COUNT=0
 :waitreadygraceloop
 if !WAIT_READY_GRACE_COUNT! GEQ !WAIT_READY_GRACE! exit /b 1
-timeout /t 1 /nobreak >nul
+call :sleep_one_second
 call :probe_supervisor_backend_ready
 if errorlevel 1 (
     set /a WAIT_READY_GRACE_COUNT+=1
@@ -331,7 +438,8 @@ if !WAIT_BG_COUNT! GEQ %PINE_BACKGROUND_WAIT_SECONDS% (
     if not exist "%PINE_LAUNCHER_LOG%" echo   Launcher handoff log was never created, which usually means hidden launch failed before startup logging began.
     goto :eof
 )
-powershell -NoProfile -Command "Start-Sleep -Seconds 1" >nul
+call :sleep_one_second
+call :resolve_ports
 call :print_current_startup_status
 call :probe_supervisor_backend_ready
 if errorlevel 1 (
@@ -339,7 +447,11 @@ if errorlevel 1 (
     goto waitbgloop
 )
 call :log_launcher_event "backend ready; opening browser"
-call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"
+REM pine.localhost, not 127.0.0.1: the named host is the app's own origin, so it
+REM keeps its own localStorage. Opening the numeric spelling here would hand the
+REM user a second, empty copy of every UI preference the installer's browser
+REM open (which uses the name) had set up. See app/ports.py APP_HOSTNAME.
+call :open_browser_and_confirm_lease "http://pine.localhost:!PINE_BACKEND_PORT!/"
 goto :eof
 
 :run_diagnostic_launch
@@ -392,7 +504,12 @@ goto :eof
 :open_browser
 set "PINE_URL=%~1"
 powershell -NoProfile -Command "Start-Process -FilePath '%PINE_URL%'" >nul 2>nul
-if errorlevel 1 exit /b 1
+if not errorlevel 1 goto :eof
+REM Without this the fallback below was unreachable: nothing called it, so a
+REM failed Start-Process ended the launch with "browser did not connect" and no
+REM second attempt, even though two working ones were sitting right here.
+call :log_launcher_event "powershell browser open failed; trying cmd start"
+call :open_browser_fallback "%PINE_URL%"
 goto :eof
 
 :open_browser_fallback
@@ -411,21 +528,24 @@ set WAIT_LEASE_COUNT=0
 call :probe_supervisor_lease_active
 if not errorlevel 1 exit /b 0
 if !WAIT_LEASE_COUNT! GEQ !WAIT_LEASE_SECONDS! exit /b 1
-powershell -NoProfile -Command "Start-Sleep -Seconds 1" >nul
+call :sleep_one_second
 set /a WAIT_LEASE_COUNT+=1
 goto waitbrowserleaseloop
 goto :eof
 
+REM All three probes ask the same endpoint and now do it the same way. The lease
+REM one used to be a python -c one-liner instead, which meant two spellings of
+REM "GET /status and read a field" drifting independently in one file.
 :probe_supervisor_status
-powershell -NoProfile -Command "try { $null = Invoke-RestMethod -Uri 'http://127.0.0.1:5001/status' -TimeoutSec 2; exit 0 } catch { exit 1 }" >nul 2>nul
+powershell -NoProfile -Command "try { $null = Invoke-RestMethod -Uri 'http://127.0.0.1:!PINE_SUP_PORT!/status' -TimeoutSec 2; exit 0 } catch { exit 1 }" >nul 2>nul
 goto :eof
 
 :probe_supervisor_backend_ready
-powershell -NoProfile -Command "try { $data = Invoke-RestMethod -Uri 'http://127.0.0.1:5001/status' -TimeoutSec 2; if ($data.supervisor_running -and $data.backend_ready) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+powershell -NoProfile -Command "try { $data = Invoke-RestMethod -Uri 'http://127.0.0.1:!PINE_SUP_PORT!/status' -TimeoutSec 2; if ($data.supervisor_running -and $data.backend_ready) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 goto :eof
 
 :probe_supervisor_lease_active
-python -c "import json, urllib.request; data=json.loads^(urllib.request.urlopen^('http://127.0.0.1:5001/status', timeout=2^).read^(^).decode^(^)^); raise SystemExit^(0 if data.get^('supervisor_running'^) and int^(data.get^('lease_count'^) or 0^) ^> 0 else 1^)" >nul 2>nul
+powershell -NoProfile -Command "try { $data = Invoke-RestMethod -Uri 'http://127.0.0.1:!PINE_SUP_PORT!/status' -TimeoutSec 2; if ($data.supervisor_running -and $data.lease_count -gt 0) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 goto :eof
 
 :print_current_startup_status
@@ -462,19 +582,14 @@ def _promote_platform_launcher(repo_root=None):
                 encoding='utf-8',
                 newline='\r\n',
             )
-            target_path.chmod(target_path.stat().st_mode | 0o111)
+            _make_executable(target_path)
         except OSError as exc:
             log.warning('Failed to write generated launcher %s: %s', target_path, exc)
         return
     source_path = _first_existing_launcher(root, *current_launchers[1:])
     if source_path is None:
         return
-    try:
-        shutil.copy2(source_path, target_path)
-        if target_path.suffix.lower() in {'.bat', '.command'}:
-            target_path.chmod(target_path.stat().st_mode | 0o111)
-    except OSError as exc:
-        log.warning('Failed to copy launcher %s -> %s: %s', source_path, target_path, exc)
+    _copy_launcher(source_path, target_path, 'copy launcher')
 
 def _move_installers_to_backend(repo_root=None):
     """Store both platform install launchers under backend/ after onboarding."""
@@ -487,13 +602,10 @@ def _move_installers_to_backend(repo_root=None):
         target_path = backend_dir / installer_name
         if not source_path.exists():
             continue
-        try:
-            shutil.copy2(source_path, target_path)
-            if target_path.suffix.lower() in {'.bat', '.command'}:
-                target_path.chmod(target_path.stat().st_mode | 0o111)
-            source_path.unlink()
-        except OSError as exc:
-            log.warning('Failed to move installer %s -> %s: %s', source_path, target_path, exc)
+        # The unlink stays conditional on the copy, as before: dropping the root
+        # installer without a stored copy would leave no way to reinstall.
+        if _copy_launcher(source_path, target_path, 'move installer'):
+            _remove_launcher(source_path, 'moved installer')
 
 def _sync_platform_launcher_layout(repo_root=None):
     """Keep post-install launcher layout consistent across upgrades and first install."""
@@ -506,18 +618,10 @@ def _ensure_root_windows_shortcut(repo_root=None):
     """Ensure the repo-root Launch Pine.lnk exists after onboarding."""
     if sys.platform != 'win32':
         return
-    try:
-        from ..api import settings as settings_api
-    except Exception as exc:
-        log.warning('Could not import settings API to create root shortcut: %s', exc)
+    settings_api = _settings_api()
+    if settings_api is None:
         return
-
-    root = _repo_root_path(repo_root)
-    shortcut_path = root / 'Launch Pine.lnk'
-    try:
-        settings_api._write_launcher_file(str(shortcut_path))
-    except (subprocess.CalledProcessError, OSError) as exc:
-        log.warning('Failed to create root launcher shortcut %s: %s', shortcut_path, exc)
+    _write_shortcut(settings_api, _repo_root_path(repo_root) / 'Launch Pine.lnk')
 
 def restore_default_launcher_layout_after_reset(repo_root=None):
     """Return launcher files to the original pre-install repo layout."""
@@ -532,47 +636,27 @@ def restore_default_launcher_layout_after_reset(repo_root=None):
         *LEGACY_WIN_LAUNCHERS,
         *LEGACY_MAC_LAUNCHERS,
     ):
-        launcher_path = root / launcher_name
-        try:
-            if launcher_path.exists():
-                launcher_path.unlink()
-        except OSError as exc:
-            log.warning('Failed to remove reset launcher %s: %s', launcher_path, exc)
+        _remove_launcher(root / launcher_name, 'reset launcher')
 
     for installer_name in (WIN_INSTALL_LAUNCHER, MAC_INSTALL_LAUNCHER):
         root_installer = root / installer_name
         backend_installer = backend_dir / installer_name
 
         if not root_installer.exists() and backend_installer.exists():
-            try:
-                shutil.copy2(backend_installer, root_installer)
-                if root_installer.suffix.lower() in {'.bat', '.command'}:
-                    root_installer.chmod(root_installer.stat().st_mode | 0o111)
-            except OSError as exc:
-                log.warning(
-                    'Failed to restore installer %s -> %s: %s',
-                    backend_installer,
-                    root_installer,
-                    exc,
-                )
+            _copy_launcher(backend_installer, root_installer, 'restore installer')
 
+        # Only once the root copy is really back does the stored one go.
         if not root_installer.exists():
             continue
 
-        try:
-            if backend_installer.exists():
-                backend_installer.unlink()
-        except OSError as exc:
-            log.warning('Failed to remove backend installer %s: %s', backend_installer, exc)
+        _remove_launcher(backend_installer, 'backend installer')
 
 def _refresh_windows_launcher_shortcuts():
     """Re-save existing Windows shortcuts so they point at the renamed launcher and icon."""
     if sys.platform != 'win32':
         return
-    try:
-        from ..api import settings as settings_api
-    except Exception as exc:
-        log.warning('Could not import settings API to refresh shortcuts: %s', exc)
+    settings_api = _settings_api()
+    if settings_api is None:
         return
 
     shortcut_paths = [
@@ -584,19 +668,11 @@ def _refresh_windows_launcher_shortcuts():
     for shortcut_path in shortcut_paths:
         if not shortcut_path or not os.path.isfile(shortcut_path):
             continue
-        try:
-            settings_api._write_launcher_file(shortcut_path)
-        except (subprocess.CalledProcessError, OSError) as exc:
-            log.warning('Failed to refresh launcher shortcut %s: %s', shortcut_path, exc)
+        _write_shortcut(settings_api, shortcut_path)
 
 def _cleanup_cross_platform_launchers(repo_root=None):
     """Remove launcher scripts that don't match the current platform."""
     root = _repo_root_path(repo_root)
     _, to_remove = _platform_launcher_sets()
     for launcher_name in to_remove:
-        launcher_path = root / launcher_name
-        try:
-            if launcher_path.exists():
-                launcher_path.unlink()
-        except OSError as exc:
-            log.warning('Failed to remove launcher %s: %s', launcher_path, exc)
+        _remove_launcher(root / launcher_name, 'cross-platform launcher')

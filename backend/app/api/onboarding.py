@@ -12,7 +12,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from ..models.ml_model import MLModel
 from ..models.setting import Setting
-from ..ports import supervisor_port, supervisor_url
+from ..ports import read_supervisor_port_file, supervisor_port, supervisor_url
 from ..services.model_manager import (
     IS_MAC,
     MODEL_REGISTRY,
@@ -57,6 +57,13 @@ def _ensure_supervisor_running(timeout: float = 8.0) -> dict | None:
     if status and status.get('supervisor_running'):
         # Supervisor is already up — reuse the token we already know about.
         existing_token = os.environ.get('PINE_SUPERVISOR_TOKEN', '')
+        if not existing_token:
+            # This backend did not spawn that supervisor, so the token was never
+            # in our environment; before it was published, the handoff simply
+            # handed the page an empty one and every control call 403'd.
+            existing_token = (read_supervisor_port_file() or {}).get('token', '')
+            if existing_token:
+                os.environ['PINE_SUPERVISOR_TOKEN'] = existing_token
         sup_port = status.get('supervisor_port') or supervisor_port()
         return {'token': existing_token, 'port': int(sup_port)}
 

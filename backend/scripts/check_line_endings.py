@@ -40,7 +40,21 @@ EXCLUDED_DIR_NAMES = {
     "data",
     ".tmp_mlx_src",
     ".tmp_vox",
+    ".pytest_cache",
 }
+
+# Same idea, for directories whose name is only known at runtime. pytest names
+# its temp root after the current user (pytest-of-paul/), and the launcher tests
+# copy real .command and .bat files into it -- so a tree left behind by an
+# earlier run turns this check red while every launcher in the repo is fine.
+EXCLUDED_DIR_PREFIXES = ("pytest-of-", "pytest-cache-files-")
+
+
+def _in_excluded_dir(path: Path) -> bool:
+    return any(
+        part in EXCLUDED_DIR_NAMES or part.startswith(EXCLUDED_DIR_PREFIXES)
+        for part in path.parts
+    )
 
 
 def iter_target_files(root: Path) -> list[Path]:
@@ -48,7 +62,7 @@ def iter_target_files(root: Path) -> list[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if any(part in EXCLUDED_DIR_NAMES for part in path.parts):
+        if _in_excluded_dir(path):
             continue
         if path.suffix.lower() in REQUIRED_ENDINGS:
             files.append(path)

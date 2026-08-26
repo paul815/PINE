@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from flask import Flask
@@ -67,3 +68,44 @@ def test_onboarding_template_suppresses_disconnect_banner_during_handoff():
     assert 'function hideOnboardingSocketBanner()' in template
     assert 'if (_onboardingHandoffStarted) {' in template
     assert "hideOnboardingSocketBanner();" in template
+
+
+def test_token_of_a_supervisor_we_did_not_start_comes_from_the_port_file(monkeypatch):
+    """Only the process that spawned a supervisor has its token in the environment.
+
+    A backend that was restarted, or started by the launcher, has an empty one —
+    and used to hand the page exactly that, so every control call it made was
+    refused. The supervisor publishes the token beside its ports for this.
+    """
+    monkeypatch.delenv('PINE_SUPERVISOR_TOKEN', raising=False)
+    monkeypatch.setattr(onboarding, '_probe_supervisor_status',
+                        lambda timeout=0.6: {'supervisor_running': True, 'supervisor_port': 5101})
+    monkeypatch.setattr(onboarding, 'read_supervisor_port_file',
+                        lambda: {'supervisor_port': 5101, 'backend_port': 5100, 'token': 'tok-from-file'})
+
+    info = onboarding._ensure_supervisor_running()
+
+    assert info == {'token': 'tok-from-file', 'port': 5101}
+    # Cached, so the next call does not go back to disk for it.
+    assert os.environ['PINE_SUPERVISOR_TOKEN'] == 'tok-from-file'
+
+
+def test_an_environment_token_still_wins_over_the_file(monkeypatch):
+    """We spawned this supervisor: what we passed it is authoritative."""
+    monkeypatch.setenv('PINE_SUPERVISOR_TOKEN', 'tok-from-env')
+    monkeypatch.setattr(onboarding, '_probe_supervisor_status',
+                        lambda timeout=0.6: {'supervisor_running': True, 'supervisor_port': 5101})
+    monkeypatch.setattr(onboarding, 'read_supervisor_port_file',
+                        lambda: {'token': 'tok-from-file'})
+
+    assert onboarding._ensure_supervisor_running()['token'] == 'tok-from-env'
+
+
+def test_a_missing_port_file_is_not_an_error(monkeypatch):
+    """The supervisor removes it on shutdown; absence is a normal state."""
+    monkeypatch.delenv('PINE_SUPERVISOR_TOKEN', raising=False)
+    monkeypatch.setattr(onboarding, '_probe_supervisor_status',
+                        lambda timeout=0.6: {'supervisor_running': True, 'supervisor_port': 5101})
+    monkeypatch.setattr(onboarding, 'read_supervisor_port_file', lambda: None)
+
+    assert onboarding._ensure_supervisor_running() == {'token': '', 'port': 5101}

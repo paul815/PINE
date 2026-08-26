@@ -12,6 +12,7 @@ pointing at the old port for the rest of the session.
 Imports nothing from the app package — ``extensions`` needs it at import time.
 """
 
+import json
 import os
 
 DEFAULT_BACKEND_PORT = 5000
@@ -51,6 +52,34 @@ def backend_origin(host='127.0.0.1'):
 def supervisor_url(path=''):
     """URL of a supervisor control endpoint, e.g. ``.../status``."""
     return f'http://127.0.0.1:{supervisor_port()}/{path.lstrip("/")}'
+
+
+def supervisor_port_file():
+    """Where the supervisor publishes the ports and token it is actually using.
+
+    The path is duplicated from supervisor.py rather than imported, for the same
+    reason the port defaults are: that process starts before the Flask stack
+    exists and cannot import this module. Change both together.
+    """
+    data_dir = os.environ.get('PINE_DATA_DIR') or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'data',
+    )
+    return os.path.join(data_dir, 'supervisor.port')
+
+
+def read_supervisor_port_file():
+    """What the running supervisor published, or None when there is no file.
+
+    Absent is the normal case, not an error: the supervisor removes the file on
+    shutdown, so nothing here may treat its absence as a failure.
+    """
+    try:
+        with open(supervisor_port_file(), encoding='utf-8') as handle:
+            published = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return published if isinstance(published, dict) else None
 
 
 def allowed_origins():

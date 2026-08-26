@@ -18,6 +18,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import IO
+from urllib.parse import urlsplit
 
 SUPERVISOR_TOKEN = os.environ.get("PINE_SUPERVISOR_TOKEN") or secrets.token_urlsafe(32)
 
@@ -92,11 +93,39 @@ def _find_free_port(preferred: int, host: str = "127.0.0.1",
 
 
 def _write_port_file(supervisor_port: int, backend_port: int) -> None:
+    """Publish where this supervisor listens, and the token for talking to it.
+
+    The token rides along because the alternative is that nobody outside this
+    process can use the control API at all. It is minted here (or handed in by
+    whoever spawned us) and otherwise reaches only the backend's environment
+    and the page it renders — so Launch Pine.bat, which is neither, could not
+    authenticate a single POST. Its /shutdown and /restart calls were answered
+    403 every time, which is why a stale supervisor never got cleaned up.
+
+    Writing a secret to disk costs nothing here, because the file is not what
+    the token defends against. It guards the control API from *web pages*: a
+    page the user has open can POST to 127.0.0.1 but cannot read a file. Local
+    processes could always kill this one outright, DB and transcripts included.
+    data/secret_key has held a long-lived secret on the same terms since the
+    first run. 0600 all the same, and _remove_port_file drops it on shutdown.
+    """
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
-    PORT_FILE_PATH.write_text(
-        json.dumps({"supervisor_port": supervisor_port, "backend_port": backend_port}),
-        encoding="utf-8",
-    )
+    payload = json.dumps({
+        "supervisor_port": supervisor_port,
+        "backend_port": backend_port,
+        "token": SUPERVISOR_TOKEN,
+    })
+    fd = os.open(PORT_FILE_PATH, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+    try:
+        os.write(fd, payload.encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        # O_CREAT's mode only applies to a file it creates; one left behind by
+        # an earlier run keeps whatever mode it already had.
+        os.chmod(PORT_FILE_PATH, 0o600)
+    except OSError:
+        pass
     LOG.info("Port file written: %s", PORT_FILE_PATH)
 
 
@@ -105,14 +134,6 @@ def _remove_port_file() -> None:
         PORT_FILE_PATH.unlink(missing_ok=True)
     except OSError:
         pass
-
-
-def read_port_file() -> dict | None:
-    """Read port file.  Returns dict with supervisor_port/backend_port or None."""
-    try:
-        return json.loads(PORT_FILE_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError, OSError):
-        return None
 
 
 def _default_log_dir() -> Path:
@@ -473,10 +494,30 @@ def make_supervisor_handler(
 
     class SupervisorHTTPHandler(BaseHTTPRequestHandler):
 
+        def _cors_origin(self) -> str | None:
+            """The caller's origin, when it is one this machine could serve.
+
+            The UI is served on one port and calls the supervisor on another,
+            so its replies genuinely need a CORS header. "*" was too generous
+            for it: /status takes no token, so any site the user had open could
+            read our ports and lease count. A loopback origin is either this
+            app or something already running on the user's own machine.
+            """
+            origin = self.headers.get("Origin", "")
+            if not origin:
+                return None
+            hostname = (urlsplit(origin).hostname or "").lower()
+            if hostname in ("127.0.0.1", "localhost", "::1") or hostname.endswith(".localhost"):
+                return origin
+            return None
+
         def _set_headers(self, code: int = 200) -> None:
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            origin = self._cors_origin()
+            if origin is not None:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Pine-Supervisor-Token")
             self.end_headers()

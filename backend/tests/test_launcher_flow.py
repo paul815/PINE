@@ -32,16 +32,16 @@ def test_generated_windows_launcher_uses_supervisor_handoff_flow():
     assert 'set "PINE_LAUNCHER_RUNNER_LOG=%LOG_DIR%\\\\launcher-runner.log"' in launcher_layout_source
     assert 'call :run_diagnostic_launch' in launcher_layout_source
     assert 'call :print_log_paths' in launcher_layout_source
-    assert 'call :open_browser_and_confirm_lease "http://127.0.0.1:5000/"' in launcher_layout_source
+    assert 'call :open_browser_and_confirm_lease "http://pine.localhost:!PINE_BACKEND_PORT!/"' in launcher_layout_source
     assert 'call :wait_for_browser_lease 15' in launcher_layout_source
     assert 'browser lease missing after primary open attempt; leaving diagnostics in logs only' in launcher_layout_source
     assert 'timeout waiting for backend ready; leaving diagnostics in logs only' in launcher_layout_source
     assert 'Diagnostic mode will not open extra browser tabs automatically.' in launcher_layout_source
     assert "Start-Process -FilePath '%PINE_URL%'" in launcher_layout_source
     assert 'rundll32.exe url.dll,FileProtocolHandler "%PINE_URL%"' in launcher_layout_source
-    assert "data.get^('lease_count'^) or 0" in launcher_layout_source
+    assert "$data.supervisor_running -and $data.lease_count -gt 0" in launcher_layout_source
     assert 'Launcher handoff log was never created' in launcher_layout_source
-    assert "Invoke-RestMethod -Uri 'http://127.0.0.1:5001/status' -TimeoutSec 2" in launcher_layout_source
+    assert "Invoke-RestMethod -Uri 'http://127.0.0.1:!PINE_SUP_PORT!/status' -TimeoutSec 2" in launcher_layout_source
     assert "$data.supervisor_running -and $data.backend_ready" in launcher_layout_source
     assert 'call :wait_for_background_launch_and_open' in launcher_layout_source
     assert 'call "%BACKEND_DIR%WIN_Install.bat"' in launcher_layout_source

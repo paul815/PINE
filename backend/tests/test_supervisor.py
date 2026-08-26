@@ -499,3 +499,114 @@ def test_monitor_loop_logs_system_shutdown_reason(caplog, monkeypatch):
         in msg
         for msg in caplog.messages
     )
+
+
+class _CorsSupStub:
+    _backend_port = 5000
+    _supervisor_port = 5001
+
+    def backend_running(self):
+        return True
+
+    def backend_ready(self):
+        return True
+
+    def lease_count(self):
+        return 0
+
+
+def _status_headers(origin=None):
+    """Fetch /status from a real supervisor server and return its headers."""
+    handler = make_supervisor_handler(_CorsSupStub(), threading.Event())
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(f"http://{host}:{port}/status")
+        if origin is not None:
+            req.add_header("Origin", origin)
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return dict(resp.headers)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_status_grants_cors_to_the_apps_own_origin():
+    """The UI is served on one port and calls the supervisor on another."""
+    headers = _status_headers(origin="http://pine.localhost:5000")
+
+    assert headers["Access-Control-Allow-Origin"] == "http://pine.localhost:5000"
+    assert headers["Vary"] == "Origin"
+
+
+def test_status_grants_cors_to_no_one_else():
+    """/status takes no token: "*" handed our ports to any site the user had open."""
+    headers = _status_headers(origin="https://evil.com")
+
+    assert "Access-Control-Allow-Origin" not in headers
+
+
+def test_status_still_answers_a_caller_without_an_origin():
+    """urllib and the launcher scripts never send Origin and never read one."""
+    headers = _status_headers(origin=None)
+
+    assert "Access-Control-Allow-Origin" not in headers
+
+
+def test_port_file_publishes_the_token_with_the_ports(tmp_path, monkeypatch):
+    """Without this the only holders of the token are the supervisor and the page.
+
+    Launch Pine.bat is neither, so its /shutdown and /restart POSTs were
+    answered 403 every time and a stale supervisor was never cleaned up.
+    """
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", tmp_path / "supervisor.port")
+
+    supervisor._write_port_file(5101, 5100)
+    published = json.loads((tmp_path / "supervisor.port").read_text(encoding="utf-8"))
+
+    assert published == {
+        "supervisor_port": 5101,
+        "backend_port": 5100,
+        "token": SUPERVISOR_TOKEN,
+    }
+
+
+def test_port_file_is_not_world_readable(tmp_path, monkeypatch):
+    """It holds a credential now. Windows ignores the mode; POSIX must not."""
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", tmp_path / "supervisor.port")
+
+    supervisor._write_port_file(5101, 5100)
+
+    if os.name != "nt":
+        mode = (tmp_path / "supervisor.port").stat().st_mode
+        assert mode & 0o077 == 0
+
+
+def test_rewriting_the_port_file_narrows_a_permissive_leftover(tmp_path, monkeypatch):
+    """O_CREAT's mode applies only to a file it creates."""
+    port_file = tmp_path / "supervisor.port"
+    port_file.write_text("{}", encoding="utf-8")
+    port_file.chmod(0o644)
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", port_file)
+
+    supervisor._write_port_file(5101, 5100)
+
+    if os.name != "nt":
+        assert port_file.stat().st_mode & 0o077 == 0
+
+
+def test_the_port_file_goes_away_with_the_supervisor(tmp_path, monkeypatch):
+    """A credential must not outlive the process it authenticates."""
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", tmp_path / "supervisor.port")
+    supervisor._write_port_file(5101, 5100)
+
+    supervisor._remove_port_file()
+
+    assert not (tmp_path / "supervisor.port").exists()
