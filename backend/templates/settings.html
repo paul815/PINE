@@ -363,7 +363,7 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
   padding: 20px 22px; width: 480px; max-width: 92vw; max-height: 80vh;
   display: flex; flex-direction: column;
 }
-.modal-title { font-size: 1.077rem; font-weight: 600; margin-bottom: 14px; }
+.modal-title { font-size: 1.154rem; font-weight: 700; margin-bottom: 14px; }
 .modal-body { flex: 1; overflow-y: auto; }
 .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .chk-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 1rem; }
@@ -821,7 +821,21 @@ const _launchers = {
   },
 };
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s) {
+  // Attribute-safe, matching the other templates. The textContent trick this
+  // replaced escaped & < > but left both quote characters alone.
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function escJsAttr(s) {
+  // For a value that lands in JavaScript that lands in an HTML attribute — two
+  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
+  // parser; esc() closes off the attribute for the HTML parser, which unwraps
+  // its layer first and hands the JS parser exactly the literal we wrote.
+  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
+  // gives the apostrophe back before the JS parser ever sees the string.
+  return esc(JSON.stringify(String(s ?? '')));
+}
 
 function fmtBytes(b) {
   if (!b) return '0 B';
@@ -1185,7 +1199,7 @@ function renderSttModels() {
     const note = STT_MODEL_NOTES[m.id] || '';
     const action = m.installed
       ? '<span class="assistive-text">In use</span>'
-      : `<button class="btn-outline" onclick="installSttModel('${m.id}')">Install</button>`;
+      : `<button class="btn-outline" onclick="installSttModel(${escJsAttr(m.id)})">Install</button>`;
     return `
       <div class="row" style="align-items:flex-start;gap:12px">
         <div style="flex:1">

@@ -527,7 +527,7 @@ body { font-size: inherit; }
 .ins-h { display: flex; align-items: center; gap: 8px; font-size: 0.769rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-fg); margin-bottom: 14px; }
 .ins-h .ins-x { margin-left: auto; width: 24px; height: 24px; border: none; background: transparent;
-  color: var(--muted-fg); border-radius: var(--radius); cursor: pointer; font-size: 1.2rem; line-height: 1;
+  color: var(--muted-fg); border-radius: var(--radius); cursor: pointer; font-size: 1.231rem; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; }
 .ins-h .ins-x:hover { background: var(--muted); color: var(--fg); }
 .ed-top { display: flex; align-items: center; gap: 10px; }
@@ -544,8 +544,8 @@ body { font-size: inherit; }
 .mvb svg { width: 14px; height: 14px; }
 .ed-stats { display: flex; gap: 20px; margin: 16px 2px 4px; }
 .ed-stats .n { font-size: 1.308rem; font-weight: 700; font-family: var(--font-mono); }
-.ed-stats .l { font-size: 0.72rem; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .04em; }
-label.fl { display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+.ed-stats .l { font-size: 0.769rem; color: var(--muted-fg); text-transform: uppercase; letter-spacing: .04em; }
+label.fl { display: block; font-size: 0.769rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
   color: var(--muted-fg); margin: 18px 0 6px; }
 .fld { width: 100%; font-family: var(--font-body); font-size: 0.923rem; color: var(--fg); background: var(--bg);
   border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; outline: none; }
@@ -682,6 +682,16 @@ function esc(s) {
   // Attribute-safe: also escapes quotes so values placed in HTML attributes
   // cannot break out and inject markup/handlers.
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function escJsAttr(s) {
+  // For a value that lands in JavaScript that lands in an HTML attribute — two
+  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
+  // parser; esc() closes off the attribute for the HTML parser, which unwraps
+  // its layer first and hands the JS parser exactly the literal we wrote.
+  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
+  // gives the apostrophe back before the JS parser ever sees the string.
+  return esc(JSON.stringify(String(s ?? '')));
 }
 // Defense-in-depth: never interpolate an arbitrary string into a style attr.
 function safeHex(c) {
@@ -915,6 +925,10 @@ function renderTagList() {
 
   document.getElementById('tagList').innerHTML = allRow + groupsHtml;
 
+  document.querySelectorAll('#tagList .tag-group-header[data-selectable]').forEach(header => {
+    header.addEventListener('click', () => selectTheme(header.closest('.tag-group').dataset.theme));
+  });
+
   document.querySelectorAll('#tagList .tag-row').forEach(row => {
     row.addEventListener('click', () => selectTag(row.dataset.tag, row));
     if (row.dataset.tag === activeTagId) row.classList.add('active');
@@ -1038,7 +1052,12 @@ function wireTagDragAndDrop() {
 
 function buildThemeGroupHtml(theme, themeTags, qCount, selectable) {
   const rows = themeTags.map(buildTagRowHtml).join('');
-  const headerClick = selectable ? ` onclick="selectTheme('${esc(theme.id)}')"` : '';
+  // A flag, not the id. esc() turns ' into &#39;, which the HTML parser decodes
+  // back to ' before the JS in an onclick attribute is parsed — so a theme id
+  // holding an apostrophe closed the string and ran whatever followed it. Ids
+  // are free text out of project_themes.json, which arrives with an imported or
+  // restored project. The listener below reads the id off data-theme instead.
+  const headerClick = selectable ? ' data-selectable="1"' : '';
   return `
     <div class="tag-group" data-theme="${esc(theme.id)}">
       <div class="tag-group-header"${headerClick}>
@@ -1295,18 +1314,18 @@ function tagEditorHtml(id) {
   return `
     <div class="ins-h">Code details<button class="ins-x" title="Hide editor" onclick="toggleInspector()">&times;</button></div>
     <div class="ed-top">
-      <button class="ed-sw" style="background:${col}" title="Code color" onclick="openColor(this,'tag','${esc(id)}')"></button>
-      <input class="ed-name" value="${esc(t.name)}" onchange="edTagField('${esc(id)}','name',this.value)" />
+      <button class="ed-sw" style="background:${col}" title="Code color" onclick="openColor(this,'tag',${escJsAttr(id)})"></button>
+      <input class="ed-name" value="${esc(t.name)}" onchange="edTagField(${escJsAttr(id)},'name',this.value)" />
     </div>
     <div class="ed-stats">
       <div><div class="n">${t.count || 0}</div><div class="l">quotes</div></div>
       <div><div class="n">${t.recording_count || 0}</div><div class="l">interviews</div></div>
     </div>
     <label class="fl">Definition — when does this code apply?</label>
-    <textarea class="fld" placeholder="Describe when to use this code…" onchange="edTagField('${esc(id)}','description',this.value)">${esc(t.description || '')}</textarea>
+    <textarea class="fld" placeholder="Describe when to use this code…" onchange="edTagField(${escJsAttr(id)},'description',this.value)">${esc(t.description || '')}</textarea>
     <label class="fl">Theme</label>
-    <select class="fld" onchange="edTagTheme('${esc(id)}',this.value)">${opts}</select>
-    <button class="ed-del" onclick="edTagDelete('${esc(id)}')">Delete code</button>`;
+    <select class="fld" onchange="edTagTheme(${escJsAttr(id)},this.value)">${opts}</select>
+    <button class="ed-del" onclick="edTagDelete(${escJsAttr(id)})">Delete code</button>`;
 }
 
 function themeEditorHtml(id) {
@@ -1321,11 +1340,11 @@ function themeEditorHtml(id) {
   return `
     <div class="ins-h">Theme details<button class="ins-x" title="Hide editor" onclick="toggleInspector()">&times;</button></div>
     <div class="ed-top">
-      <button class="ed-sw" style="background:${col}" title="Theme color" onclick="openColor(this,'theme','${esc(id)}')"></button>
-      <input class="ed-name" value="${esc(th.name)}" onchange="edThemeField('${esc(id)}','name',this.value)" />
+      <button class="ed-sw" style="background:${col}" title="Theme color" onclick="openColor(this,'theme',${escJsAttr(id)})"></button>
+      <input class="ed-name" value="${esc(th.name)}" onchange="edThemeField(${escJsAttr(id)},'name',this.value)" />
       <div class="ed-mv">
-        <button class="mvb" ${i <= 0 ? 'disabled' : ''} title="Move up" onclick="edThemeMove('${esc(id)}',-1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button class="mvb" ${i >= last ? 'disabled' : ''} title="Move down" onclick="edThemeMove('${esc(id)}',1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="mvb" ${i <= 0 ? 'disabled' : ''} title="Move up" onclick="edThemeMove(${escJsAttr(id)},-1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="mvb" ${i >= last ? 'disabled' : ''} title="Move down" onclick="edThemeMove(${escJsAttr(id)},1)"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
     </div>
     <div class="ed-stats">
@@ -1334,7 +1353,7 @@ function themeEditorHtml(id) {
     </div>
     <label class="fl">Codes in this theme</label>
     <div class="ed-tags-list">${pills}</div>
-    <button class="ed-del" onclick="edThemeDelete('${esc(id)}')">Delete theme</button>`;
+    <button class="ed-del" onclick="edThemeDelete(${escJsAttr(id)})">Delete theme</button>`;
 }
 
 /* ── persistence: PATCH then re-fetch /tags/quotes (keeps counts/denormalized quote data correct) ── */
@@ -1445,7 +1464,7 @@ function openColor(anchor, kind, id) {
   const pop = document.getElementById('colorPop');
   const cur = kind === 'tag' ? (tagById(id) || {}).color : (themeById(id) || {}).color;
   document.getElementById('colorGrid').innerHTML = TAG_PALETTE.map(h =>
-    `<button class="csw ${tagColor(cur) === h ? 'sel' : ''}" style="background:${h}" title="${h}" onclick="pickColor('${h}')"></button>`).join('');
+    `<button class="csw ${tagColor(cur) === h ? 'sel' : ''}" style="background:${h}" title="${h}" onclick="pickColor(${escJsAttr(h)})"></button>`).join('');
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 170)) + 'px';
   pop.style.top = (r.bottom + 6) + 'px';

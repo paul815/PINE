@@ -449,7 +449,7 @@ body { font-size: inherit; }
 .tl-time.end { text-align: right; }
 .vol-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .vol-wrap input[type="range"] { width: 70px; height: 4px; accent-color: var(--accent); cursor: pointer; }
-.speed-select { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted-fg); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 4px; cursor: pointer; flex-shrink: 0; transition: color .15s, border-color .15s; }
+.speed-select { font-family: var(--font-mono); font-size: 0.846rem; color: var(--muted-fg); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 4px; cursor: pointer; flex-shrink: 0; transition: color .15s, border-color .15s; }
 .speed-select:hover { color: var(--fg); border-color: var(--fg); }
 #mediaVideo:fullscreen, #mediaVideo:-webkit-full-screen, #mediaVideo:-ms-fullscreen { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
 #videoStage:fullscreen, #videoStage:-webkit-full-screen, #videoStage:-ms-fullscreen { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background: #080810; }
@@ -471,7 +471,7 @@ body { font-size: inherit; }
 .resize-handle:hover .resize-grip { opacity: .6; }
 
 .fr-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.fr-label { font-size: 0.8rem; color: var(--muted-fg); }
+.fr-label { font-size: 0.846rem; color: var(--muted-fg); }
 .fr-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--fg); font-size: 1rem; }
 .fr-input:focus { outline: none; border-color: var(--accent); }
 .transcript-panel {
@@ -590,8 +590,8 @@ mark.pending-selection-highlight {
   box-shadow: 0 24px 64px rgba(0,0,0,.6);
   transform: translateY(8px); transition: transform .2s; }
 .overlay.show .modal { transform: translateY(0); }
-.modal-title { font-size: 1.154rem; font-weight: 600; letter-spacing: -.2px; margin-bottom: 6px; }
-.m-sub { font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.5; }
+.modal-title { font-size: 1.154rem; font-weight: 700; letter-spacing: -.2px; margin-bottom: 6px; }
+.m-sub { font-size: 1rem; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.5; }
 .m-row { display: flex; align-items: center; justify-content: space-between;
   padding: 9px 0; border-bottom: 1px solid var(--border); }
 .m-lbl { font-size: 1rem; color: var(--muted-fg); }
@@ -1428,7 +1428,7 @@ function renderTranscript(segments, tagSpans, comments) {
         const endSegForDot = s.end_segment_idx != null ? s.end_segment_idx : s.segment_idx;
         const showCmtDot = indices.includes(endSegForDot);
         const dotHtml = showCmtDot
-          ? ` <span class="cmt-dot" title="${esc(s.text || '')}" onclick="event.stopPropagation();highlightComment('${s.id || ''}')"><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 1.5h9v7H7l-2.5 2.5V8.5H1.5V1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>${preview}</span>`
+          ? ` <span class="cmt-dot" title="${esc(s.text || '')}" onclick="event.stopPropagation();highlightComment(${escJsAttr(s.id || '')})"><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 1.5h9v7H7l-2.5 2.5V8.5H1.5V1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>${preview}</span>`
           : '';
         html += `<span class="comment-anchor" data-comment-id="${esc(s.id || '')}">${wrapWords(clippedStart, end)}${dotHtml}</span>`;
       }
@@ -1525,7 +1525,7 @@ function openColorModal(swatchEl, context) {
   const popover = document.getElementById('colorPickerPopover');
   const grid = document.getElementById('colorGrid');
   grid.innerHTML = TAG_PALETTE.map(hex =>
-    `<button type="button" class="color-swatch ${hex === selectedTagColor ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="pickColor('${hex}','${context || ''}')"></button>`
+    `<button type="button" class="color-swatch ${hex === selectedTagColor ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="pickColor(${escJsAttr(hex)},${escJsAttr(context || '')})"></button>`
   ).join('');
   const rect = swatchEl.getBoundingClientRect();
   popover.style.left = rect.left + 'px';
@@ -1576,7 +1576,7 @@ function renderCommentsPane(comments, segments) {
         return seg ? (seg.text || '').slice(c.start_char, c.end_char) : '';
       })();
     const cid = c.id || '';
-    return `<div class="cmt-card" id="cmt-${cid}" data-comment-id="${esc(cid)}" onmouseenter="highlightCommentSpan('${esc(cid)}', true)" onmouseleave="highlightCommentSpan('${esc(cid)}', false)"><div class="cmt-card-content"><div class="cmt-anchor">"${esc(anchor)}"</div><div class="cmt-body">${esc(c.text || '')}</div><div class="cmt-meta">${c.created_at || '—'}</div></div><button type="button" class="cmt-card-remove" onclick="event.stopPropagation();removeComment(this)" title="Remove this comment">&times;</button></div>`;
+    return `<div class="cmt-card" id="cmt-${cid}" data-comment-id="${esc(cid)}" onmouseenter="highlightCommentSpan(${escJsAttr(cid)}, true)" onmouseleave="highlightCommentSpan(${escJsAttr(cid)}, false)"><div class="cmt-card-content"><div class="cmt-anchor">"${esc(anchor)}"</div><div class="cmt-body">${esc(c.text || '')}</div><div class="cmt-meta">${c.created_at || '—'}</div></div><button type="button" class="cmt-card-remove" onclick="event.stopPropagation();removeComment(this)" title="Remove this comment">&times;</button></div>`;
   }).join('') || '<div class="right-placeholder">No comments yet. Highlight text and click Add comment.</div>';
 }
 
@@ -1807,10 +1807,10 @@ function renderPopupTags(filter) {
   const tags = data.tags || [];
   const list = document.getElementById('popupTagList');
   list.innerHTML = tags.filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase())).map(t =>
-    `<div class="ptag-row" onclick="applyTag('${t.id}')"><div class="ptag-dot" style="background:${tagColor(t.color)}"></div>${esc(t.name)}</div>`
+    `<div class="ptag-row" onclick="applyTag(${escJsAttr(t.id)})"><div class="ptag-dot" style="background:${tagColor(t.color)}"></div>${esc(t.name)}</div>`
   ).join('');
   if (filter.length > 1 && !tags.some(t => t.name.toLowerCase() === filter.toLowerCase())) {
-    list.innerHTML += `<div class="ptag-row" onclick="createAndApplyTag('${esc(filter)}')"><div class="ptag-dot" style="background:${selectedTagColor}"></div>Create "${esc(filter)}"</div>`;
+    list.innerHTML += `<div class="ptag-row" onclick="createAndApplyTag(${escJsAttr(filter)})"><div class="ptag-dot" style="background:${selectedTagColor}"></div>Create "${esc(filter)}"</div>`;
   }
 }
 
@@ -2054,7 +2054,7 @@ function openTagChipPopover(chipEl, e) {
   const popover = document.getElementById('tagChipPopover');
   const grid = document.getElementById('tagChipPopover').querySelector('.tag-chip-popover-colors');
   grid.innerHTML = TAG_PALETTE.map(hex =>
-    `<button type="button" class="color-swatch ${hex === currentCol ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="updateTagColor('${hex}')"></button>`
+    `<button type="button" class="color-swatch ${hex === currentCol ? 'selected' : ''}" style="background:${hex}" data-hex="${hex}" onclick="updateTagColor(${escJsAttr(hex)})"></button>`
   ).join('');
   const rect = chipEl.getBoundingClientRect();
   popover.style.left = rect.left + 'px';
@@ -2288,7 +2288,11 @@ async function enrichImportProjectTags(arr) {
 }
 
 function importProjItemHtml(p) {
-  return `<div class="import-proj-item" onclick='selectImportProject(${p.id}, this, ${JSON.stringify(p.name)})'>
+  // The name travels in a data attribute, not inside the onclick. It used to be
+  // JSON.stringify'd into a single-quoted attribute, and JSON does not escape
+  // apostrophes — so an ordinary project name like "Sam's interviews" ended the
+  // attribute early and broke the row (and let a crafted name inject markup).
+  return `<div class="import-proj-item" data-proj-id="${p.id}" data-proj-name="${esc(p.name)}">
     <span class="import-proj-name">${esc(p.name)}</span>
     <div class="import-proj-tagline">${importProjTagsHtml(p.tags || [])}</div>
   </div>`;
@@ -2334,6 +2338,11 @@ function renderImportProjectPicker() {
       arch.map(importProjItemHtml).join('') + '</div>';
   }
   body.innerHTML = html;
+
+  body.querySelectorAll('.import-proj-item').forEach(item => {
+    item.addEventListener('click', () => selectImportProject(
+      Number(item.dataset.projId), item, item.dataset.projName));
+  });
 }
 
 async function openImportTagsModal() {
@@ -2479,7 +2488,7 @@ function openSpeakerEdit(el) {
   // so they follow the theme. They previously hardcoded the dark-theme hexes
   // and so disagreed with the rendered rows in light theme.
   row.innerHTML = _SPK_CLASSES.map(cls =>
-    `<button type="button" class="spk-color-swatch${cls === _spkPopoverSelectedCls ? ' selected' : ''}" style="background:var(--${cls}-lbl)" data-cls="${cls}" onclick="commitSpeakerEdit('${cls}')"></button>`
+    `<button type="button" class="spk-color-swatch${cls === _spkPopoverSelectedCls ? ' selected' : ''}" style="background:var(--${cls}-lbl)" data-cls="${cls}" onclick="commitSpeakerEdit(${escJsAttr(cls)})"></button>`
   ).join('');
 
   const popover = document.getElementById('speakerPopover');
@@ -2691,6 +2700,16 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
+function escJsAttr(s) {
+  // For a value that lands in JavaScript that lands in an HTML attribute — two
+  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
+  // parser; esc() closes off the attribute for the HTML parser, which unwraps
+  // its layer first and hands the JS parser exactly the literal we wrote.
+  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
+  // gives the apostrophe back before the JS parser ever sees the string.
+  return esc(JSON.stringify(String(s ?? '')));
+}
+
 function beginRenameRecordingTitle() {
   const wrap = document.querySelector('.tb-rec-name-wrap');
   const span = document.getElementById('topbarTitle');
@@ -2800,7 +2819,7 @@ async function openExport() {
     if (!piiAvailable) {
       const h = document.createElement('span');
       h.className = 'pii-hint';
-      h.style.cssText = 'font-size:0.8rem;color:var(--muted-fg);margin-left:8px';
+      h.style.cssText = 'font-size:0.846rem;color:var(--muted-fg);margin-left:8px';
       h.textContent = '(not installed)';
       document.getElementById('expPiiLbl')?.appendChild(h);
     }

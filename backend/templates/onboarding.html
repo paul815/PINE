@@ -798,6 +798,14 @@ body { font-size: inherit; }
 
 <script>
 const API = '/api/onboarding';
+
+// The same helper the other four templates carry. This file was the one without
+// it, and the one place it builds HTML by hand drops a HuggingFace account name
+// straight into the page.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
 let currentStep = 0;
 const modSizes = { pii: 500 };
 const baseMB = 4000;
@@ -1199,9 +1207,9 @@ async function validateToken() {
     document.getElementById('hfContinueBtn').disabled = true;
     const pending = (data.gated_repos || []).filter(function (r) { return r.accessible === false; });
     const links = pending.map(function (r) {
-      return '<a href="' + r.url + '" target="_blank" rel="noopener">' + r.repo_id + '</a>';
+      return '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.repo_id) + '</a>';
     }).join(', ');
-    status.innerHTML = (data.username ? '\u2713 Token works (' + data.username + '), but ' : 'Token works, but ')
+    status.innerHTML = (data.username ? '\u2713 Token works (' + esc(data.username) + '), but ' : 'Token works, but ')
       + 'these model licenses still need to be accepted \u2014 open each, click "Agree and access", then press Verify again: ' + links;
   } else {
     tokenInput.classList.remove('valid');

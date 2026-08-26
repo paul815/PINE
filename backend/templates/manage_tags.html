@@ -173,7 +173,7 @@ body { font-size: inherit; overflow: hidden; }
 .icon-btn:disabled { opacity: .3; cursor: default; }
 .icon-btn:disabled:hover { background: transparent; color: var(--muted-fg); }
 /* Cross (×) glyph for delete buttons — matches the app's .q-card-remove style. */
-.icon-btn .x { font-size: 1.25rem; line-height: 1; }
+.icon-btn .x { font-size: 1.231rem; line-height: 1; }
 
 /* Theme card */
 .theme-card { background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); margin-bottom: 14px; overflow: hidden; }
@@ -187,7 +187,7 @@ body { font-size: inherit; overflow: hidden; }
 .theme-name-in { flex: 1; min-width: 0; font-family: var(--font-body); font-size: 1.077rem; font-weight: 600; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: 4px 6px; outline: none; }
 .theme-name-in:hover { border-color: var(--border); }
 .theme-name-in:focus { border-color: var(--accent-bd); background: var(--bg); }
-.theme-count { font-size: 0.808rem; font-weight: 600; font-family: var(--font-mono); background: var(--secondary); color: var(--muted-fg); padding: 2px 8px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.theme-count { font-size: 0.846rem; font-weight: 600; font-family: var(--font-mono); background: var(--secondary); color: var(--muted-fg); padding: 2px 8px; border-radius: var(--radius-pill); flex-shrink: 0; }
 .theme-ungrouped .theme-name-static { flex: 1; font-size: 1.077rem; font-weight: 600; color: var(--muted-fg); padding: 4px 6px; }
 
 .theme-body { padding: 6px 12px 12px; }
@@ -307,6 +307,16 @@ let _pendingFocusTagId = null;
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
+
+function escJsAttr(s) {
+  // For a value that lands in JavaScript that lands in an HTML attribute — two
+  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
+  // parser; esc() closes off the attribute for the HTML parser, which unwraps
+  // its layer first and hands the JS parser exactly the literal we wrote.
+  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
+  // gives the apostrophe back before the JS parser ever sees the string.
+  return esc(JSON.stringify(String(s ?? '')));
+}
 function tagColor(c) {
   if (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
   return _TAG_TOKEN_COLORS[c] || '#a0a0b8';
@@ -367,16 +377,16 @@ function tagEditHtml(tag) {
   return `
     <div class="tag-edit" data-tag-id="${esc(tag.id)}">
       <div class="sw-cell">
-        <button class="swatch" style="background:${col}" title="Code color" onclick="openColorPop(this,'tag','${esc(tag.id)}')"></button>
+        <button class="swatch" style="background:${col}" title="Code color" onclick="openColorPop(this,'tag',${escJsAttr(tag.id)})"></button>
       </div>
       <input class="tag-name-in" type="text" value="${esc(tag.name)}" placeholder="Code name"
-             onchange="updateTagField('${esc(tag.id)}','name',this.value)" />
+             onchange="updateTagField(${escJsAttr(tag.id)},'name',this.value)" />
       <textarea class="tag-desc-in" rows="1" placeholder="Definition — when does this code apply?"
-                onchange="updateTagField('${esc(tag.id)}','description',this.value)">${esc(tag.description || '')}</textarea>
-      <select class="theme-select" title="Move to theme" onchange="changeTagTheme('${esc(tag.id)}',this.value)">
+                onchange="updateTagField(${escJsAttr(tag.id)},'description',this.value)">${esc(tag.description || '')}</textarea>
+      <select class="theme-select" title="Move to theme" onchange="changeTagTheme(${escJsAttr(tag.id)},this.value)">
         ${themeOptionsHtml(tag.group_id || '')}
       </select>
-      <button class="icon-btn danger tag-del-btn" title="Delete code" onclick="deleteTag('${esc(tag.id)}')"><span class="x" aria-hidden="true">&times;</span></button>
+      <button class="icon-btn danger tag-del-btn" title="Delete code" onclick="deleteTag(${escJsAttr(tag.id)})"><span class="x" aria-hidden="true">&times;</span></button>
     </div>`;
 }
 
@@ -391,21 +401,21 @@ function themeCardHtml(theme, idx) {
         <button class="chevron-btn" onclick="toggleTheme(this)" title="Collapse / expand">
           <svg viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="swatch" style="background:${col}" title="Theme color" onclick="openColorPop(this,'theme','${esc(theme.id)}')"></button>
+        <button class="swatch" style="background:${col}" title="Theme color" onclick="openColorPop(this,'theme',${escJsAttr(theme.id)})"></button>
         <input class="theme-name-in" type="text" value="${esc(theme.name)}" placeholder="Theme name"
-               onchange="updateThemeField('${esc(theme.id)}','name',this.value)" />
+               onchange="updateThemeField(${escJsAttr(theme.id)},'name',this.value)" />
         <span class="theme-count">${themeTags.length}</span>
-        <button class="icon-btn" title="Move up" ${idx === 0 ? 'disabled' : ''} onclick="moveTheme('${esc(theme.id)}',-1)">
+        <button class="icon-btn" title="Move up" ${idx === 0 ? 'disabled' : ''} onclick="moveTheme(${escJsAttr(theme.id)},-1)">
           <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="icon-btn" title="Move down" ${idx === themes.length - 1 ? 'disabled' : ''} onclick="moveTheme('${esc(theme.id)}',1)">
+        <button class="icon-btn" title="Move down" ${idx === themes.length - 1 ? 'disabled' : ''} onclick="moveTheme(${escJsAttr(theme.id)},1)">
           <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="icon-btn danger" title="Delete theme (codes become ungrouped)" onclick="deleteTheme('${esc(theme.id)}')"><span class="x" aria-hidden="true">&times;</span></button>
+        <button class="icon-btn danger" title="Delete theme (codes become ungrouped)" onclick="deleteTheme(${escJsAttr(theme.id)})"><span class="x" aria-hidden="true">&times;</span></button>
       </div>
       <div class="theme-body">
         ${rows}
-        <button class="btn-new add-tag-btn" onclick="addTag('${esc(theme.id)}')">+ Add code to this theme</button>
+        <button class="btn-new add-tag-btn" onclick="addTag(${escJsAttr(theme.id)})">+ Add code to this theme</button>
       </div>
     </div>`;
 }
@@ -528,7 +538,7 @@ function openColorPop(anchor, kind, id) {
   const grid = document.getElementById('colorGrid');
   const current = anchor.style.background;
   grid.innerHTML = TAG_PALETTE.map(hex =>
-    `<button class="color-swatch" style="background:${hex}" title="${hex}" onclick="pickColor('${hex}')"></button>`
+    `<button class="color-swatch" style="background:${hex}" title="${hex}" onclick="pickColor(${escJsAttr(hex)})"></button>`
   ).join('');
   const rect = anchor.getBoundingClientRect();
   pop.style.left = Math.min(rect.left, window.innerWidth - 170) + 'px';
