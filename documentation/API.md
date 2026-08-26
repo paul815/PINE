@@ -41,13 +41,19 @@ All JSON responses use `Content-Type: application/json`. Errors return `{ "error
 
 ### Recordings
 
+`num_speakers` is optional on every endpoint that accepts it. Without it,
+diarization uses the `PINE_MIN_SPEAKERS`/`PINE_MAX_SPEAKERS` range, which
+defaults to **2..4** — PINE's material is interviews with two to four
+participants. A monologue or a group of five and up falls outside that
+range and has to pass an explicit count (or run with different env values).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/<id>/recordings` | Upload file (multipart `file`) |
-| POST | `/<id>/recordings/link` | Link external file; body `{ "path": "/absolute/path" }` |
+| POST | `/<id>/recordings` | Upload file (multipart `file`, optional `num_speakers` 1–10) |
+| POST | `/<id>/recordings/link` | Link external file; body `{ "path": "/absolute/path", "num_speakers": 2 }` (count optional) |
 | POST | `/<id>/recordings/multitrack` | Register material with one track per speaker; body `{ "folder": "/path/to/zoom/meeting" }` or `{ "path": "/file/with/one/channel/per/speaker" }`. Never copies — paths are stored as-is. Diarization is skipped for these. |
 | GET | `/<id>/recordings/<rid>` | Recording + transcript + tags + annotations |
-| PATCH | `/<id>/recordings/<rid>` | Update recording; body `{ "segment_id", "participant_notes", "original_name" }` |
+| PATCH | `/<id>/recordings/<rid>` | Update recording; body `{ "segment_id", "participant_notes", "original_name", "num_speakers" }` |
 | DELETE | `/<id>/recordings/<rid>` | Delete recording and files |
 | DELETE | `/<id>/recordings/<rid>/transcription` | Cancel in-progress transcription (409 if not transcribing) |
 | GET | `/<id>/recordings/<rid>/media` | Stream media file |

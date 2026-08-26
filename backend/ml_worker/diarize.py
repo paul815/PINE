@@ -40,7 +40,12 @@ def speaker_kwargs(num_speakers=None):
     When the recording has an explicit speaker count, pin pyannote to
     exactly that many speakers (best quality when the count is known —
     e.g. 2 for a 1-on-1 interview, which avoids a spurious third voice).
-    Otherwise fall back to the env min/max hints.
+    Otherwise fall back to the env min/max hints, which default to 2..4.
+    That range is a constraint, not a guess: PINE only ever runs on
+    interview recordings with two to four participants. Material outside
+    that range — a monologue, or a group of five and up — needs an explicit
+    num_speakers on the recording, or PINE_MIN_SPEAKERS / PINE_MAX_SPEAKERS
+    for a whole batch.
     """
     try:
         n = int(num_speakers) if num_speakers else 0

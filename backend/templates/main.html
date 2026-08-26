@@ -554,10 +554,6 @@ body { font-size: inherit; }
 .dz-title { font-size: 1.077rem; font-weight: 500; color: var(--fg); margin-top: 8px; }
 .dz-sub { font-size: 0.923rem; color: var(--muted-fg); margin-top: 4px; }
 .drop-zone.uploading { pointer-events: none; opacity: 0.6; }
-.spk-prompt-opts { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-.spk-prompt-opt { display: flex; align-items: center; gap: 8px; font-size: 1rem; cursor: pointer; }
-.spk-prompt-opt input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: inherit; font-family: var(--font-body); font-size: 1rem; text-align: center; }
-.spk-prompt-opt input[type=number]:focus { outline: none; border-color: var(--accent); }
 
 .dz-wrap { position: relative; }
 .dz-foot {
@@ -900,23 +896,6 @@ label.att-upload-zone.drop-zone { display: block; }
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
       <button class="btn-delete-confirm" id="deleteConfirmBtn">Delete permanently</button>
-    </div>
-  </div>
-</div>
-
-<!-- Speaker-count prompt (mandatory before adding a recording) -->
-<div class="overlay" id="speakersOverlay" onclick="if(event.target===this)cancelSpeakersPrompt()">
-  <div class="modal" style="width:380px">
-    <div class="modal-title">How many speakers?</div>
-    <div class="modal-desc">How many people speak in <span id="spkPromptCount">this recording</span>? This guides speaker identification. Choose <b>Auto</b> if you're unsure.</div>
-    <div class="spk-prompt-opts">
-      <label class="spk-prompt-opt"><input type="radio" name="spkPromptMode" value="auto" checked> Auto-detect</label>
-      <label class="spk-prompt-opt"><input type="radio" name="spkPromptMode" value="exact"> Exactly
-        <input type="number" id="spkPromptNum" min="1" max="10" step="1" value="2" onfocus="_spkPromptPickExact()" oninput="_spkPromptPickExact()" /></label>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="cancelSpeakersPrompt()">Cancel</button>
-      <button class="btn-primary" onclick="confirmSpeakersPrompt()">Start transcription</button>
     </div>
   </div>
 </div>
@@ -1907,10 +1886,9 @@ function setupDzHintPopover(pid) {
   });
 }
 
-async function linkPathsFromPicker(pid, paths, numSpeakers) {
+async function linkPathsFromPicker(pid, paths) {
   for (const filePath of paths) {
     const body = { path: filePath };
-    if (numSpeakers) body.num_speakers = numSpeakers;
     const linkRes = await fetch(API + '/' + pid + '/recordings/link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1943,16 +1921,16 @@ async function openNativePickAndLink(pid) {
     setTitle(projectDzIdleTitle());
   }
   if (!paths.length) return;
-  promptSpeakers(paths.length, (numSpeakers) => linkPaths(pid, paths, numSpeakers));
+  linkPaths(pid, paths);
 }
 
-async function linkPaths(pid, paths, numSpeakers) {
+async function linkPaths(pid, paths) {
   const dz = document.getElementById('dropzone-' + pid);
   const setTitle = (t) => { if (dz) { const el = dz.querySelector('.dz-title'); if (el) el.textContent = t; } };
   if (dz) dz.classList.add('uploading');
   setTitle('Adding\u2026');
   try {
-    await linkPathsFromPicker(pid, paths, numSpeakers);
+    await linkPathsFromPicker(pid, paths);
     await selectProject(pid);
   } catch (e) {
     toast(e.message, true);
@@ -2073,71 +2051,14 @@ async function openChannelTrackPick(pid) {
   if (added) toast('Added ' + found.tracks.length + ' channels as separate speakers');
 }
 
-// ── Mandatory speaker-count prompt (shown before every add) ──
-let _spkPromptOnConfirm = null;
-
 function startUpload(pid, files) {
   const arr = [...files];
   if (!arr.length) return;
-  promptSpeakers(arr.length, (numSpeakers) => uploadFiles(pid, arr, numSpeakers));
-}
-
-function _playAwaitingInputSound() {
-  try {
-    if ((_appSettings.transcription_complete_sound_enabled || 'true') === 'false') return;
-    const vol = parseInt(_appSettings.transcription_complete_sound_volume, 10);
-    const volume = (Number.isFinite(vol) ? Math.max(0, Math.min(100, vol)) : 50) / 100;
-    if (volume <= 0) return;
-    const audio = new Audio('/static/sounds/install-complete.mp3');
-    audio.volume = volume;
-    audio.play().catch(() => {});
-  } catch (e) {}
-}
-
-function promptSpeakers(count, onConfirm) {
-  _spkPromptOnConfirm = onConfirm;
-  const c = document.getElementById('spkPromptCount');
-  if (c) c.textContent = count > 1 ? (count + ' recordings') : 'this recording';
-  const auto = document.querySelector('input[name="spkPromptMode"][value="auto"]');
-  if (auto) auto.checked = true;
-  const num = document.getElementById('spkPromptNum');
-  if (num) num.value = 2;
-  document.getElementById('speakersOverlay').classList.add('show');
-  document.addEventListener('keydown', _spkPromptKey);
-  _playAwaitingInputSound();
-}
-
-function _spkPromptKey(e) {
-  if (e.key === 'Escape') { e.preventDefault(); cancelSpeakersPrompt(); }
-  else if (e.key === 'Enter') { e.preventDefault(); confirmSpeakersPrompt(); }
-}
-
-function _spkPromptPickExact() {
-  const ex = document.querySelector('input[name="spkPromptMode"][value="exact"]');
-  if (ex) ex.checked = true;
-}
-
-function cancelSpeakersPrompt() {
-  document.getElementById('speakersOverlay').classList.remove('show');
-  document.removeEventListener('keydown', _spkPromptKey);
-  _spkPromptOnConfirm = null;
-}
-
-function confirmSpeakersPrompt() {
-  const sel = document.querySelector('input[name="spkPromptMode"]:checked');
-  let numSpeakers = '';
-  if (sel && sel.value === 'exact') {
-    let n = parseInt(document.getElementById('spkPromptNum').value, 10);
-    if (!Number.isFinite(n) || n < 1) n = 1;
-    numSpeakers = String(Math.min(n, 10));
-  }
-  const cb = _spkPromptOnConfirm;
-  cancelSpeakersPrompt();
-  if (cb) cb(numSpeakers);
+  uploadFiles(pid, arr);
 }
 
 // ── Upload (copy mode only; linking uses openNativePickAndLink) ──
-async function uploadFiles(pid, files, numSpeakers) {
+async function uploadFiles(pid, files) {
   const dz = document.getElementById('dropzone-' + pid);
   const arr = [...files];
   if (!arr.length) return;
@@ -2151,7 +2072,6 @@ async function uploadFiles(pid, files, numSpeakers) {
     for (const file of arr) {
       const fd = new FormData();
       fd.append('file', file);
-      if (numSpeakers) fd.append('num_speakers', numSpeakers);
       const res = await fetch(API + '/' + pid + '/recordings', { method: 'POST', body: fd });
       if (!res.ok) throw new Error('Upload failed for ' + file.name);
     }
