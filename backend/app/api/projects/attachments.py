@@ -15,6 +15,35 @@ def _attachments_dir(project_dir):
 def _attachments_meta_path(project_dir):
     return os.path.join(project_dir, 'attachments.json')
 
+def _attachment_file(project_dir, entry):
+    """Resolve one attachment's file, or None if it points outside the folder.
+
+    ``stored_name`` is written by the upload route, but it is *read back* out of
+    attachments.json — a file that travels with the project folder. Projects get
+    shared, restored from someone else's backup and edited by hand, so the name
+    on disk is not ours to trust: joined blind, a ``../../..`` in there is an
+    arbitrary file read on the download route and an arbitrary delete on the
+    other one. realpath resolves any symlink hop before the containment test.
+    """
+    stored = entry.get('stored_name') or ''
+    if not stored:
+        return None
+    att_dir = os.path.realpath(_attachments_dir(project_dir))
+    resolved = os.path.realpath(os.path.join(att_dir, stored))
+    # Strictly inside: a bare "." resolves to att_dir itself, which is a
+    # directory no caller here has any business opening or deleting.
+    if not resolved.startswith(att_dir + os.sep):
+        return None
+    return resolved
+
+def _find_attachment(project_dir, aid):
+    """The entry with this id, tolerating malformed rows in a hand-edited file."""
+    return next(
+        (a for a in _load_attachments(project_dir)
+         if isinstance(a, dict) and a.get('id') == aid),
+        None,
+    )
+
 def _load_attachments(project_dir):
     path = _attachments_meta_path(project_dir)
     if not os.path.isfile(path):
@@ -81,7 +110,7 @@ def rename_attachment(project_id, aid):
     project_dir = os.path.join(_projects_root(), project.folder_name)
     attachments = _load_attachments(project_dir)
     for att in attachments:
-        if att['id'] == aid:
+        if isinstance(att, dict) and att.get('id') == aid:
             att['display_name'] = new_name
             _save_attachments(project_dir, attachments)
             return jsonify(att)
@@ -94,13 +123,18 @@ def delete_attachment(project_id, aid):
         return jsonify({'error': 'Project not found'}), 404
     project_dir = os.path.join(_projects_root(), project.folder_name)
     attachments = _load_attachments(project_dir)
-    found = next((a for a in attachments if a['id'] == aid), None)
+    found = _find_attachment(project_dir, aid)
     if not found:
         return jsonify({'error': 'Attachment not found'}), 404
-    file_path = os.path.join(_attachments_dir(project_dir), found['stored_name'])
-    if os.path.isfile(file_path):
+    file_path = _attachment_file(project_dir, found)
+    if file_path and os.path.isfile(file_path):
         os.remove(file_path)
-    _save_attachments(project_dir, [a for a in attachments if a['id'] != aid])
+    # The metadata row goes either way: an entry whose file we refuse to touch
+    # is exactly the one the project should stop carrying.
+    _save_attachments(project_dir, [
+        a for a in attachments
+        if not (isinstance(a, dict) and a.get('id') == aid)
+    ])
     return jsonify({'ok': True})
 
 @projects_bp.route('/<int:project_id>/attachments/<aid>/download', methods=['GET'])
@@ -109,10 +143,11 @@ def download_attachment(project_id, aid):
     if not project:
         return jsonify({'error': 'Project not found'}), 404
     project_dir = os.path.join(_projects_root(), project.folder_name)
-    found = next((a for a in _load_attachments(project_dir) if a['id'] == aid), None)
+    found = _find_attachment(project_dir, aid)
     if not found:
         return jsonify({'error': 'Attachment not found'}), 404
-    file_path = os.path.join(_attachments_dir(project_dir), found['stored_name'])
-    if not os.path.isfile(file_path):
+    file_path = _attachment_file(project_dir, found)
+    if not file_path or not os.path.isfile(file_path):
         return jsonify({'error': 'File not found on disk'}), 404
-    return send_file(file_path, as_attachment=True, download_name=found['display_name'])
+    return send_file(file_path, as_attachment=True,
+                     download_name=found.get('display_name') or 'attachment')
