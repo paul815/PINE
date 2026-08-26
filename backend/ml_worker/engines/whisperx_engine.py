@@ -50,6 +50,43 @@ def _perf(label):
         log.info('PERF: %s took %.1fs', label, time.monotonic() - t0)
 
 
+# CTranslate2's caching allocator keeps growing until the card is full. Measured
+# 2026-08-26 on a 12 GB card: during decode the whisper model held everything —
+# nvidia-smi read 12281/12282 MiB used, 0 MiB free, 100% utilisation at 58 W of
+# 220 — and every torch stage around it (VAD, alignment, pyannote) then ran out
+# of host memory through WDDM paging instead of VRAM. The same 498s chunk took
+# 7.1s in one job and 841.7s in the next with no setting changed. Windows pages
+# rather than raising OOM, so the retry below never sees it; bounding the cache
+# is what leaves the torch stages a working set. CT2 still allocates whatever a
+# batch genuinely needs — this caps only what it holds on to between batches.
+CT2_ALLOCATOR_CONFIG = '4,3,10,1073741824'  # bin_growth,min_bin,max_bin,max_cached_bytes
+
+
+def cap_ct2_allocator():
+    """Bound the CTranslate2 CUDA cache unless the machine already set a policy.
+
+    Read by CT2 when it creates the allocator, i.e. on the first model load, so
+    this has to run before whisperx.load_model().
+    """
+    existing = os.environ.get('CT2_CUDA_CACHING_ALLOCATOR_CONFIG')
+    if existing:
+        log.info('CT2 caching allocator left as configured: %s', existing)
+        return
+    os.environ['CT2_CUDA_CACHING_ALLOCATOR_CONFIG'] = CT2_ALLOCATOR_CONFIG
+    log.info('CT2 caching allocator capped at %s', CT2_ALLOCATOR_CONFIG)
+
+
+def free_vram_gb():
+    """Free VRAM in GB, or None off CUDA."""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return None
+        return torch.cuda.mem_get_info()[0] / (1024 ** 3)
+    except Exception:      # noqa: BLE001 — diagnostics must never break a job
+        return None
+
+
 def detect_torch_device():
     """Return (device, compute_type) for CTranslate2/whisperx on this machine."""
     try:
@@ -160,6 +197,8 @@ class WhisperXEngine(EngineAdapter):
         self._model = None
         if self._device is None:
             self._device, self._compute_type = detect_torch_device()
+        if self._device == 'cuda':
+            cap_ct2_allocator()
         import whisperx
         log.info('Loading WhisperX model from %s ...', model_dir)
         self._model = whisperx.load_model(
@@ -237,11 +276,52 @@ class WhisperXEngine(EngineAdapter):
         self._cached_align_device = device
         return model_a, metadata
 
+    # Below this the align model's ~1.2 GB costs more than the ~4s reload it saves:
+    # the next chunk's decode would page instead of getting the memory.
+    ALIGN_KEEP_FREE_GB = 1.5
+
+    def _release_align_model_if_starved(self):
+        """Give the cached align model back when the card has nothing left."""
+        if self._cached_align_model is None:
+            return
+        free_gb = free_vram_gb()
+        if free_gb is None or free_gb >= self.ALIGN_KEEP_FREE_GB:
+            return
+        log.info('Only %.1f GB VRAM free — releasing the cached align model',
+                 free_gb)
+        self._cached_align_model = None
+        self._cached_align_metadata = None
+        self._cached_align_language = None
+        self._cached_align_device = None
+        gc.collect()
+        import torch
+        torch.cuda.empty_cache()
+
     # ── decoding ──
+
+    def _pick_batch_size(self):
+        """Start from the batch the free VRAM actually supports.
+
+        A fixed 16 is only safe with room to spare: on Windows an overcommit
+        does not raise OOM, it pages, and the halving path below never runs.
+        """
+        if self._device != 'cuda':
+            return 4
+        free_gb = free_vram_gb()
+        if free_gb is None:
+            return 16
+        for needed, size in ((4.0, 16), (2.5, 8), (1.5, 4)):
+            if free_gb >= needed:
+                if size < 16:
+                    log.info('Decoding with batch_size=%d (%.1f GB VRAM free)',
+                             size, free_gb)
+                return size
+        log.warning('Only %.1f GB VRAM free — decoding with batch_size=2', free_gb)
+        return 2
 
     def _transcribe_with_oom_retry(self, audio, language=None):
         """Transcribe with automatic batch_size halving on CUDA OOM."""
-        batch_size = 16 if self._device == 'cuda' else 4
+        batch_size = self._pick_batch_size()
         min_batch = 2
 
         while batch_size >= min_batch:
@@ -306,8 +386,10 @@ class WhisperXEngine(EngineAdapter):
                        f'~{fmt_elapsed(remaining)} remaining')
 
             ctx.on_status(stage='transcribing', message=msg, percent=pct, eta_secs=eta)
-            log.info('Chunk %d/%d  offset=%.0fs  duration=%.0fs',
-                     i + 1, total_chunks, offset, duration)
+            free_gb = free_vram_gb()
+            log.info('Chunk %d/%d  offset=%.0fs  duration=%.0fs%s',
+                     i + 1, total_chunks, offset, duration,
+                     '' if free_gb is None else f'  vram_free={free_gb:.1f}GB')
 
             with _perf(f'chunk {i + 1} decode'):
                 chunk_audio = load_audio_range(audio_path, offset, duration)
@@ -358,6 +440,7 @@ class WhisperXEngine(EngineAdapter):
             if self._device == 'cuda':
                 import torch
                 torch.cuda.empty_cache()
+                self._release_align_model_if_starved()
             ctx.check_cancel()
 
         all_segments.sort(key=lambda s: s.get('start', 0))
