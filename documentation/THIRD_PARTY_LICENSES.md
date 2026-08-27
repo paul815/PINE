@@ -46,7 +46,7 @@ added separately. Confirm the source before the next release.
 
 | File | Component | License |
 |---|---|---|
-| `socket.io.min.js` | Socket.IO client 4.7.5, © 2014-2024 Guillermo Rauch | MIT (stated in the file header) |
+| `socket.io.min.js` | Socket.IO client 4.8.3, © 2014-2025 Guillermo Rauch | MIT (stated in the file header) |
 
 ---
 
