@@ -108,28 +108,43 @@ def test_an_empty_file_is_named_as_empty(tmp_path, monkeypatch):
         job_runner._wait_for_media(_job(stump))
 
 
+class _GrowsWhileItWaits:
+    """Stands in for job_runner's ``time``, appending on every poll sleep.
+
+    A writer thread racing the poll is a coin toss: the loop calls a file
+    settled the moment two samples agree, and on a loaded runner the sampler
+    takes both of them inside one 10 ms gap between appends. That is a fact
+    about the runner's scheduler, not about the code under test, and it took
+    the Windows job down. Growing the file from the loop's own sleep pins the
+    order — one append per interval, always — while leaving the real os.stat
+    on a real growing file, which is the part worth testing.
+    """
+
+    def __init__(self, path):
+        self._path = path
+
+    def monotonic(self):
+        return time.monotonic()
+
+    def time(self):
+        return time.time()
+
+    def sleep(self, seconds):
+        with open(self._path, 'ab') as handle:
+            handle.write(b'x' * 64)
+        time.sleep(seconds)
+
+
 def test_a_file_still_being_written_is_named_as_such(tmp_path, monkeypatch):
     monkeypatch.setattr(job_runner, 'MEDIA_SETTLE_TIMEOUT_SEC', 0.3)
     monkeypatch.setattr(job_runner, 'MEDIA_SETTLE_INTERVAL_SEC', 0.01)
     growing = tmp_path / 'rec.m4a'
     growing.write_bytes(b'x')
 
-    stop = threading.Event()
+    monkeypatch.setattr(job_runner, 'time', _GrowsWhileItWaits(growing))
 
-    def keep_writing():
-        while not stop.is_set():
-            with open(growing, 'ab') as handle:
-                handle.write(b'x' * 64)
-            time.sleep(0.005)
-
-    writer = threading.Thread(target=keep_writing, daemon=True)
-    writer.start()
-    try:
-        with pytest.raises(RuntimeError, match='still being written'):
-            job_runner._wait_for_media(_job(growing))
-    finally:
-        stop.set()
-        writer.join(timeout=2)
+    with pytest.raises(RuntimeError, match='still being written'):
+        job_runner._wait_for_media(_job(growing))
 
 
 def test_a_copy_that_finishes_in_time_is_waited_out(tmp_path, monkeypatch):
