@@ -14,7 +14,7 @@ Interview transcription and analysis for UX researchers — running entirely on 
 [![Platform: Windows | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#requirements)
 [![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/paul815/pine/releases)
 
-[Install](#install) · [Requirements](#requirements) · [Speed](#models-and-speed) · [Privacy](#privacy-and-network) · [Docs](#documentation)
+[Install](#install) · [Requirements](#requirements) · [Privacy](#privacy-and-network) · [Docs](#documentation)
 
 </div>
 
@@ -160,23 +160,6 @@ The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab 
 | Download | Models and ML packages, several GB, one time |
 
 > **HuggingFace token:** create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (read access is enough) and accept the conditions on [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1). Without the accepted licence the download fails with a 401.
-
----
-
-## Models and speed
-
-| Model | Runs on | Download | VRAM | Language |
-|---|---|---|---|---|
-| **Whisper large-v3** | GPU — Neural Engine on Apple Silicon | ~3 GB | 6.5 GB | Set it yourself, or auto-detect |
-
-Measured on an RTX 4070 SUPER against real interview recordings — one hour of audio:
-
-| Configuration | Time for 1 hour |
-|---|---|
-| Whisper turbo, CPU int8 | ~17 min |
-| Whisper large-v3, CPU int8 | ~1 h 48 min |
-
-The graphics card is worth having: on the CPU, Whisper pays a 17–23x penalty.
 
 ---
 
