@@ -9,9 +9,10 @@ Two things make this more than `pip install`:
 * **The right torch.** On Windows/Linux `torchruntime` picks a CUDA or CPU
   wheel index for the detected GPU; on Apple Silicon the plain wheel is right.
 * **Keeping the companions aligned.** torchaudio and torchvision must come from
-  the same channel as torch (`+cu128` vs `+cpu`). PINE imports neither directly,
-  but whisperx pins both, and pip will happily install a CPU torchaudio next to a
-  CUDA torch, which then fails at import with an unhelpful symbol error. So
+  the same channel as torch (`+cu128` vs `+cpu`). whisperx pins both; torchaudio
+  is PINE's own besides — it ships the wav2vec2 alignment bundle and backs
+  pyannote — and pip will happily install a CPU torchaudio next to a CUDA torch,
+  which then fails at import with an unhelpful symbol error. So
   `repair_torch_companion_wheels_if_needed()` checks the channels on startup and
   reinstalls the odd one out.
 
@@ -40,7 +41,7 @@ _PIP_ENV = {**os.environ, 'PIP_REQUIRE_VIRTUALENV': '1', 'PYTHONNOUSERSITE': '1'
 if IS_MAC:
     REQUIRED_PACKAGES = [
         ('torch', 'torch', 'PyTorch ML runtime'),
-        ('torchaudio', 'torchaudio', 'Audio processing'),
+        ('torchaudio', 'torchaudio', 'Audio backend for pyannote'),
         ('mlx_whisper', 'mlx-whisper', 'Transcription (mlx-whisper, Metal-accelerated)'),
         ('pyannote.audio', 'pyannote-audio', 'Speaker diarization (pyannote)'),
     ]
@@ -50,7 +51,8 @@ else:
     REQUIRED_PACKAGES = [
         ('torchruntime', 'torchruntime', 'GPU auto-detection'),
         ('torch', 'torch', 'PyTorch ML runtime'),
-        ('torchaudio', 'torchaudio', 'Audio processing'),
+        ('torchaudio', 'torchaudio', 'Alignment model + pyannote audio backend'),
+        ('torchvision', 'torchvision', 'Torch companion pinned by WhisperX'),
         ('whisperx', 'whisperx', 'Transcription + alignment (WhisperX)'),
         ('faster_whisper', 'faster-whisper', 'Whisper inference engine'),
         ('pyannote.audio', 'pyannote-audio', 'Speaker diarization (pyannote)'),
