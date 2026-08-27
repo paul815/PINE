@@ -232,13 +232,7 @@ body { font-size: inherit; }
   margin-bottom: 2px; display: flex; align-items: center; gap: 7px;
 }
 .mod-desc { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.4; }
-.stt-choice { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-.stt-opt {
-  display: grid; grid-template-columns: auto 1fr; align-items: baseline;
-  gap: 8px; font-size: 0.923rem; line-height: 1.4;
-}
-.stt-opt-name { color: var(--fg); font-weight: 500; white-space: nowrap; }
-.stt-opt-note { color: var(--muted-fg); }
+#baseModDesc { margin-top: 3px; }
 .total-row {
   display: flex; justify-content: flex-end; align-items: center; gap: 8px;
   font-size: 0.923rem; color: var(--muted-fg); margin-bottom: 28px; padding-top: 8px;
@@ -603,8 +597,8 @@ body { font-size: inherit; }
           <div class="chk"><svg viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 4-4" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="mod-info">
             <div class="mod-name">Transcription + Speaker diarization <span class="badge badge-dim">Required</span></div>
-            <div class="mod-desc" id="baseModDesc"></div>
             <div class="stt-choice" id="sttChoice"></div>
+            <div class="mod-desc" id="baseModDesc"></div>
           </div>
           <div class="setup-size-meta" id="baseSizeLabel">~4 GB</div>
         </div>
@@ -1116,24 +1110,23 @@ let sttModelId = '';       // the one this setup will download
 
 // Where the work happens and what that costs.
 const STT_MODEL_NOTES = {
-  'whisperx-large-v3': 'Runs on the GPU · language can be set by hand',
-  'mlx-whisper-large-v3': 'Runs on the Neural Engine · language can be set by hand',
+  'whisperx-large-v3': 'runs on the GPU',
+  'mlx-whisper-large-v3': 'runs on the Neural Engine',
 };
 
 function renderSttChoice() {
   const host = document.getElementById('sttChoice');
   if (!host) return;
   const model = (sttModels || []).find(m => m.id === sttModelId) || sttModels[0];
-  host.innerHTML = model ? `
-    <div class="stt-opt">
-      <span class="stt-opt-name">${model.name}</span>
-      <span class="stt-opt-note">${STT_MODEL_NOTES[model.id] || ''}</span>
-    </div>` : '';
+  const note = model ? (STT_MODEL_NOTES[model.id] || '') : '';
+  host.innerHTML = model
+    ? `<div class="mod-desc">${model.name}${note ? ' &mdash; ' + note : ''}</div>`
+    : '';
 }
 
 function onModulesStepShow() {
   const desc = document.getElementById('baseModDesc');
-  if (desc) desc.textContent = 'pyannote 3.1 speaker diarization · word-level timestamps, up to 6 speakers';
+  if (desc) desc.textContent = 'pyannote speaker-diarization-community-1 · word-level timestamps';
   renderSttChoice();
   updateTotal();
 }
