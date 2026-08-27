@@ -8,6 +8,7 @@
 # Everything not listed here is deleted, so add source and dev files, never user
 # data (projects/, backups/, backend/data/, backend/logs/).
 
+AGENTS.md
 .editorconfig
 .gitattributes
 .github

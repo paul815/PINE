@@ -47,9 +47,7 @@ matter most:
 
 ## Known and accepted
 
-These are documented rather than fixed, and are tracked in
-[documentation/TODO.md](../documentation/TODO.md). Reporting them again is not
-necessary:
+These are documented rather than fixed. Reporting them again is not necessary:
 
 - **The backend has no authentication.** Any local process, and any page open in
   your browser that gets past the CORS list, can call the API. PINE is a local

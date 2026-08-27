@@ -33,11 +33,26 @@ All JSON responses use `Content-Type: application/json`. Errors return `{ "error
 | GET | `` | List active + archived projects |
 | POST | `` | Create project; body `{ "name" }` |
 | GET | `/<id>` | Get project with recordings |
-| PATCH | `/<id>` | Update name, description, objective, research_questions, hypotheses, summary |
+| PATCH | `/<id>` | Update any subset of the project fields (see below). Renaming also renames the folder on disk and rewrites `folder_name` |
 | DELETE | `/<id>` | Delete project and folder |
 | POST | `/<id>/archive` | Archive project |
 | POST | `/<id>/unarchive` | Unarchive project |
-| GET | `/<id>/transfer` | Download project as ZIP (no audio) |
+| GET | `/<id>/transfer` | Download project as ZIP (no audio) — holds `project.json`, `project_tags.json`, `project_themes.json`, the project `README.md`, and every transcript under `transcripts/` with its annotations under `annotations/` |
+
+`PATCH /<id>` accepts, in three groups:
+
+- **Plain text** — `name`, `description`, `objective`, `summary`, `icon`,
+  `results_recommendations`, `further_steps`, `methodology`, `interview_guide`,
+  `key_findings`, `recommendations` (each stripped; an empty string clears it)
+- **Lists**, stored as JSON — `research_questions`, `hypotheses`, `stakeholders`,
+  `enabled_sections`, `enabled_summary_sections`, `custom_sections`,
+  `custom_summary_sections`
+- **`default_transcription_language`** — a code such as `ru`, matched against
+  `^[a-z][a-z0-9_]{0,15}$` (`""` clears it); anything else returns **400**. When
+  set, it answers the language prompt ahead of time for every recording in the
+  project
+
+Unknown keys are ignored. The response is the full project.
 
 ### Recordings
 
@@ -46,6 +61,15 @@ diarization uses the `PINE_MIN_SPEAKERS`/`PINE_MAX_SPEAKERS` range, which
 defaults to **2..4** — PINE's material is interviews with two to four
 participants. A monologue or a group of five and up falls outside that
 range and has to pass an explicit count (or run with different env values).
+
+The spoken language is detected by the worker, not asked for at upload. When the
+detector is unsure — confidence below `PINE_LANG_CONFIDENCE_MIN` (0.82), or two
+candidates within `PINE_LANG_CONFIDENCE_MARGIN` (0.10) of each other — the job
+stops mid-flight and parks the recording in `awaiting_language`. The
+`transcription:status` event for that state carries the guess and the shortlist,
+and the job thread waits until `POST …/transcription/language` answers it. A
+project that sets `default_transcription_language` never sees the question;
+`PINE_SKIP_LANG_CONFIRM=1` turns the prompt off globally.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -56,10 +80,11 @@ range and has to pass an explicit count (or run with different env values).
 | PATCH | `/<id>/recordings/<rid>` | Update recording; body `{ "segment_id", "participant_notes", "original_name", "num_speakers" }` |
 | DELETE | `/<id>/recordings/<rid>` | Delete recording and files |
 | DELETE | `/<id>/recordings/<rid>/transcription` | Cancel in-progress transcription (409 if not transcribing) |
+| POST | `/<id>/recordings/<rid>/transcription/language` | Answer the language prompt and let the job continue; body `{ "language": "ru" }`, matched against `^[a-z][a-z0-9_]{0,15}$`. **409** unless the recording sits in `awaiting_language`, **404** when the prompt has already been withdrawn |
 | GET | `/<id>/recordings/<rid>/media` | Stream media file |
 | GET | `/<id>/recordings/<rid>/transcript` | Raw transcript JSON |
 | POST | `/<id>/recordings/<rid>/transcript/replace` | Find & replace across the transcript text. Tag spans and comments live in a separate file and reference character offsets, so `services/transcript_edit.py` remaps every offset when a replacement changes a segment's length |
-| GET/POST | `/<id>/recordings/<rid>/export` | Export single recording; body `{ "format": "markdown" \| "odt", "include_comments", "include_tags", "remove_pii" }` |
+| GET/POST | `/<id>/recordings/<rid>/export` | Export single recording; body `{ "format": "markdown" \| "odt", "include_comments", "include_tags", "include_participant_details", "include_project_details", "include_prompt", "remove_pii", "use_recording_screen_prompt" }`. The last one swaps the project's LLM prompt for the recording-screen one (`export_default_prompt_recording` in Settings) |
 | GET/POST | `/<id>/export` | Export project (multiple recordings); body `{ "recording_ids", "format", "include_comments", "include_tags", "include_participant_details", "include_project_details", "include_prompt", "remove_pii", "separate_files" }`; with `separate_files: true` the response is a ZIP holding one document per recording |
 
 ### Tags & Annotations
@@ -121,7 +146,7 @@ range and has to pass an explicit count (or run with different env values).
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `` | All settings + `hf_token_masked`, `models`, `stt_models` |
-| PATCH | `` | Update; body `{ "font_size", "theme", "export_default_*" }`. `stt_model_id` returns **409** when that model is not installed |
+| PATCH | `` | Update any of the writable keys below. Anything outside that set is ignored, and a value that fails validation is dropped rather than erroring — except `stt_model_id`, which returns **409** when the model is not on disk |
 | POST | `/stt-model/install` | Download the transcription model; body `{ "model_id" }` |
 | POST | `/pii-model/install` | Download the optional GLiNER PII model after onboarding |
 | POST | `/pii-model/remove` | Delete it and free the disk space |
@@ -131,12 +156,23 @@ range and has to pass an explicit count (or run with different env values).
 | GET/POST | `/start-menu`, `/start-menu/add`, `/start-menu/remove` | Windows Start-menu shortcut |
 | GET/POST | `/desktop`, `/desktop/add`, `/desktop/remove` | Desktop shortcut |
 
+Writable keys (`ALLOWED_KEYS` in `api/settings.py`), stored as strings:
+
+| Group | Keys |
+|-------|------|
+| Appearance | `font_size`, `font_family` (whitelist), `theme` |
+| Export defaults | `export_default_format`, `export_default_comments`, `export_default_tags`, `export_default_project_details`, `export_default_participant_details`, `export_default_remove_pii`, `export_default_include_prompt`, `export_default_prompt`, `export_default_prompt_recording` |
+| Transcription | `stt_model_id` (409 if not installed), `transcription_timeout_secs`, `link_recordings`, `transcription_complete_sound_enabled`, `transcription_complete_sound_volume` (0–100) |
+| Backup | `backup_path`, `backup_include_audio`, `auto_backup_enabled`, `auto_backup_interval_hours`, `backup_retention_count` — touching any of these reschedules the auto-backup timer |
+| Other | `pii_threshold`, `last_open_project_id` (digits only), `app_launch_prompt_dismissed` |
+
 ---
 
 ## Other
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/health` | Readiness probe for the launcher; returns `{ "ok": true, "version" }` |
 | POST | `/api/quit` | Graceful server shutdown |
 | POST | `/api/utils/pick-file` | Native file picker; returns `{ "path" }` |
 | POST | `/api/utils/pick-files` | Native multi-file picker; returns `{ "paths" }` |
@@ -156,19 +192,38 @@ range and has to pass an explicit count (or run with different env values).
 {
   "id": 1,
   "name": "Project Name",
-  "folder_name": "Project_Name",
   "description": "",
   "objective": "",
-  "research_questions": "",
-  "hypotheses": "",
+  "research_questions": [],
+  "hypotheses": [],
   "summary": "",
-  "icon": "📄",
+  "results_recommendations": "",
+  "further_steps": "",
+  "stakeholders": [],
+  "enabled_sections": [],
+  "methodology": "",
+  "interview_guide": "",
+  "key_findings": "",
+  "recommendations": "",
+  "enabled_summary_sections": ["key_findings"],
+  "custom_sections": [],
+  "custom_summary_sections": [],
+  "icon": "",
   "is_archived": false,
-  "recordings": [...],
+  "archived_at": null,
+  "is_system": false,
+  "folder_name": "Project_Name",
+  "default_transcription_language": "",
+  "recording_count": 3,
   "created_at": "...",
   "updated_at": "..."
 }
 ```
+
+The seven list fields hold JSON in the database and come back parsed; a corrupt
+value reads as `[]` rather than raising. `recordings` is **not** part of this
+shape — only `GET /<id>` and the transfer package ask for it
+(`to_dict(include_recordings=True)`), everywhere else you get `recording_count`.
 
 ### Recording
 
@@ -196,7 +251,20 @@ range and has to pass an explicit count (or run with different env values).
 ```
 
 `source_kind` is `"single"` or `"multitrack"`; `track_count` is 0 for single-file
-recordings and the number of speaker tracks otherwise.
+recordings and the number of speaker tracks otherwise. `GET /<id>` adds a
+`segment_name` to each recording it returns; no other endpoint does.
+
+`transcription_status` is one of:
+
+| Value | Meaning |
+|-------|---------|
+| `pending` | Queued, or waiting for the single worker |
+| `transcribing` | The worker is on it |
+| `awaiting_language` | Stopped mid-job for a language answer; the job thread is parked, not dead |
+| `transcribed` | Done — `transcript_path` is written |
+| `error` | Failed; `error_message` says why |
+| `cancelling` | Cancellation asked for, worker not yet stopped |
+| `cancelled` | The worker confirmed the stop |
 
 ### Segment
 
@@ -254,7 +322,7 @@ All events are server → client. Names use a `namespace:event` form.
 
 | Event | Payload |
 |-------|---------|
-| `transcription:status` | `{ "recording_id", "status", "stage", "message", "percent"? }` — plus any extra keys the emitting stage adds. `status` is the recording's state (`pending`, `transcribing`, `transcribed`, `failed`), `stage` the step within it (`queued`, `asr`, `diarize`, …). Queue-position pings reuse this event with `stage: "queued"` and a `#k of N` message |
+| `transcription:status` | `{ "recording_id", "status", "stage", "message", "percent"? }` — plus any extra keys the emitting stage adds. `status` is the recording's state, `stage` the step within it (`queued`, `asr`, `diarize`, `language`, …). Queue-position pings reuse this event with `stage: "queued"` and a `#k of N` message. With `status: "awaiting_language"` it also carries `guessed_language`, `language_confidence` (`-1.0` when the detector returned none) and `language_options` |
 | `download:model_start` / `download:progress` / `download:model_complete` | Per-model download of weights |
 | `download:all_complete` / `download:error` | End of the whole download batch |
 | `install:start` / `install:log` / `install:complete` / `install:error` | pip install of the ML stack during onboarding — `install:log` carries raw output lines |

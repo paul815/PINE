@@ -39,6 +39,9 @@ pine_safety_backups/
 /Documentation/dev-config/.gitignore
 /Documentation/dev-config/.python-version
 /Documentation/dev-config/LICENSE
+# Same move, different destination: the installers park the root CLAUDE.md
+# (context-mode routing rules, itself ignored) here under a distinct name.
+/documentation/CLAUDE.context-mode.md
 
 # Test cache
 .pytest_cache/

@@ -11,8 +11,9 @@
 #                 Because MAC_Install.command runs its first-time setup only
 #                 when .venv is missing, this ALSO skips the install-time file
 #                 layout move — so it does not exercise the installer.
-#                 Must be OFF for release verification. See documentation/TODO.md,
-#                 section "Before release — dev-only test shortcuts".
+#                 Must be OFF for release verification: a release build has to be
+#                 reset with no flags, so the installer and the file-layout move
+#                 are exercised the way a first-time user hits them.
 
 set -e
 cd "$(dirname "$0")"

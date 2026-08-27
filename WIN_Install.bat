@@ -393,8 +393,10 @@ set "DEVCFG_DIR=%DOC_DIR%\dev-config"
 if not exist "%DOC_DIR%\" mkdir "%DOC_DIR%" >nul 2>nul
 if not exist "%DEVCFG_DIR%\" mkdir "%DEVCFG_DIR%" >nul 2>nul
 
-REM Docs -> documentation\ . The root CLAUDE.md is the context-mode routing copy and
-REM documentation\ already ships its own, so park it under a distinct name.
+REM Docs -> documentation\ . The root CLAUDE.md holds context-mode routing rules,
+REM not project documentation, so park it under a name that says so. It is
+REM gitignored at both ends. The root AGENTS.md is the agent guide and STAYS in
+REM the root -- agent tools only look for it there.
 call :relocate_root_file "DESIGN.md" "%DOC_DIR%\DESIGN.md"
 call :relocate_root_file "CLAUDE.md" "%DOC_DIR%\CLAUDE.context-mode.md"
 REM .gitattributes deliberately stays in the root -- see the note above the

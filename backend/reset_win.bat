@@ -11,8 +11,9 @@ REM               minutes-long cycle into a seconds-long one.
 REM               Because WIN_Install.bat runs its first-time setup only when
 REM               .venv is missing, this ALSO skips the install-time file layout
 REM               move - so it does not exercise the installer.
-REM               Must be OFF for release verification. See documentation\TODO.md,
-REM               section "Before release - dev-only test shortcuts".
+REM               Must be OFF for release verification: a release build has to
+REM               be reset with no flags, so the installer and the file-layout
+REM               move are exercised the way a first-time user hits them.
 set "KEEP_VENV="
 :parse_args
 if "%~1"=="" goto args_done

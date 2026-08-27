@@ -176,7 +176,7 @@ Measured on an RTX 4070 SUPER against real interview recordings — one hour of 
 | Whisper turbo, CPU int8 | ~17 min |
 | Whisper large-v3, CPU int8 | ~1 h 48 min |
 
-The graphics card is worth having: on the CPU, Whisper pays a 17–23x penalty. Full numbers and method: [documentation/stt-benchmark/](documentation/stt-benchmark/README.md) *(in Russian)*.
+The graphics card is worth having: on the CPU, Whisper pays a 17–23x penalty.
 
 ---
 
@@ -225,7 +225,7 @@ Recordings and transcripts never leave your machine. The app does open outbound 
 
 Set `PINE_ALLOW_HF_NETWORK=1` to skip Hub offline mode entirely. Not needed for normal use.
 
-**Threat model.** PINE is a single-user local application. The backend binds to `127.0.0.1` (port 5000 by default, or the next free one) and CORS is limited to `127.0.0.1` and `pine.localhost` on that port — but the backend has **no authentication**, so treat it like any other local dev server and do not expose the port to a network you do not control. The supervisor's control API on port 5001 does require a per-run token. Known gaps are tracked in [TODO.md](documentation/TODO.md); to report a vulnerability see [SECURITY.md](.github/SECURITY.md).
+**Threat model.** PINE is a single-user local application. The backend binds to `127.0.0.1` (port 5000 by default, or the next free one) and CORS is limited to `127.0.0.1` and `pine.localhost` on that port — but the backend has **no authentication**, so treat it like any other local dev server and do not expose the port to a network you do not control. The supervisor's control API on port 5001 does require a per-run token. Known gaps are listed under [Limitations](#limitations); to report a vulnerability see [SECURITY.md](.github/SECURITY.md).
 
 ---
 
@@ -298,14 +298,11 @@ The ML process is separate on purpose: a CUDA crash or an out-of-memory kill tak
 | [ARCHITECTURE.md](documentation/ARCHITECTURE.md) | System design, data model, transcription pipeline |
 | [API.md](documentation/API.md) | Endpoint reference and data shapes |
 | [DESIGN.md](documentation/DESIGN.md) | UI design system and tokens |
-| [TODO.md](documentation/TODO.md) | Architecture review, roadmap, known gaps |
-| [stt-benchmark/](documentation/stt-benchmark/README.md) | Model comparison behind the default choice *(Russian)* |
-| [Manual Tests Flow.md](<documentation/Manual Tests Flow.md>) | Manual QA script |
-| [AGENTS.md](documentation/AGENTS.md) | Guidance for AI coding agents |
+| [AGENTS.md](AGENTS.md) | Guidance for AI coding agents — architecture, data-safety rules, test commands |
 | [CONTRIBUTING.md](.github/CONTRIBUTING.md) | How to set up, test and submit changes |
 | [SECURITY.md](.github/SECURITY.md) | Reporting a vulnerability |
 
-Deeper audits live in `documentation/` as well: `ARCHITECTURE_AUDIT.md`, `ARCHITECTURE_REVIEW_2026-07.md`, `backend-decomposition-audit.md`, `dependency-audit.md`.
+The known gaps a contributor should read first are in the "Known gaps" section of [AGENTS.md](AGENTS.md).
 
 ---
 

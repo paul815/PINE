@@ -52,8 +52,10 @@ finalize_install_layout() {
   local f
   mkdir -p "$doc_dir" "$devcfg_dir"
 
-  # Docs -> documentation/ . The root CLAUDE.md is the context-mode routing copy and
-  # documentation/ already ships its own, so park it under a distinct name.
+  # Docs -> documentation/ . The root CLAUDE.md holds context-mode routing rules,
+  # not project documentation, so park it under a name that says so. It is
+  # gitignored at both ends. The root AGENTS.md is the agent guide and STAYS in
+  # the root -- agent tools only look for it there.
   relocate_root_file "DESIGN.md" "$doc_dir/DESIGN.md"
   relocate_root_file "CLAUDE.md" "$doc_dir/CLAUDE.context-mode.md"
   # .gitattributes deliberately stays in the root -- see the note above the

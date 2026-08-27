@@ -11,7 +11,8 @@ PINE is a Flask-based desktop web app with a SQLite + filesystem hybrid data mod
 ```
 PINE/
 ├── README.md            # Project overview, setup, usage
-├── documentation/       # API, architecture, design, CLAUDE guide, TODO
+├── AGENTS.md            # Guidance for coding agents (root, so tools find it)
+├── documentation/       # API, architecture, design, third-party licences
 ├── WIN_Install.bat      # Windows setup & launch script
 ├── MAC_Install.command  # macOS/Linux setup & launch script
 ├── backend/
@@ -21,19 +22,26 @@ PINE/
 │   │   │                  # segments, tags, export, attachments) on one blueprint
 │   │   ├── models/        # SQLAlchemy: Project, Recording, RecordingTrack, Segment, Setting, MLModel
 │   │   ├── ports.py       # the two process ports, and the CORS origin list
-│   │   ├── services/      # transcription/ (job_runner, worker_client), export, model_manager,
-│   │   │                  # launcher_layout, pip_installer, annotations, multitrack_ingest,
-│   │   │                  # pii, backup, system_check, ffmpeg_setup, transcript_format
+│   │   ├── services/      # transcription/ (job_runner, worker_client), export_service,
+│   │   │                  # model_manager, launcher_layout, launcher_state, pip_installer,
+│   │   │                  # annotations, multitrack_ingest, pii_service, backup_service,
+│   │   │                  # system_check, ffmpeg_setup, transcript_format, transcript_edit,
+│   │   │                  # speaker_blocks, file_utils, windows_io
 │   │   ├── static/        # css/ (tokens, button-system, fonts), fonts/, js/, icons/, sounds/
 │   │   ├── config.py
 │   │   ├── extensions.py  # db, socketio, ALLOWED_ORIGINS
 │   │   └── __init__.py    # create_app, routes
 │   ├── ml_worker/         # The ML process — torch/whisperx/pyannote live only here
-│   │   ├── engines/       # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon)
+│   │   ├── engines/       # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon), base
 │   │   ├── pipeline.py    # stage orchestration
 │   │   ├── diarize.py     # pyannote
 │   │   ├── tracks.py      # per-speaker track handling
+│   │   ├── multitrack.py  # the per-track pipeline, and merging its transcripts
+│   │   ├── audio.py       # ffprobe/ffmpeg decode, WAV writing, MLX cache
+│   │   ├── compat.py      # global shims (env, sys.modules, torch.load) — why this is a process
+│   │   ├── constants.py   # every tunable, each with its PINE_* env override
 │   │   ├── progress.py    # one 0–100 scale across all stages
+│   │   ├── errors.py      # exceptions shared with the caller
 │   │   └── protocol.py    # JSON messages over the pipe
 │   ├── templates/         # Jinja2 HTML (main, recording, settings, tags, manage_tags, onboarding)
 │   ├── tests/             # pytest suite
@@ -42,6 +50,7 @@ PINE/
 │   ├── run.py             # Entry point
 │   ├── supervisor.py      # Process manager (backend lifecycle, browser lease, auto-shutdown)
 │   ├── requirements.txt
+│   ├── requirements-lock.txt  # full pinned tree for reproducing an env; not read by the scripts
 │   ├── reset.command      # macOS/Linux data reset (run from repo root context)
 │   └── reset_win.bat      # Windows data reset
 ├── models/                # HuggingFace models (configurable path)
@@ -58,12 +67,22 @@ Install/launch scripts live in the repo root. `WIN_Install.bat` and `MAC_Install
 
 | Table | Purpose |
 |-------|---------|
-| `project` | Name, folder_name, description, objective, research_questions, hypotheses, summary, is_archived |
-| `recording` | project_id, original_name, stored_name, transcription_status, transcript_path, duration_seconds, segment_id, participant_notes, is_linked, source_kind |
+| `project` | Identity (name, folder_name, icon, is_archived, archived_at, is_system), the research brief, and `default_transcription_language` — see below |
+| `recording` | project_id, original_name, stored_name, file_format, file_size_bytes, duration_seconds, transcription_status, language, transcript_path, error_message, segment_id, participant_notes, num_speakers, is_linked, source_kind |
 | `recording_track` | recording_id, track_index, source_path, speaker_name, channel_index, duration_seconds — one row per speaker track of a multi-track recording |
 | `segment` | project_id, name, description, screener_questions, target_count — research participant segments for screening |
 | `setting` | Key-value store (paths, onboarding_complete, export defaults, etc.) |
 | `ml_model` | Model registry (id, repo_id, status, size_bytes) |
+
+The research brief on `project` is 16 columns: free text in `description`,
+`objective`, `summary`, `methodology`, `interview_guide`, `key_findings`,
+`recommendations`, `results_recommendations`, `further_steps`, and JSON arrays in
+`research_questions`, `hypotheses`, `stakeholders`, `enabled_sections`,
+`enabled_summary_sections`, `custom_sections`, `custom_summary_sections`. The
+arrays are `db.Text` holding JSON, read through the `get_*`/`set_*` pair on the
+model — a corrupt value degrades to `[]` instead of raising. There are no
+migrations beyond an `ALTER TABLE ADD COLUMN` loop at startup, which is why the
+schema only ever grows.
 
 ### Filesystem (per project)
 
@@ -71,6 +90,7 @@ Install/launch scripts live in the repo root. `WIN_Install.bat` and `MAC_Install
 projects/<folder_name>/
 ├── README.md                    # Auto-generated project summary
 ├── project_tags.json            # Tag definitions (id, name, color)
+├── project_themes.json          # Theme → tags hierarchy over those tags
 ├── attachments.json             # Attachment metadata (id, display_name, stored_name)
 ├── attachments/                 # Uploaded project files (PDFs, docs, etc.)
 ├── <recording>.mp3              # Media file
@@ -96,12 +116,29 @@ projects/<folder_name>/
   `mlx_engine` on Apple Silicon, behind a common `base.py` interface
 - **Device:** Auto-detects CUDA; falls back to CPU with int8
 - **Progress:** SocketIO emits `transcription:status` — `{ recording_id, status, stage, message, percent? }`
+- **Language:** the worker detects it. Below `LANG_CONFIDENCE_MIN` (0.82), or with
+  two candidates inside `LANG_CONFIDENCE_MARGIN` (0.10), it asks instead of
+  guessing: the job thread parks on an `Event`, the recording goes to
+  `awaiting_language`, and `POST …/transcription/language` wakes it. The waiters
+  live in `services/transcription/__init__.py` (`_language_waiters`), so a
+  backend restart abandons the prompt and the recording is requeued. A project's
+  `default_transcription_language` answers ahead of time; `PINE_SKIP_LANG_CONFIRM=1`
+  removes the question
 - **Chunking:** ASR splits files ≥30 min into 30-min chunks with 30s overlap
   (`CHUNK_*` in `ml_worker/constants.py`). Diarization runs on the whole file:
   its chunking path still exists but its threshold sits at 4 hours
   (`DIARIZE_CHUNK_THRESHOLD_SEC`), because matching speakers across chunk seams
-  flipped labels. Diarization overlaps the ASR pass rather than following it
-- **Recovery:** `requeue_interrupted()` on startup for stuck `transcribing` recordings
+  flipped labels; past 4 hours the ~4 MB-per-audio-minute waveform is the bigger
+  risk, so it accepts the drift rather than the OOM
+- **Stage order:** diarization runs *after* ASR, not alongside it. The two have no
+  real dependency — pyannote reads only the audio — and overlapping them costs
+  `max(STT, diarize)` instead of the sum. But on CUDA both land on the same card
+  by default, and 12 GB running whisperx float16 next to pyannote spends minutes
+  paging VRAM to host RAM with the desktop unusable and the progress line frozen.
+  So `PARALLEL_STAGES` is **off**; set `PINE_PARALLEL_STAGES=1` when diarization
+  is on another device (`PINE_DIARIZE_DEVICE=cpu`) or the GPU has headroom
+- **Recovery:** `requeue_interrupted()` on startup returns anything left in
+  `transcribing` or `awaiting_language` to `pending` and enqueues it again
 - **ETA:** `ml_worker/progress.py` folds every stage into one 0–100 scale. The
   shipped cost model in `constants.py` is only the first guess — each finished
   job reports how far off it was, and the figure is stored per model and mode
@@ -138,8 +175,12 @@ The single-file path is untouched: no tracks means the pyannote flow, unchanged.
 ### Model Management
 
 - **Registry:** `MODEL_REGISTRY` in `model_manager.py` defines available models
-- **Required:** pyannote-diarization, pyannote-segmentation, and the transcription
-  model for the platform — whisperx-large-v3 (mlx-whisper-large-v3 on Mac)
+- **Required:** two diarization entries — `pyannote-diarization`
+  (`pyannote/speaker-diarization-community-1`, the pipeline config and small
+  assets) and `pyannote-wespeaker-voxceleb-resnet34-LM` (the embedding weights) —
+  plus the transcription model for the platform: `whisperx-large-v3`
+  (`Systran/faster-whisper-large-v3`), or `mlx-whisper-large-v3` on Mac. Both
+  pyannote repos are gated and download through the pyannote hub cache
 - **Transcription model:** downloaded during onboarding, re-installable from
   Settings (`/api/settings/stt-model/install`) if that download never finished;
   it runs on the accelerator
@@ -159,6 +200,12 @@ The single-file path is untouched: no tracks means the pyannote flow, unchanged.
 - **Service:** `backup_service.py` creates ZIP archives with manifest, project data, and optionally audio
 - **Restore:** Per-project selective restore with conflict strategies (skip/overwrite/rename)
 - **Upload:** Users can upload previously exported backup ZIPs
+- **Automatic:** a background timer runs on `auto_backup_enabled` every
+  `auto_backup_interval_hours`, writing into `backup_path`. Changing any backup
+  setting calls `refresh_auto_backup()`, which stops the timer and starts it
+  again, so a new interval takes effect without a restart
+- **Retention:** `prune_backups()` keeps the `backup_retention_count` newest
+  `pine_backup_*.zip` (default 5); `0` or less keeps everything
 
 ### Supervisor
 

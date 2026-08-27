@@ -100,9 +100,9 @@ storage format to match.
   review and harder to revert.
 - Say what breaks if the change is wrong. That sentence is more useful than a
   summary of the diff.
-- Note what you tested manually, on which OS, and with which model.
-  [documentation/Manual Tests Flow.md](<../documentation/Manual Tests Flow.md>) is
-  the script for the paths the suite cannot cover.
+- Note what you tested manually, on which OS, and with which model. The suite
+  mocks the models, so real transcription quality, diarization, onboarding and a
+  clean install are only ever covered by a human — say which of those you touched.
 
 ## Security
 

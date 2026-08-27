@@ -10,8 +10,7 @@
 #
 # Use this for the day-to-day loop. For a release-grade reset that also
 # exercises the installer and the file layout, run backend/reset.command with
-# no flags. See documentation/TODO.md, "Before release — dev-only test
-# shortcuts", for what has to be verified before shipping.
+# no flags — that is the one that has to pass before shipping.
 #
 # Usage: backend/tools/dev_reset.command [-y] [--projects-dir <path>]
 #   -y, --yes           Skip the confirmation prompt.
