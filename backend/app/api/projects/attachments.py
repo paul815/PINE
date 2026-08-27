@@ -24,9 +24,17 @@ def _attachment_file(project_dir, entry):
     on disk is not ours to trust: joined blind, a ``../../..`` in there is an
     arbitrary file read on the download route and an arbitrary delete on the
     other one. realpath resolves any symlink hop before the containment test.
+
+    The upload route mints one flat filename (id + extension), so a separator
+    of *either* platform means the entry was written by hand or by the other
+    OS. Both are refused up front rather than left to the containment test,
+    because a separator is only a separator on the machine that wrote it: a
+    POSIX PINE reading ``..\\..\\secret.txt`` sees one long filename, joins it
+    happily, and the escape the containment test exists to stop lands on
+    whichever machine opens that project folder on Windows.
     """
     stored = entry.get('stored_name') or ''
-    if not stored:
+    if not stored or '/' in stored or '\\' in stored:
         return None
     att_dir = os.path.realpath(_attachments_dir(project_dir))
     resolved = os.path.realpath(os.path.join(att_dir, stored))
