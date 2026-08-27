@@ -8,7 +8,7 @@
 #                 model_manager.py during onboarding — not by the installer)
 #                 survives the reset and onboarding reuses it. Turns a
 #                 minutes-long cycle into a seconds-long one.
-#                 Because MAC_Install.command runs its first-time setup only
+#                 Because Setup_MAC.command runs its first-time setup only
 #                 when .venv is missing, this ALSO skips the install-time file
 #                 layout move — so it does not exercise the installer.
 #                 Must be OFF for release verification: a release build has to be
@@ -139,15 +139,15 @@ for f in LICENSE .editorconfig .gitattributes .gitignore; do
 done
 rmdir ../documentation/dev-config 2>/dev/null || true
 
-if [ ! -f ../WIN_Install.bat ] && [ -f ./WIN_Install.bat ]; then
-    cp ./WIN_Install.bat ../WIN_Install.bat
-    chmod +x ../WIN_Install.bat 2>/dev/null || true
+if [ ! -f ../Setup_WIN.bat ] && [ -f ./Setup_WIN.bat ]; then
+    cp ./Setup_WIN.bat ../Setup_WIN.bat
+    chmod +x ../Setup_WIN.bat 2>/dev/null || true
 fi
-if [ ! -f ../MAC_Install.command ] && [ -f ./MAC_Install.command ]; then
-    cp ./MAC_Install.command ../MAC_Install.command
-    chmod +x ../MAC_Install.command 2>/dev/null || true
+if [ ! -f ../Setup_MAC.command ] && [ -f ./Setup_MAC.command ]; then
+    cp ./Setup_MAC.command ../Setup_MAC.command
+    chmod +x ../Setup_MAC.command 2>/dev/null || true
 fi
-rm -f ./WIN_Install.bat ./MAC_Install.command
+rm -f ./Setup_WIN.bat ./Setup_MAC.command
 
 remove_unpreserved_children .. "${ROOT_PRESERVE[@]}"
 remove_unpreserved_children . "${BACKEND_PRESERVE[@]}"

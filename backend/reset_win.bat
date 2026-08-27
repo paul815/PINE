@@ -8,7 +8,7 @@ REM               (torch/torchaudio/whisperx/pyannote, installed by
 REM               model_manager.py during onboarding - not by the installer)
 REM               survives the reset and onboarding reuses it. Turns a
 REM               minutes-long cycle into a seconds-long one.
-REM               Because WIN_Install.bat runs its first-time setup only when
+REM               Because Setup_WIN.bat runs its first-time setup only when
 REM               .venv is missing, this ALSO skips the install-time file layout
 REM               move - so it does not exercise the installer.
 REM               Must be OFF for release verification: a release build has to
@@ -77,10 +77,10 @@ for %%F in (LICENSE .editorconfig .gitattributes .gitignore) do (
 )
 if exist "..\documentation\dev-config\" rd "..\documentation\dev-config" >nul 2>&1
 
-if not exist "..\WIN_Install.bat" if exist ".\WIN_Install.bat" copy /y ".\WIN_Install.bat" "..\WIN_Install.bat" >nul
-if not exist "..\MAC_Install.command" if exist ".\MAC_Install.command" copy /y ".\MAC_Install.command" "..\MAC_Install.command" >nul
-if exist ".\WIN_Install.bat" del /f /q ".\WIN_Install.bat" >nul 2>nul
-if exist ".\MAC_Install.command" del /f /q ".\MAC_Install.command" >nul 2>nul
+if not exist "..\Setup_WIN.bat" if exist ".\Setup_WIN.bat" copy /y ".\Setup_WIN.bat" "..\Setup_WIN.bat" >nul
+if not exist "..\Setup_MAC.command" if exist ".\Setup_MAC.command" copy /y ".\Setup_MAC.command" "..\Setup_MAC.command" >nul
+if exist ".\Setup_WIN.bat" del /f /q ".\Setup_WIN.bat" >nul 2>nul
+if exist ".\Setup_MAC.command" del /f /q ".\Setup_MAC.command" >nul 2>nul
 
 REM What survives a reset is listed in tools\reset_preserve_*.txt - the same two
 REM files reset.command and the in-app reset read, so the three cannot drift

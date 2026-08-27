@@ -44,11 +44,11 @@ def test_generated_windows_launcher_uses_supervisor_handoff_flow():
     assert "Invoke-RestMethod -Uri 'http://127.0.0.1:!PINE_SUP_PORT!/status' -TimeoutSec 2" in launcher_layout_source
     assert "$data.supervisor_running -and $data.backend_ready" in launcher_layout_source
     assert 'call :wait_for_background_launch_and_open' in launcher_layout_source
-    assert 'call "%BACKEND_DIR%WIN_Install.bat"' in launcher_layout_source
+    assert 'call "%BACKEND_DIR%Setup_WIN.bat"' in launcher_layout_source
 
 
 def test_windows_installer_checks_shortcut_creation_result():
-    installer_source = (REPO_ROOT / 'WIN_Install.bat').read_text(encoding='utf-8')
+    installer_source = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
 
     assert 'set "PINE_SHORTCUT_PATH=%PINE_ROOT_DIR%Launch Pine.lnk"' in installer_source
     assert 'CreateShortcut($env:PINE_SHORTCUT_PATH)' in installer_source

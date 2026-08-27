@@ -2,9 +2,9 @@ from app.services import launcher_layout, model_manager, pip_installer
 
 
 def test_cleanup_cross_platform_launchers_on_mac(tmp_path, monkeypatch):
-    mac_install = tmp_path / 'MAC_Install.command'
+    mac_install = tmp_path / 'Setup_MAC.command'
     mac_launch = tmp_path / 'Launch Pine.command'
-    win_install = tmp_path / 'WIN_Install.bat'
+    win_install = tmp_path / 'Setup_WIN.bat'
     win_launch = tmp_path / 'Launch Pine.bat'
     mac_install.write_text('echo mac install', encoding='utf-8')
     mac_launch.write_text('echo mac launch', encoding='utf-8')
@@ -21,9 +21,9 @@ def test_cleanup_cross_platform_launchers_on_mac(tmp_path, monkeypatch):
 
 
 def test_cleanup_cross_platform_launchers_on_windows(tmp_path, monkeypatch):
-    mac_install = tmp_path / 'MAC_Install.command'
+    mac_install = tmp_path / 'Setup_MAC.command'
     mac_launch = tmp_path / 'Launch Pine.command'
-    win_install = tmp_path / 'WIN_Install.bat'
+    win_install = tmp_path / 'Setup_WIN.bat'
     win_launch = tmp_path / 'Launch Pine.bat'
     mac_install.write_text('echo mac install', encoding='utf-8')
     mac_launch.write_text('echo mac launch', encoding='utf-8')
@@ -40,7 +40,7 @@ def test_cleanup_cross_platform_launchers_on_windows(tmp_path, monkeypatch):
 
 
 def test_promote_platform_launcher_on_mac(tmp_path, monkeypatch):
-    mac_install = tmp_path / 'MAC_Install.command'
+    mac_install = tmp_path / 'Setup_MAC.command'
     mac_install.write_text('echo mac install', encoding='utf-8')
 
     monkeypatch.setattr(launcher_layout, 'IS_MAC', True)
@@ -51,7 +51,7 @@ def test_promote_platform_launcher_on_mac(tmp_path, monkeypatch):
 
 
 def test_promote_platform_launcher_on_windows(tmp_path, monkeypatch):
-    win_install = tmp_path / 'WIN_Install.bat'
+    win_install = tmp_path / 'Setup_WIN.bat'
     win_install.write_text('@echo off\n', encoding='utf-8')
 
     monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
@@ -62,7 +62,7 @@ def test_promote_platform_launcher_on_windows(tmp_path, monkeypatch):
     assert launcher.exists()
     launcher_text = launcher.read_text(encoding='utf-8')
     assert 'if not exist "%BACKEND_DIR%run.py" set "BACKEND_DIR=%SCRIPT_DIR%backend\\"' in launcher_text
-    assert 'call "%BACKEND_DIR%WIN_Install.bat"' in launcher_text
+    assert 'call "%BACKEND_DIR%Setup_WIN.bat"' in launcher_text
     # Readiness is probed by PowerShell first, with a Python one-liner as
     # fallback. Assert the gate exists on both paths rather than pinning the
     # exact fallback expression, which now keys off the browser lease count.
@@ -84,7 +84,7 @@ def test_repo_windows_installer_detects_backend_layout():
     # expects them. _sync_platform_launcher_layout moves them into backend/ only after
     # onboarding, so the repo copy is the root one.
     repo_root = model_manager.Path(__file__).resolve().parents[2]
-    installer_path = repo_root / 'WIN_Install.bat'
+    installer_path = repo_root / 'Setup_WIN.bat'
     installer_text = installer_path.read_text(encoding='utf-8')
 
     assert 'set "BACKEND_DIR=%SCRIPT_DIR%"' in installer_text
@@ -96,8 +96,8 @@ def test_repo_windows_installer_detects_backend_layout():
 
 def test_sync_platform_launcher_layout_on_windows_moves_installers_to_backend(tmp_path, monkeypatch):
     backend_dir = tmp_path / 'backend'
-    win_install = tmp_path / 'WIN_Install.bat'
-    mac_install = tmp_path / 'MAC_Install.command'
+    win_install = tmp_path / 'Setup_WIN.bat'
+    mac_install = tmp_path / 'Setup_MAC.command'
     stale_mac_launch = tmp_path / 'Launch Pine.command'
 
     win_install.write_text('@echo off\n', encoding='utf-8')
@@ -112,14 +112,14 @@ def test_sync_platform_launcher_layout_on_windows_moves_installers_to_backend(tm
     assert not win_install.exists()
     assert not mac_install.exists()
     assert not stale_mac_launch.exists()
-    assert (backend_dir / 'WIN_Install.bat').exists()
-    assert (backend_dir / 'MAC_Install.command').exists()
+    assert (backend_dir / 'Setup_WIN.bat').exists()
+    assert (backend_dir / 'Setup_MAC.command').exists()
 
 
 def test_sync_platform_launcher_layout_on_mac_moves_installers_to_backend(tmp_path, monkeypatch):
     backend_dir = tmp_path / 'backend'
-    mac_install = tmp_path / 'MAC_Install.command'
-    win_install = tmp_path / 'WIN_Install.bat'
+    mac_install = tmp_path / 'Setup_MAC.command'
+    win_install = tmp_path / 'Setup_WIN.bat'
     stale_win_launch = tmp_path / 'Launch Pine.bat'
 
     mac_install.write_text('#!/bin/bash\necho mac install\n', encoding='utf-8')
@@ -133,8 +133,37 @@ def test_sync_platform_launcher_layout_on_mac_moves_installers_to_backend(tmp_pa
     assert not mac_install.exists()
     assert not win_install.exists()
     assert not stale_win_launch.exists()
-    assert (backend_dir / 'MAC_Install.command').exists()
-    assert (backend_dir / 'WIN_Install.bat').exists()
+    assert (backend_dir / 'Setup_MAC.command').exists()
+    assert (backend_dir / 'Setup_WIN.bat').exists()
+
+
+def test_sync_platform_launcher_layout_drops_pre_rename_installers(tmp_path, monkeypatch):
+    backend_dir = tmp_path / 'backend'
+    legacy_win = tmp_path / 'WIN_Install.bat'
+    legacy_mac = tmp_path / 'MAC_Install.command'
+
+    (tmp_path / 'Setup_WIN.bat').write_text('@echo off\n', encoding='utf-8')
+    (tmp_path / 'Setup_MAC.command').write_text('#!/bin/bash\necho mac install\n', encoding='utf-8')
+    legacy_win.write_text('@echo off\n', encoding='utf-8')
+    legacy_mac.write_text('#!/bin/bash\necho legacy\n', encoding='utf-8')
+
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
+    launcher_layout._sync_platform_launcher_layout(repo_root=tmp_path)
+
+    assert not legacy_win.exists()
+    assert not legacy_mac.exists()
+    assert (backend_dir / 'Setup_WIN.bat').exists()
+    assert (backend_dir / 'Setup_MAC.command').exists()
+
+
+def test_sync_platform_launcher_layout_keeps_pre_rename_installer_without_replacement(tmp_path, monkeypatch):
+    legacy_win = tmp_path / 'WIN_Install.bat'
+    legacy_win.write_text('@echo off\n', encoding='utf-8')
+
+    monkeypatch.setattr(launcher_layout, 'IS_MAC', False)
+    launcher_layout._sync_platform_launcher_layout(repo_root=tmp_path)
+
+    assert legacy_win.exists()
 
 
 def test_restore_default_launcher_layout_after_reset_moves_installers_to_root(tmp_path):
@@ -143,20 +172,20 @@ def test_restore_default_launcher_layout_after_reset_moves_installers_to_root(tm
     backend_dir.mkdir()
     data_dir.mkdir()
 
-    (backend_dir / 'WIN_Install.bat').write_text('@echo off\n', encoding='utf-8')
-    (backend_dir / 'MAC_Install.command').write_text('#!/bin/bash\necho mac install\n', encoding='utf-8')
+    (backend_dir / 'Setup_WIN.bat').write_text('@echo off\n', encoding='utf-8')
+    (backend_dir / 'Setup_MAC.command').write_text('#!/bin/bash\necho mac install\n', encoding='utf-8')
     (tmp_path / 'Launch Pine.bat').write_text('@echo off\n', encoding='utf-8')
     (tmp_path / 'Launch Pine.command').write_text('#!/bin/bash\necho launch\n', encoding='utf-8')
     (data_dir / 'onboarding_complete.flag').write_text('true\n', encoding='utf-8')
 
     launcher_layout.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
 
-    assert (tmp_path / 'WIN_Install.bat').exists()
-    assert (tmp_path / 'MAC_Install.command').exists()
+    assert (tmp_path / 'Setup_WIN.bat').exists()
+    assert (tmp_path / 'Setup_MAC.command').exists()
     assert not (tmp_path / 'Launch Pine.bat').exists()
     assert not (tmp_path / 'Launch Pine.command').exists()
-    assert not (backend_dir / 'WIN_Install.bat').exists()
-    assert not (backend_dir / 'MAC_Install.command').exists()
+    assert not (backend_dir / 'Setup_WIN.bat').exists()
+    assert not (backend_dir / 'Setup_MAC.command').exists()
     assert not (data_dir / 'onboarding_complete.flag').exists()
 
 
@@ -164,19 +193,19 @@ def test_restore_default_launcher_layout_after_reset_keeps_existing_root_install
     backend_dir = tmp_path / 'backend'
     backend_dir.mkdir()
 
-    root_win = tmp_path / 'WIN_Install.bat'
-    root_mac = tmp_path / 'MAC_Install.command'
+    root_win = tmp_path / 'Setup_WIN.bat'
+    root_mac = tmp_path / 'Setup_MAC.command'
     root_win.write_text('root win\n', encoding='utf-8')
     root_mac.write_text('root mac\n', encoding='utf-8')
-    (backend_dir / 'WIN_Install.bat').write_text('backend win\n', encoding='utf-8')
-    (backend_dir / 'MAC_Install.command').write_text('backend mac\n', encoding='utf-8')
+    (backend_dir / 'Setup_WIN.bat').write_text('backend win\n', encoding='utf-8')
+    (backend_dir / 'Setup_MAC.command').write_text('backend mac\n', encoding='utf-8')
 
     launcher_layout.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
 
     assert root_win.read_text(encoding='utf-8') == 'root win\n'
     assert root_mac.read_text(encoding='utf-8') == 'root mac\n'
-    assert not (backend_dir / 'WIN_Install.bat').exists()
-    assert not (backend_dir / 'MAC_Install.command').exists()
+    assert not (backend_dir / 'Setup_WIN.bat').exists()
+    assert not (backend_dir / 'Setup_MAC.command').exists()
 
 
 def test_install_log_path_uses_pine_log_dir(tmp_path, monkeypatch):

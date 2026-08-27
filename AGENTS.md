@@ -81,8 +81,8 @@ python backend/run.py
 # Opens at http://127.0.0.1:5000
 ```
 
-On Windows `WIN_Install.bat` does both steps; on macOS/Linux use
-`MAC_Install.command`. Both live in the repo root, create `.venv` and install
+On Windows `Setup_WIN.bat` does both steps; on macOS/Linux use
+`Setup_MAC.command`. Both live in the repo root, create `.venv` and install
 dependencies on first run, then start the server on later launches.
 
 ## 5) Running tests

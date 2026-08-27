@@ -16,8 +16,8 @@ AGENTS.md
 .gitignore
 documentation
 LICENSE
-MAC_Install.command
 README.md
-WIN_Install.bat
+Setup_MAC.command
+Setup_WIN.bat
 backend
 models

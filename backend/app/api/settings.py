@@ -261,7 +261,7 @@ def _schedule_windows_post_reset_cleanup(root_dir, failed_paths):
         return False
     return True
 
-WIN_INSTALL_LAUNCHER_NAME = 'WIN_Install.bat'
+WIN_INSTALL_LAUNCHER_NAME = 'Setup_WIN.bat'
 WIN_APP_LAUNCHER_NAME = 'Launch Pine.bat'
 WIN_HIDDEN_LAUNCHER_NAME = 'Launch Pine.vbs'
 LEGACY_WIN_LAUNCHER_NAMES = ('Launch_WIN.bat',)
@@ -269,7 +269,7 @@ START_MENU_LAUNCHER_NAME = 'PINE.lnk'
 DESKTOP_LAUNCHER_NAME = 'Launch Pine.lnk'
 LEGACY_START_MENU_SHORTCUT_NAMES = ('Launch Pine.lnk',)
 LEGACY_DESKTOP_SHORTCUT_NAMES = ('PINE.lnk',)
-MAC_INSTALL_LAUNCHER_NAME = 'MAC_Install.command'
+MAC_INSTALL_LAUNCHER_NAME = 'Setup_MAC.command'
 MAC_APP_LAUNCHER_NAME = 'Launch Pine.command'
 LEGACY_MAC_LAUNCHER_NAMES = ('Launch_MAC.command',)
 MAC_START_MENU_LAUNCHER_NAME = 'Launch Pine.app'

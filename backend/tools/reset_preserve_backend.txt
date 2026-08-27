@@ -29,5 +29,5 @@ supervisor.py
 templates
 tests
 tools
-MAC_Install.command
-WIN_Install.bat
+Setup_MAC.command
+Setup_WIN.bat

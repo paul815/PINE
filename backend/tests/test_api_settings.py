@@ -128,10 +128,10 @@ class TestSettingsAPI:
         launch_bat = os.path.join(root_dir, 'Launch Pine.bat')
         launch_cmd = os.path.join(root_dir, 'Launch Pine.command')
         launch_vbs = os.path.join(root_dir, 'Launch Pine.vbs')
-        win_install = os.path.join(root_dir, 'WIN_Install.bat')
-        mac_install = os.path.join(root_dir, 'MAC_Install.command')
-        backend_win_install = os.path.join(backend_dir, 'WIN_Install.bat')
-        backend_mac_install = os.path.join(backend_dir, 'MAC_Install.command')
+        win_install = os.path.join(root_dir, 'Setup_WIN.bat')
+        mac_install = os.path.join(root_dir, 'Setup_MAC.command')
+        backend_win_install = os.path.join(backend_dir, 'Setup_WIN.bat')
+        backend_mac_install = os.path.join(backend_dir, 'Setup_MAC.command')
         onboarding_flag = os.path.join(backend_data_dir, 'onboarding_complete.flag')
         for path in (launch_bat, launch_cmd, launch_vbs, win_install, mac_install):
             with open(path, 'w', encoding='utf-8') as fh:
@@ -515,7 +515,7 @@ class TestSettingsAPI:
 
         backend_dir = tmp_path / 'backend'
         backend_dir.mkdir()
-        launch_bat = backend_dir / 'WIN_Install.bat'
+        launch_bat = backend_dir / 'Setup_WIN.bat'
         launch_bat.write_text('@echo off\n', encoding='utf-8')
 
         monkeypatch.setattr(settings_api, '_repo_root', lambda: str(tmp_path))
@@ -527,7 +527,7 @@ class TestSettingsAPI:
 
         backend_dir = tmp_path / 'backend'
         backend_dir.mkdir()
-        launch_bat = backend_dir / 'WIN_Install.bat'
+        launch_bat = backend_dir / 'Setup_WIN.bat'
         launch_bat.write_text('@echo off\r\necho backend\r\n', encoding='utf-8')
 
         monkeypatch.setattr(settings_api, '_repo_root', lambda: str(tmp_path))
@@ -542,7 +542,7 @@ class TestSettingsAPI:
 
         backend_dir = tmp_path / 'backend'
         backend_dir.mkdir()
-        launch_cmd = backend_dir / 'MAC_Install.command'
+        launch_cmd = backend_dir / 'Setup_MAC.command'
         launch_cmd.write_text('#!/bin/bash\necho ok\n', encoding='utf-8')
 
         monkeypatch.setattr(settings_api, '_repo_root', lambda: str(tmp_path))
@@ -552,7 +552,7 @@ class TestSettingsAPI:
     def test_macos_start_menu_status_and_toggle(self, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
 
-        launch_cmd = tmp_path / 'MAC_Install.command'
+        launch_cmd = tmp_path / 'Setup_MAC.command'
         launch_cmd.write_text('#!/bin/bash\necho ok\n', encoding='utf-8')
         launcher = tmp_path / 'Applications' / 'Launch Pine.app'
 
@@ -581,7 +581,7 @@ class TestSettingsAPI:
     def test_macos_desktop_status_and_toggle(self, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api
 
-        launch_cmd = tmp_path / 'MAC_Install.command'
+        launch_cmd = tmp_path / 'Setup_MAC.command'
         launch_cmd.write_text('#!/bin/bash\necho ok\n', encoding='utf-8')
         launcher = tmp_path / 'Desktop' / 'Launch Pine.app'
 

@@ -66,7 +66,7 @@ finalize_install_layout() {
   # reset.command and reset_win.bat rebuild the clean-install root from exactly
   # these copies, so skipping this step means a reset can never restore the
   # installers -- they would be gone for good.
-  for f in MAC_Install.command WIN_Install.bat; do
+  for f in Setup_MAC.command Setup_WIN.bat; do
     if [[ -f "$ROOT_DIR/$f" && ! -f "$BACKEND_DIR/$f" ]]; then
       cp "$ROOT_DIR/$f" "$BACKEND_DIR/$f"
       chmod +x "$BACKEND_DIR/$f" 2>/dev/null || true
@@ -77,7 +77,7 @@ finalize_install_layout() {
   # cmd.exe, which reads a batch file lazily and would kill this process mid-run,
   # bash keeps the open script fd valid after an unlink, so deleting the very file
   # we are executing is safe here and needs no deferral to the last line.
-  for f in MAC_Install.command WIN_Install.bat; do
+  for f in Setup_MAC.command Setup_WIN.bat; do
     if [[ -f "$BACKEND_DIR/$f" ]]; then
       rm -f "$ROOT_DIR/$f"
     fi
@@ -96,7 +96,7 @@ ensure_venv() {
 
   if ! pyexe="$(find_python)"; then
     echo "  ERROR: Python 3.11, 3.12, or 3.13 is required."
-    echo "  Install one of those versions, then run MAC_Install.command again."
+    echo "  Install one of those versions, then run Setup_MAC.command again."
     echo
     exit 1
   fi
@@ -114,7 +114,7 @@ ensure_venv() {
 
   # Move dev/GitHub files out of root for end-users. .gitattributes is NOT in this
   # list on purpose: it carries "*.bat text eol=crlf", and cmd.exe cannot find
-  # labels in an LF batch file -- WIN_Install.bat then dies at "call :open_browser"
+  # labels in an LF batch file -- Setup_WIN.bat then dies at "call :open_browser"
   # and the window closes with no browser.
   mkdir -p "$ROOT_DIR/documentation/dev-config"
   for f in LICENSE .editorconfig .gitignore; do
@@ -140,7 +140,7 @@ echo "  Starting PINE..."
 nohup "$VENV_DIR/bin/python3" supervisor.py >>"$LAUNCHER_LOG" 2>&1 &
 
 # The supervisor shuts itself down once its startup grace passes with no browser
-# lease, so this window has to open the browser -- the job WIN_Install.bat does
+# lease, so this window has to open the browser -- the job Setup_WIN.bat does
 # on Windows. Wait for the backend to answer health before handing over the URL.
 BACKEND_PORT="$(
   "$VENV_DIR/bin/python3" - "$PORT_FILE" <<'PY' || true

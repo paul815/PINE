@@ -201,7 +201,7 @@ if not exist "%PINE_ROOT_DIR%backend\" (
 )
 set "PINE_SHORTCUT_PATH=%PINE_ROOT_DIR%Launch Pine.lnk"
 set "PINE_SHORTCUT_TARGET=%PINE_ROOT_DIR%backend\Launch Pine.bat"
-if not exist "%PINE_SHORTCUT_TARGET%" set "PINE_SHORTCUT_TARGET=%PINE_ROOT_DIR%backend\WIN_Install.bat"
+if not exist "%PINE_SHORTCUT_TARGET%" set "PINE_SHORTCUT_TARGET=%PINE_ROOT_DIR%backend\Setup_WIN.bat"
 set "PINE_SHORTCUT_ICON=%PINE_ROOT_DIR%backend\app\static\icons\pine.ico"
 if not exist "%PINE_SHORTCUT_TARGET%" goto :eof
 if not exist "%PINE_SHORTCUT_ICON%" set "PINE_SHORTCUT_ICON=%WINDIR%\System32\shell32.dll,220"
@@ -216,7 +216,7 @@ echo   Starting PINE in the background...
 REM Prefer the canonical backend\ copy: the root copy may be scheduled for
 REM deletion right after a first install, and running it would keep it locked.
 set "PINE_HIDDEN_TARGET=%~f0"
-if exist "%BACKEND_DIR%WIN_Install.bat" set "PINE_HIDDEN_TARGET=%BACKEND_DIR%WIN_Install.bat"
+if exist "%BACKEND_DIR%Setup_WIN.bat" set "PINE_HIDDEN_TARGET=%BACKEND_DIR%Setup_WIN.bat"
 REM Route the command through a helper .cmd instead of passing it inline, so the
 REM argument handed to cmd is a single path with no embedded quoting to unpick.
 set "PINE_HIDDEN_CMD=%LOG_DIR%\hidden-launch.cmd"
@@ -407,24 +407,24 @@ REM Seed the canonical installer copies in backend\ BEFORE dropping the root one
 REM reset_win.bat and reset.command rebuild the clean-install root from exactly
 REM these copies, so skipping this step means a reset can never restore the
 REM installers -- they would be gone for good.
-if exist "%PINE_ROOT_DIR%MAC_Install.command" if not exist "%BACKEND_DIR%MAC_Install.command" (
-    copy /y "%PINE_ROOT_DIR%MAC_Install.command" "%BACKEND_DIR%MAC_Install.command" >nul 2>nul
+if exist "%PINE_ROOT_DIR%Setup_MAC.command" if not exist "%BACKEND_DIR%Setup_MAC.command" (
+    copy /y "%PINE_ROOT_DIR%Setup_MAC.command" "%BACKEND_DIR%Setup_MAC.command" >nul 2>nul
 )
-if exist "%PINE_ROOT_DIR%WIN_Install.bat" if not exist "%BACKEND_DIR%WIN_Install.bat" (
-    copy /y "%PINE_ROOT_DIR%WIN_Install.bat" "%BACKEND_DIR%WIN_Install.bat" >nul 2>nul
+if exist "%PINE_ROOT_DIR%Setup_WIN.bat" if not exist "%BACKEND_DIR%Setup_WIN.bat" (
+    copy /y "%PINE_ROOT_DIR%Setup_WIN.bat" "%BACKEND_DIR%Setup_WIN.bat" >nul 2>nul
 )
 
 REM Drop the macOS installer from the root -- only once its backend\ copy exists.
-if exist "%BACKEND_DIR%MAC_Install.command" if exist "%PINE_ROOT_DIR%MAC_Install.command" (
-    del /f /q "%PINE_ROOT_DIR%MAC_Install.command" >nul 2>nul
+if exist "%BACKEND_DIR%Setup_MAC.command" if exist "%PINE_ROOT_DIR%Setup_MAC.command" (
+    del /f /q "%PINE_ROOT_DIR%Setup_MAC.command" >nul 2>nul
 )
 
 REM Drop the Windows installer from the root. If this running script *is* the root
 REM copy, deleting it now would kill this cmd mid-run (batch files are read
 REM lazily, not locked), so only flag it here; the main flow removes it as the
 REM window's final act, after the browser is open.
-set "ROOT_WIN_INSTALL=%PINE_ROOT_DIR%WIN_Install.bat"
-if not exist "%BACKEND_DIR%WIN_Install.bat" goto :eof
+set "ROOT_WIN_INSTALL=%PINE_ROOT_DIR%Setup_WIN.bat"
+if not exist "%BACKEND_DIR%Setup_WIN.bat" goto :eof
 if exist "%ROOT_WIN_INSTALL%" (
     if /I "%~f0"=="%ROOT_WIN_INSTALL%" (
         set "PINE_CLEANUP_ROOT_INSTALLER=%ROOT_WIN_INSTALL%"

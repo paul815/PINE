@@ -1,6 +1,6 @@
 """The launchers are line-ending sensitive; this is the regression guard.
 
-An LF-only WIN_Install.bat makes cmd.exe fail its label lookup: the visible
+An LF-only Setup_WIN.bat makes cmd.exe fail its label lookup: the visible
 window dies at "call :open_browser", closes without a message, and the browser
 never opens. A CRLF .command breaks the macOS launcher the same way.
 """
@@ -29,14 +29,14 @@ def test_every_launcher_script_has_the_ending_its_shell_needs():
 
 
 def test_windows_installer_is_crlf():
-    data = (REPO_ROOT / 'WIN_Install.bat').read_bytes()
+    data = (REPO_ROOT / 'Setup_WIN.bat').read_bytes()
 
     assert data.count(b'\n') - data.count(b'\r\n') == 0
     assert data.count(b'\r\n') > 0
 
 
 def test_macos_installer_is_lf():
-    data = (REPO_ROOT / 'MAC_Install.command').read_bytes()
+    data = (REPO_ROOT / 'Setup_MAC.command').read_bytes()
 
     assert data.count(b'\r\n') == 0
 
@@ -49,8 +49,8 @@ def test_gitattributes_pins_both_and_stays_in_the_repo_root():
 
     # The installers tidy the root on first run. .gitattributes must not be part
     # of that sweep: without it every .bat checks out as LF again.
-    windows_installer = (REPO_ROOT / 'WIN_Install.bat').read_text(encoding='utf-8')
-    macos_installer = (REPO_ROOT / 'MAC_Install.command').read_text(encoding='utf-8')
+    windows_installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    macos_installer = (REPO_ROOT / 'Setup_MAC.command').read_text(encoding='utf-8')
 
     # Read the sweep list out of each installer rather than pinning its names:
     # the list grows as root files are added, and only one thing about it is

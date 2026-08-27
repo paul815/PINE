@@ -104,7 +104,7 @@ Extra download on demand: PII model +1.8 GB.
 | macOS, Apple Silicon | Supported — Whisper via MLX on the Neural Engine |
 | macOS, Intel | Works, CPU only |
 | Windows + AMD GPU | Falls back to CPU (ROCm not wired up) |
-| Linux | Experimental — `MAC_Install.command` sets it up, but it opens the browser with the macOS `open` command; start the app by hand |
+| Linux | Experimental — `Setup_MAC.command` sets it up, but it opens the browser with the macOS `open` command; start the app by hand |
 
 ---
 
@@ -118,19 +118,19 @@ git clone https://github.com/paul815/pine.git
 
 **2. Run the launcher for your OS.** The same file does first-time setup and every later launch: it creates `.venv`, installs base dependencies, starts the app and opens the browser.
 
-- **Windows** — double-click **`WIN_Install.bat`**
-- **macOS** — double-click **`MAC_Install.command`** (first time: right-click → Open, to get past Gatekeeper)
+- **Windows** — double-click **`Setup_WIN.bat`**
+- **macOS** — double-click **`Setup_MAC.command`** (first time: right-click → Open, to get past Gatekeeper)
 
 ```bash
-chmod +x MAC_Install.command
-./MAC_Install.command
+chmod +x Setup_MAC.command
+./Setup_MAC.command
 ```
 
 The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab shuts the whole thing down.
 
 <a id="unsigned-launcher"></a>
 
-> **Windows will flag the launcher.** `WIN_Install.bat` is an unsigned script, and Windows marks
+> **Windows will flag the launcher.** `Setup_WIN.bat` is an unsigned script, and Windows marks
 > everything unpacked from a downloaded ZIP as coming from the internet — so you get a "publisher
 > could not be verified" prompt, or on machines with Smart App Control a hard block. This is what
 > Windows does with every unsigned script; it says nothing about what is in this one.
@@ -138,7 +138,7 @@ The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab 
 > Two ways past it, best first:
 >
 > - **Clone instead of downloading.** Files created by git carry no such mark, so nothing is flagged.
-> - **Unblock after unpacking** — right-click `WIN_Install.bat` → Properties → tick **Unblock**. The
+> - **Unblock after unpacking** — right-click `Setup_WIN.bat` → Properties → tick **Unblock**. The
 >   mark sits on every unpacked file, so it is easier to clear the whole folder from PowerShell:
 >
 >   ```powershell
@@ -260,7 +260,7 @@ ruff check backend
 
 ```mermaid
 flowchart LR
-    L["WIN_Install.bat<br/>MAC_Install.command"] --> S["supervisor.py<br/>ports, restarts, auto-shutdown"]
+    L["Setup_WIN.bat<br/>Setup_MAC.command"] --> S["supervisor.py<br/>ports, restarts, auto-shutdown"]
     S -->|spawns| B["Flask backend<br/>127.0.0.1:5000"]
     BR["Browser tab<br/>pine.localhost"] <-->|HTTP + WebSocket| B
     B --> DB[("SQLite<br/>pine.db")]

@@ -2,7 +2,7 @@
 """Guard the line endings the launchers depend on.
 
 cmd.exe reads a batch file by byte offset. In an LF-only .bat it loses the
-offsets and label lookup fails outright: WIN_Install.bat dies at
+offsets and label lookup fails outright: Setup_WIN.bat dies at
 "call :open_browser" with "The system cannot find the batch label specified",
 the console window closes, and the browser is never opened -- the backend then
 shuts itself down 45s later for want of a browser lease. The mirror image is

@@ -74,7 +74,7 @@ def test_nothing_waits_with_timeout(script):
 
     The hidden instance runs with its stdio redirected into a log, so every
     loop built on `timeout` spun instead of waiting and reported a timeout in
-    milliseconds. WIN_Install.bat documents the same trap.
+    milliseconds. Setup_WIN.bat documents the same trap.
     """
     assert 'timeout /t' not in _code_only(script)
     assert 'ping -n 2 127.0.0.1' in script

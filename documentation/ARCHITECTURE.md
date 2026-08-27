@@ -13,8 +13,8 @@ PINE/
 ├── README.md            # Project overview, setup, usage
 ├── AGENTS.md            # Guidance for coding agents (root, so tools find it)
 ├── documentation/       # API, architecture, design, third-party licences
-├── WIN_Install.bat      # Windows setup & launch script
-├── MAC_Install.command  # macOS/Linux setup & launch script
+├── Setup_WIN.bat        # Windows setup & launch script
+├── Setup_MAC.command    # macOS/Linux setup & launch script
 ├── backend/
 │   ├── app/               # The web process — no ML imports live here
 │   │   ├── api/           # Blueprints: onboarding, settings, utils, backup, and
@@ -57,7 +57,7 @@ PINE/
 └── projects/              # Per-project folders (configurable path)
 ```
 
-Install/launch scripts live in the repo root. `WIN_Install.bat` and `MAC_Install.command` create the venv and install dependencies on first run, then start the server on subsequent launches.
+Install/launch scripts live in the repo root. `Setup_WIN.bat` and `Setup_MAC.command` create the venv and install dependencies on first run, then start the server on subsequent launches.
 
 ---
 

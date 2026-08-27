@@ -1,7 +1,7 @@
 """Where PINE's installer and launcher files live on disk.
 
-The repo ships two installers at the root, `WIN_Install.bat` and
-`MAC_Install.command`. On first run each creates the venv, installs the base
+The repo ships two installers at the root, `Setup_WIN.bat` and
+`Setup_MAC.command`. On first run each creates the venv, installs the base
 dependencies and then hands over: the installer for the *other* platform is
 moved out of the way, and the one that ran is replaced by a plain launcher
 (`Launch Pine.bat` / `Launch Pine.command`) that just starts the server.
@@ -29,9 +29,9 @@ log = logging.getLogger(__name__)
 IS_MAC = sys.platform == 'darwin'
 
 
-WIN_INSTALL_LAUNCHER = 'WIN_Install.bat'
+WIN_INSTALL_LAUNCHER = 'Setup_WIN.bat'
 
-MAC_INSTALL_LAUNCHER = 'MAC_Install.command'
+MAC_INSTALL_LAUNCHER = 'Setup_MAC.command'
 
 WIN_APP_LAUNCHER = 'Launch Pine.bat'
 
@@ -40,6 +40,14 @@ MAC_APP_LAUNCHER = 'Launch Pine.command'
 LEGACY_WIN_LAUNCHERS = ('Launch_WIN.bat',)
 
 LEGACY_MAC_LAUNCHERS = ('Launch_MAC.command',)
+
+# Installer names PINE shipped before the Setup_* pair. A copy unpacked over
+# an older install still has them at the root; mapped to their replacement so
+# the cleanup only fires once the current installer is really in place.
+LEGACY_INSTALLERS = {
+    'WIN_Install.bat': WIN_INSTALL_LAUNCHER,
+    'MAC_Install.command': MAC_INSTALL_LAUNCHER,
+}
 
 INSTALLER_STORAGE_DIR = 'backend'
 
@@ -127,7 +135,7 @@ def _windows_app_launcher_contents() -> str:
     again here: they are only the *starting* guess anyway, since the supervisor
     scans upward when 5000/5001 are taken and records what it actually bound in
     ``data/supervisor.port``. The script reads that file (``:resolve_ports``)
-    for the same reason WIN_Install.bat does — probing and opening a hardcoded
+    for the same reason Setup_WIN.bat does — probing and opening a hardcoded
     port sends the user to whatever else happens to be listening there.
     """
     return _WIN_APP_LAUNCHER_TEMPLATE.replace(
@@ -190,13 +198,13 @@ call :ensure_backend_ready
 exit /b %errorlevel%
 
 :run_installer
-if exist "%BACKEND_DIR%WIN_Install.bat" (
-    call "%BACKEND_DIR%WIN_Install.bat"
+if exist "%BACKEND_DIR%Setup_WIN.bat" (
+    call "%BACKEND_DIR%Setup_WIN.bat"
     exit /b %errorlevel%
 )
 echo.
 echo   PINE is not set up yet.
-echo   Run backend\\WIN_Install.bat to finish setup.
+echo   Run backend\\Setup_WIN.bat to finish setup.
 echo.
 pause
 exit /b 1
@@ -208,8 +216,8 @@ goto :eof
 
 :cleanup_post_onboarding_root_artifacts
 if /I not "%ONBOARDING_COMPLETE%"=="true" goto :eof
-if exist "%PINE_ROOT_DIR%WIN_Install.bat" del /f /q "%PINE_ROOT_DIR%WIN_Install.bat" >nul 2>nul
-if exist "%PINE_ROOT_DIR%MAC_Install.command" del /f /q "%PINE_ROOT_DIR%MAC_Install.command" >nul 2>nul
+if exist "%PINE_ROOT_DIR%Setup_WIN.bat" del /f /q "%PINE_ROOT_DIR%Setup_WIN.bat" >nul 2>nul
+if exist "%PINE_ROOT_DIR%Setup_MAC.command" del /f /q "%PINE_ROOT_DIR%Setup_MAC.command" >nul 2>nul
 set "ROOT_LAUNCHER=%PINE_ROOT_DIR%Launch Pine.bat"
 if /I not "%~f0"=="%ROOT_LAUNCHER%" if exist "%ROOT_LAUNCHER%" del /f /q "%ROOT_LAUNCHER%" >nul 2>nul
 goto :eof
@@ -237,7 +245,7 @@ goto :eof
 REM Deliberately not "timeout /t": the hidden instance runs with its stdio
 REM redirected into a log, and timeout exits immediately rather than wait when
 REM stdin is not a console -- which silently turns every loop built on it into a
-REM busy spin that reports a timeout in milliseconds. WIN_Install.bat hit this
+REM busy spin that reports a timeout in milliseconds. Setup_WIN.bat hit this
 REM exact failure and settled on ping; the loops below are the same shape.
 ping -n 2 127.0.0.1 >nul 2>&1
 goto :eof
@@ -606,6 +614,13 @@ def _move_installers_to_backend(repo_root=None):
         # installer without a stored copy would leave no way to reinstall.
         if _copy_launcher(source_path, target_path, 'move installer'):
             _remove_launcher(source_path, 'moved installer')
+
+    for legacy_name, current_name in LEGACY_INSTALLERS.items():
+        legacy_path = root / legacy_name
+        # Never the last installer standing: the pre-rename copy only goes once
+        # its replacement exists, at the root or already stored under backend/.
+        if legacy_path.exists() and _first_existing_launcher(root, current_name):
+            _remove_launcher(legacy_path, 'legacy installer')
 
 def _sync_platform_launcher_layout(repo_root=None):
     """Keep post-install launcher layout consistent across upgrades and first install."""

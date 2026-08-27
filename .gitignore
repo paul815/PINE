@@ -31,6 +31,9 @@ pine_safety_backups/
 # them into backend/ and tidies the dev-only config files into
 # Documentation/dev-config/ after onboarding. Those copies are runtime state, and
 # committing them once already deleted LICENSE and both installers from the repo.
+/backend/Setup_WIN.bat
+/backend/Setup_MAC.command
+# ...and the same pair under the names they shipped with before the rename.
 /backend/WIN_Install.bat
 /backend/MAC_Install.command
 /backend/Launch Pine.bat
