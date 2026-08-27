@@ -29,6 +29,7 @@ from .launcher_state import mark_onboarding_complete
 from .pip_installer import (
     _check_packages,
     _install_emit,
+    _install_step,
     _install_model_specific_packages,
     _realign_torch_companions,
     install_pip_packages,
@@ -520,7 +521,7 @@ def play_install_complete_sound(app, volume_pct=50):
 def _preload_alignment_model():
     """Pre-download WhisperX alignment model (English) so first transcription isn't delayed."""
     try:
-        _install_emit('\n--- Pre-downloading alignment model (English) ---')
+        _install_step('Pre-downloading alignment model (English)', 'Downloading alignment model')
         import torchaudio
         bundle = getattr(torchaudio.pipelines, 'WAV2VEC2_ASR_BASE_960H', None)
         if bundle:
@@ -539,7 +540,8 @@ def _warmup_pyannote_community1(models_path, hf_token=None):
     while still pulling any internal artifacts the pipeline needs.
     """
     try:
-        _install_emit('\n--- Preloading pyannote diarization pipeline (community-1) ---')
+        _install_step('Preloading pyannote diarization pipeline (community-1)',
+                      'Preloading diarization model')
         import inspect
 
         import torch

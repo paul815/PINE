@@ -214,7 +214,7 @@ def _run_torchruntime_install():
         return
 
     try:
-        _install_emit('\n--- Detecting GPU and installing PyTorch variant ---')
+        _install_step('Detecting GPU and installing PyTorch variant', 'Step 2/5: detecting GPU')
         proc = subprocess.Popen(
             [sys.executable, '-m', 'torchruntime', 'install'],
             stdout=subprocess.PIPE,
@@ -325,7 +325,8 @@ def repair_torch_companion_wheels_if_needed():
         _th_ver,
         _pytorch_wheel_index_url(),
     )
-    _install_emit('\n--- Repairing torch companions to match the PyTorch wheel channel ---')
+    _install_step('Repairing torch companions to match the PyTorch wheel channel',
+                  'Repairing torch companions')
     ok = _realign_torch_companions()
     if ok:
         _evict_torch_companion_modules()
@@ -349,7 +350,8 @@ def _realign_torch_companions():
     if IS_MAC:
         return True
     packages = ['torch', 'torchaudio', 'torchvision']
-    _install_emit('\n--- Re-aligning torch companions with installed PyTorch ---')
+    _install_step('Re-aligning torch companions with installed PyTorch',
+                  'Re-aligning torch companions')
     ok = _run_pip(
         packages,
         extra_args=[*_companion_pip_extra_args(force_reinstall=True), '--no-deps'],
@@ -384,9 +386,15 @@ def _install_log_path():
             pass
     return os.path.join(daily, f'install-{now.strftime("%Y%m%d-%H%M%S")}-{os.getpid()}.log')
 
-def _install_emit(line):
+# Marks a line as a named step rather than pip's own output. Onboarding shows the
+# text after the prefix as the current status; without it the UI guessed the step
+# from pip's wording and turned the "Phase 1/5" header into "Installing: GPU".
+_STEP_PREFIX = 'PINE-STEP: '
+
+def _install_emit(line, log_line=None):
     """Emit an install log line to SocketIO clients AND append it to the install log file.
 
+    *log_line* overrides what reaches the file, so a UI marker never lands in the log.
     If no install session is active, behaves like a plain _safe_emit('install:log', ...).
     """
     _safe_emit('install:log', {'line': line})
@@ -394,10 +402,18 @@ def _install_emit(line):
     if fh is None:
         return
     try:
-        fh.write(line.rstrip('\r\n') + '\n')
+        fh.write((line if log_line is None else log_line).rstrip('\r\n') + '\n')
         fh.flush()
     except Exception:
         pass
+
+def _install_step(label, status=None):
+    """Name the step the install is on: a section header in the log, a marker for the UI.
+
+    *status* is the short form the UI shows — the status sits on one nowrap line next
+    to the card title, so the full header would crowd it out.
+    """
+    _install_emit(_STEP_PREFIX + (status or label), log_line='\n--- ' + label + ' ---')
 
 def _run_pip(packages, extra_args=None):
     """Run pip install with streaming output. Returns True on success."""
@@ -460,6 +476,7 @@ def install_pip_packages():
         _install_emit(f'Missing:  {missing}')
 
         if IS_MAC:
+            _install_step('Installing PyTorch, mlx-whisper and pyannote', 'Installing ML packages\u2026')
             success = _run_pip(PIP_INSTALL_TARGETS)
         else:
             # Five-phase install:
@@ -469,11 +486,11 @@ def install_pip_packages():
             #   4. whisperx (--no-deps to keep GPU torch)
             #   5. whisperx's non-torch runtime deps
             # Re-align safety net runs only if channels actually diverged.
-            _install_emit('\n--- Phase 1/5: Installing GPU detection tool ---')
+            _install_step('Phase 1/5: Installing GPU detection tool', 'Step 1/5: GPU detection tool')
             success = _run_pip(['torchruntime'], extra_args=['--no-deps'])
 
             if success:
-                _install_emit('\n--- Phase 2/5: Detecting GPU and installing PyTorch ---')
+                _install_step('Phase 2/5: Detecting GPU and installing PyTorch', 'Step 2/5: PyTorch')
                 _run_torchruntime_install()
 
                 # whisperx declares torchaudio~=2.8.0 and torchvision~=0.23.0 outright,
@@ -481,7 +498,8 @@ def install_pip_packages():
                 # They come from the PyTorch wheel index (same +cpu / +cu* as torch);
                 # --no-deps avoids re-resolving numpy / pillow / sympy which torchruntime
                 # already installed in Phase 2.
-                _install_emit('\n--- Phase 3/5: Installing torchaudio and torchvision ---')
+                _install_step('Phase 3/5: Installing torchaudio and torchvision',
+                              'Step 3/5: torchaudio, torchvision')
                 success = _run_pip(
                     ['torchaudio', 'torchvision'],
                     extra_args=[*_companion_pip_extra_args(), '--no-deps'],
@@ -490,14 +508,14 @@ def install_pip_packages():
             if success:
                 # --no-deps prevents whisperx's ``torch~=2.8.0`` pin from
                 # downgrading the GPU-enabled torch we installed in Phase 2.
-                _install_emit('\n--- Phase 4/5: Installing whisperx (no-deps) ---')
+                _install_step('Phase 4/5: Installing whisperx (no-deps)', 'Step 4/5: whisperx')
                 success = _run_pip(['whisperx'], extra_args=['--no-deps'])
 
             if success:
                 # Now pull whisperx's non-torch runtime deps.  faster-whisper
                 # transitively brings ctranslate2, onnxruntime, tokenizers, av;
                 # pyannote-audio brings lightning, scikit-learn, etc.
-                _install_emit('\n--- Phase 5/5: Installing whisperx dependencies ---')
+                _install_step('Phase 5/5: Installing whisperx dependencies', 'Step 5/5: whisperx deps')
                 success = _run_pip([
                     'faster-whisper',
                     'pyannote-audio',
@@ -510,7 +528,7 @@ def install_pip_packages():
 
             if success and not _torch_companion_channels_aligned():
                 # Safety net: re-align only when channels actually diverged.
-                _install_emit('\n--- Re-aligning torch stack (channels diverged) ---')
+                _install_step('Re-aligning torch stack (channels diverged)', 'Re-aligning torch stack')
                 success = _realign_torch_companions()
 
         if success:

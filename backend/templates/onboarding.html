@@ -1296,14 +1296,21 @@ async function startDownload() {
   });
   socket.on('install:log', d => {
     const log = document.getElementById('installLog');
-    log.textContent += d.line + '\n';
-    log.scrollTop = log.scrollHeight;
     const stat = document.getElementById('installStatus');
-    const m1 = d.line.match(/Collecting\s+(\S+)/);
-    const m2 = d.line.match(/Installing\s+(\S+)/);
-    if (m1) stat.textContent = 'Downloading: ' + m1[1];
-    else if (m2 && m2[1] !== 'collected') stat.textContent = 'Installing: ' + m2[1];
-    else if (d.line.includes('Installing collected packages')) stat.textContent = 'Installing packages\u2026';
+    // Only the installer's own step markers name a step; pip's wording is too loose
+    // for it ("Installing build dependencies", a phase header) and used to leak
+    // fragments like "Installing: GPU" into the status.
+    const step = d.line.match(/^PINE-STEP:\s*(.+)$/);
+    if (step) {
+      log.textContent += '\n--- ' + step[1] + ' ---\n';
+      stat.textContent = step[1];
+    } else {
+      log.textContent += d.line + '\n';
+      const m1 = d.line.match(/Collecting\s+(\S+)/);
+      if (m1) stat.textContent = 'Downloading: ' + m1[1];
+      else if (d.line.includes('Installing collected packages')) stat.textContent = 'Installing packages\u2026';
+    }
+    log.scrollTop = log.scrollHeight;
   });
   socket.on('install:complete', d => {
     const card = document.getElementById('installCard');
