@@ -55,8 +55,6 @@ def _disable_model_telemetry():
 _disable_model_telemetry()
 
 
-# TODO: remove or narrow this once Mac STT perf is understood — avoid noisy default
-# console in production if we settle on opt-in logging only (PINE_LOG_LEVEL / file).
 def _configure_logging_legacy():
     """Send app INFO logs (e.g. PERF: lines in transcription) to stderr.
 
