@@ -97,7 +97,7 @@ body { font-size: inherit; }
 .step-dot {
   width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+  font-size: 0.769rem; font-weight: 600; font-family: var(--font-mono);
   border: 1.5px solid var(--border); color: var(--muted-fg); background: var(--card);
   transition: all 0.2s; z-index: var(--z-raised); position: relative;
 }
@@ -124,11 +124,11 @@ body { font-size: inherit; }
   border-top: 1px solid var(--border);
 }
 .sidebar-theme-lbl {
-  font-size: 0.846rem; font-weight: 600; letter-spacing: 0.06em;
+  font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking);
   text-transform: uppercase; color: var(--muted-fg); margin-bottom: 8px;
 }
 .sidebar-theme-group { display: flex; gap: 4px; }
-.sidebar-theme-btn { flex: 1; text-align: center; }
+.theme-btn { flex: 1; text-align: center; }
 
 /* ── Main area ── */
 .main {
@@ -283,7 +283,7 @@ body { font-size: inherit; }
   width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
   background: var(--secondary); border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 600; color: var(--muted-fg);
+  font-size: 0.769rem; font-weight: 600; color: var(--muted-fg);
   font-family: var(--font-mono);
 }
 .hf-step.done-step .hf-n { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); }
@@ -497,6 +497,7 @@ body { font-size: inherit; }
 .feat-privacy strong { font-weight: 700; color: inherit; }
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui-system.css') }}" />
 </head>
 <body>
 <div id="socketBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:var(--z-toast);
@@ -560,9 +561,9 @@ body { font-size: inherit; }
     <div class="sidebar-theme" id="obThemeGroup">
       <div class="sidebar-theme-lbl">Theme</div>
       <div class="sidebar-theme-group">
-        <button class="sidebar-theme-btn" data-t="system" onclick="obSetTheme('system',this)">System</button>
-        <button class="sidebar-theme-btn" data-t="light"  onclick="obSetTheme('light',this)">Light</button>
-        <button class="sidebar-theme-btn" data-t="dark"   onclick="obSetTheme('dark',this)">Dark</button>
+        <button class="theme-btn" data-t="system" onclick="obSetTheme('system',this)">System</button>
+        <button class="theme-btn" data-t="light"  onclick="obSetTheme('light',this)">Light</button>
+        <button class="theme-btn" data-t="dark"   onclick="obSetTheme('dark',this)">Dark</button>
       </div>
     </div>
 
@@ -1410,7 +1411,7 @@ function _onObSystemChange() { _applyTheme('system'); }
 
 function obSetTheme(theme, btn) {
   _obTheme = theme;
-  document.querySelectorAll('#obThemeGroup .sidebar-theme-btn').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('#obThemeGroup .theme-btn').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
   _applyTheme(theme);
   if (_obMql) { _obMql.removeEventListener('change', _onObSystemChange); _obMql = null; }

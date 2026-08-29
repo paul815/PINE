@@ -1,0 +1,276 @@
+/* ==========================================================================
+   PINE — shared UI primitives
+   --------------------------------------------------------------------------
+   Everything that is not a button. Load AFTER tokens.css and button-system.css
+   and BEFORE the page's own <style> block, so a page can still override a
+   primitive locally when it genuinely needs to.
+
+   Each block here replaces a set of per-template copies that had drifted:
+   the form controls had 16 private definitions, the uppercase micro-label 18,
+   and the modal three. Where the copies disagreed, the value chosen is stated
+   in the block comment.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. Form controls
+   --------------------------------------------------------------------------
+   No template had a font reset, so a field that forgot to declare
+   font-family fell back to the browser's form font and ignored the user's
+   Settings → Font choice. This makes inheritance the default.
+   ========================================================================== */
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* The standard field. Padding picked as the median of the eight variants
+   that were in use (2px 4px … 10px 12px). */
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.field:focus {
+  border-color: var(--accent);
+}
+
+.field::placeholder {
+  color: var(--muted-fg);
+}
+
+.field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Compact variant — inline fields inside popovers and toolbars. */
+.field-sm {
+  padding: 4px 7px;
+  font-size: 0.846rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Sits next to a label in a settings row rather than filling it. */
+.field-inline {
+  width: auto;
+}
+
+textarea.field {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+/* Native select chrome differs per OS and looked nothing like the rest of
+   the app on Windows. Strip it and draw our own chevron. */
+select.field {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M2 3.5l3 3 3-3' stroke='%23888' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px 10px;
+}
+
+select.field-sm {
+  padding-right: 24px;
+  background-position: right 7px center;
+  background-size: 9px 9px;
+}
+
+/* ==========================================================================
+   2. Uppercase micro-label
+   --------------------------------------------------------------------------
+   "DESCRIPTION", "SEGMENT", "PROJECT CODES", "CODE DETAILS" … the most
+   repeated typographic element in the app, previously written 18 different
+   ways across four templates (4 sizes, 6 tracking values, 3 weights).
+   ========================================================================== */
+
+.ui-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  line-height: 1.3;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--muted-fg);
+}
+
+/* Only for labels that mark accented content (e.g. a comment on a quote). */
+.ui-label-accent {
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   3. Modal
+   --------------------------------------------------------------------------
+   Was three implementations: main (.overlay/.modal, backdrop .35, blur 4px),
+   recording (same classes, backdrop .65, blur 5px, and sitting on the TOAST
+   z-layer), settings (.modal-overlay/.modal-box, backdrop .45, no blur).
+   The backdrop is now --overlay-bg, which is .45 in light and .60 in dark.
+   ========================================================================== */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.modal {
+  width: 380px;
+  max-width: 92vw;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(8px);
+  transition: transform 0.18s ease;
+}
+
+.overlay.show .modal {
+  transform: translateY(0);
+}
+
+/* For modals that hold a scrolling list rather than a short form. */
+.modal-wide {
+  width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* A list needs more air under its heading than a one-line question does. */
+.modal-wide .modal-title {
+  margin-bottom: 14px;
+}
+
+.modal-title {
+  font-family: var(--font-body);
+  font-size: 1.154rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.modal-desc {
+  font-size: 1rem;
+  color: var(--muted-fg);
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+.m-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ==========================================================================
+   4. Scrollable region
+   --------------------------------------------------------------------------
+   Was nine definitions across five files: widths 3/4/5/6px, two thumb
+   colours, three radii.
+   ========================================================================== */
+
+.scroll-y {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scroll-y::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-y::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.scroll-y::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-fg);
+}
+
+/* ==========================================================================
+   5. Empty state
+   --------------------------------------------------------------------------
+   Was four variants (icon 40px/36px/none, text 0.923/1/1.077rem, max-width
+   220/260/320px).
+   ========================================================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--muted-fg);
+}
+
+.empty-state > svg {
+  width: 36px;
+  height: 36px;
+  opacity: 0.3;
+}
+
+.empty-state p {
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 260px;
+  color: var(--muted-fg);
+}
+
+/* Inline variant — an empty list inside a panel, no icon. */
+.empty-inline {
+  font-size: 0.923rem;
+  font-style: italic;
+  color: var(--muted-fg);
+  padding: 16px 0;
+  text-align: center;
+}

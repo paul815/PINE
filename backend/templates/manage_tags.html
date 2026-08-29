@@ -155,7 +155,7 @@ body { font-size: inherit; overflow: hidden; }
 
 /* Scroll area + centered column */
 .scroll { flex: 1; overflow-y: auto; background: var(--sunken); scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-.scroll::-webkit-scrollbar { width: 5px; }
+.scroll::-webkit-scrollbar { width: 4px; }
 .scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 .wrap { max-width: 780px; margin: 0 auto; padding: 26px 24px 80px; }
 
@@ -166,14 +166,7 @@ body { font-size: inherit; overflow: hidden; }
 /* Buttons — header/add buttons reuse the app-wide classes in button-system.css
    (.btn-new = outline, .btn-primary = accent) so they match the rest of the app.
    Only the small square icon buttons are local. */
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius); border: 1px solid transparent; background: transparent; color: var(--muted-fg); cursor: pointer; transition: all .15s; flex-shrink: 0; font-family: var(--font-body); padding: 0; }
-.icon-btn:hover { background: var(--muted); color: var(--fg); }
-.icon-btn.danger:hover { background: var(--destr-dim); color: var(--destr); }
-.icon-btn svg { width: 14px; height: 14px; }
-.icon-btn:disabled { opacity: .3; cursor: default; }
-.icon-btn:disabled:hover { background: transparent; color: var(--muted-fg); }
 /* Cross (×) glyph for delete buttons — matches the app's .q-card-remove style. */
-.icon-btn .x { font-size: 1.231rem; line-height: 1; }
 
 /* Theme card */
 .theme-card { background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); margin-bottom: 14px; overflow: hidden; }
@@ -183,7 +176,6 @@ body { font-size: inherit; overflow: hidden; }
 .chevron-btn { background: none; border: none; cursor: pointer; color: var(--muted-fg); display: flex; padding: 2px; }
 .chevron-btn svg { width: 12px; height: 12px; transition: transform .2s; }
 .theme-card.collapsed .chevron-btn svg { transform: rotate(-90deg); }
-.swatch { width: 16px; height: 16px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,.12); cursor: pointer; flex-shrink: 0; padding: 0; }
 .theme-name-in { flex: 1; min-width: 0; font-family: var(--font-body); font-size: 1.077rem; font-weight: 600; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: 4px 6px; outline: none; }
 .theme-name-in:hover { border-color: var(--border); }
 .theme-name-in:focus { border-color: var(--accent-bd); background: var(--bg); }
@@ -232,11 +224,9 @@ body { font-size: inherit; overflow: hidden; }
 
 .add-tag-btn { margin-top: 10px; }
 
-.empty { text-align: center; color: var(--muted-fg); padding: 48px 20px; }
-.empty p { max-width: 320px; margin: 6px auto 0; line-height: 1.6; }
 
 /* Color popover */
-.color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 8px; z-index: var(--z-popover); }
+.color-pop { position: fixed; display: none; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 8px; z-index: var(--z-popover); }
 .color-pop.show { display: block; }
 .color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
 .color-swatch { width: 22px; height: 22px; border-radius: var(--radius); border: 2px solid transparent; cursor: pointer; padding: 0; }
@@ -245,7 +235,9 @@ body { font-size: inherit; overflow: hidden; }
 /* Toast and inline save status live in css/save-status.css */
 </style>
 <script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<script src="{{ url_for('static', filename='js/palette.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui-system.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
 </head>
 <body>
@@ -294,8 +286,7 @@ body { font-size: inherit; overflow: hidden; }
 <script>
 const PROJECT_ID = {{ project_id }};
 const API = '/api/projects/' + PROJECT_ID;
-const TAG_PALETTE = ['#f04f4f','#34c97a','#f5a623','#5da8e0','#a0a0b8','#e91e63','#9c27b0','#00bcd4','#8bc34a','#ff5722','#607d8b','#795548'];
-const _TAG_TOKEN_COLORS = { pain:'#f04f4f', ins:'#34c97a', del:'#f5a623', conf:'#5da8e0', fu:'#a0a0b8' };
+// TAG_PALETTE and tagColor() come from js/palette.js
 
 let tags = [];
 let themes = [];
@@ -316,10 +307,6 @@ function escJsAttr(s) {
   // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
   // gives the apostrophe back before the JS parser ever sees the string.
   return esc(JSON.stringify(String(s ?? '')));
-}
-function tagColor(c) {
-  if (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
-  return _TAG_TOKEN_COLORS[c] || '#a0a0b8';
 }
 function slugify(name) {
   return name.toLowerCase().replace(/\s/g, '_').replace(/[^\w]/g, '_').slice(0, 24);
@@ -377,7 +364,7 @@ function tagEditHtml(tag) {
   return `
     <div class="tag-edit" data-tag-id="${esc(tag.id)}">
       <div class="sw-cell">
-        <button class="swatch" style="background:${col}" title="Code color" onclick="openColorPop(this,'tag',${escJsAttr(tag.id)})"></button>
+        <button class="color-swatch" style="background:${col}" title="Code color" onclick="openColorPop(this,'tag',${escJsAttr(tag.id)})"></button>
       </div>
       <input class="tag-name-in" type="text" value="${esc(tag.name)}" placeholder="Code name"
              onchange="updateTagField(${escJsAttr(tag.id)},'name',this.value)" />
@@ -386,7 +373,7 @@ function tagEditHtml(tag) {
       <select class="theme-select" title="Move to theme" onchange="changeTagTheme(${escJsAttr(tag.id)},this.value)">
         ${themeOptionsHtml(tag.group_id || '')}
       </select>
-      <button class="icon-btn danger tag-del-btn" title="Delete code" onclick="deleteTag(${escJsAttr(tag.id)})"><span class="x" aria-hidden="true">&times;</span></button>
+      <button class="icon-btn icon-btn-danger tag-del-btn" title="Delete code" onclick="deleteTag(${escJsAttr(tag.id)})"><span class="x" aria-hidden="true">&times;</span></button>
     </div>`;
 }
 
@@ -401,7 +388,7 @@ function themeCardHtml(theme, idx) {
         <button class="chevron-btn" onclick="toggleTheme(this)" title="Collapse / expand">
           <svg viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="swatch" style="background:${col}" title="Theme color" onclick="openColorPop(this,'theme',${escJsAttr(theme.id)})"></button>
+        <button class="color-swatch" style="background:${col}" title="Theme color" onclick="openColorPop(this,'theme',${escJsAttr(theme.id)})"></button>
         <input class="theme-name-in" type="text" value="${esc(theme.name)}" placeholder="Theme name"
                onchange="updateThemeField(${escJsAttr(theme.id)},'name',this.value)" />
         <span class="theme-count">${themeTags.length}</span>
@@ -411,7 +398,7 @@ function themeCardHtml(theme, idx) {
         <button class="icon-btn" title="Move down" ${idx === themes.length - 1 ? 'disabled' : ''} onclick="moveTheme(${escJsAttr(theme.id)},1)">
           <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="icon-btn danger" title="Delete theme (codes become ungrouped)" onclick="deleteTheme(${escJsAttr(theme.id)})"><span class="x" aria-hidden="true">&times;</span></button>
+        <button class="icon-btn icon-btn-danger" title="Delete theme (codes become ungrouped)" onclick="deleteTheme(${escJsAttr(theme.id)})"><span class="x" aria-hidden="true">&times;</span></button>
       </div>
       <div class="theme-body">
         ${rows}
@@ -442,7 +429,7 @@ function ungroupedCardHtml() {
 function render() {
   const root = document.getElementById('themesRoot');
   if (!tags.length && !themes.length) {
-    root.innerHTML = `<div class="empty"><p>No codes yet. Create a theme to group your codebook, or add a code to get started.</p></div>`;
+    root.innerHTML = `<div class="empty-state"><p>No codes yet. Create a theme to group your codebook, or add a code to get started.</p></div>`;
     return;
   }
   let html = themes.map((t, i) => themeCardHtml(t, i)).join('');

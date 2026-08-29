@@ -58,12 +58,49 @@
   --tag-conf:    #1a70b0;  --tag-conf-bg: rgba(26,112,176,0.08);  --tag-conf-bd: rgba(26,112,176,0.25);
   --tag-fu:      #606078;  --tag-fu-bg:   rgba(96,96,120,0.06);   --tag-fu-bd:   rgba(96,96,120,0.20);
 
+  /* ---- speakers --------------------------------------------------------
+     Moderator + up to four participants. Assigned round-robin by
+     recording.html's speakerClass(); -bg tints the utterance row, -bd its
+     left rule, -lbl the speaker name. Values moved here verbatim from
+     recording.html, which was the only page that had the full set —
+     tags.html carried a partial, unused copy. */
+  --mod-bg: #e8f2fb;  --mod-bd: #bad4ee;  --mod-lbl: #2b7bbf;
+  --p1-bg:  #e6f5ee;  --p1-bd:  #b3ddc6;  --p1-lbl:  #1e8a4a;
+  --p2-bg:  #f2e8f8;  --p2-bd:  #d8b4ec;  --p2-lbl:  #8030b8;
+  --p3-bg:  #faf3e0;  --p3-bd:  #e8d090;  --p3-lbl:  #9a6c00;
+  --p4-bg:  #fde8e8;  --p4-bd:  #f0aaaa;  --p4-lbl:  #b82020;
+
+  /* ---- elevation -------------------------------------------------------
+     Three steps only. -sm: a card lifted off the page. -md: anything that
+     opens over the page (dropdown, popover, tooltip). -lg: modals.
+     The dark theme needs its own alphas — a black shadow on a near-black
+     surface is invisible at the light-theme values. */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md:   0 8px 24px rgba(0, 0, 0, 0.14);
+  --shadow-lg:   0 20px 60px rgba(0, 0, 0, 0.18);
+
+  /* Backdrop behind a modal. */
+  --overlay-bg:  rgba(0, 0, 0, 0.45);
+
+  /* Dashed rule under an editable field. */
+  --field-underline: var(--border);
+
   /* ---- typography ------------------------------------------------------ */
   /* --font-body is only the pre-JS fallback: the boot script overwrites it
      from the user's `font_family` setting (backend default: 'inter'). */
   --font-body:     'Inter', sans-serif;
   --font-mono:     'JetBrains Mono', monospace;
   --font-display:  'Space Grotesk', sans-serif;
+
+  /* The uppercase micro-label above a field or a panel section
+     ("DESCRIPTION", "SEGMENT", "PROJECT CODES"). It is the most repeated
+     type style in the app and had drifted into 18 variants across four
+     templates — 4 sizes, 6 tracking values, 3 weights. Anything that reads
+     as one of those labels uses these three, or the .ui-label class in
+     ui-system.css where the markup allows it. */
+  --label-size:     0.769rem;
+  --label-weight:   600;
+  --label-tracking: 0.08em;
 
   /* ---- geometry -------------------------------------------------------- */
   --radius:        6px;
@@ -126,4 +163,18 @@
   --tag-del:     #f5a623;  --tag-del-bg:  rgba(245,166,35,0.10);  --tag-del-bd:  rgba(245,166,35,0.28);
   --tag-conf:    #5da8e0;  --tag-conf-bg: rgba(93,168,224,0.10);  --tag-conf-bd: rgba(93,168,224,0.28);
   --tag-fu:      #a0a0b8;  --tag-fu-bg:   rgba(160,160,184,0.08); --tag-fu-bd:   rgba(160,160,184,0.22);
+
+  /* ---- speakers --------------------------------------------------------- */
+  --mod-bg: #0f1f2e;  --mod-bd: #1a3a55;  --mod-lbl: #5da8e0;
+  --p1-bg:  #0f221a;  --p1-bd:  #1a4530;  --p1-lbl:  #4dbe80;
+  --p2-bg:  #221426;  --p2-bd:  #42225a;  --p2-lbl:  #c07ae8;
+  --p3-bg:  #241d0e;  --p3-bd:  #4a3a18;  --p3-lbl:  #d4a940;
+  --p4-bg:  #221010;  --p4-bd:  #4a1818;  --p4-lbl:  #e05c5c;
+
+  /* ---- elevation -------------------------------------------------------- */
+  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.40);
+  --shadow-md:   0 8px 24px rgba(0, 0, 0, 0.50);
+  --shadow-lg:   0 20px 60px rgba(0, 0, 0, 0.60);
+
+  --overlay-bg:  rgba(0, 0, 0, 0.60);
 }

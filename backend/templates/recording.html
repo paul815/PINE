@@ -148,24 +148,16 @@ fetch('/api/settings').then(r=>r.json()).then(s=>{
    What remains is genuinely specific to the transcript view:
 
      --active-*        focus ring / glow for the currently-playing utterance
-     --mod-*, --p1..p4 speaker palette (moderator + up to four participants)
-     --amber, --a-*    warning banner. NOT the same colour as --warn-*:
-                       these are darkened for legibility as body text, so
-                       they are kept until that is reconciled deliberately.
 
-   The speaker picker paints its swatches from --<cls>-lbl directly, so
-   these are the single source for speaker colour. */
+   The speaker palette (--mod-*, --p1..p4-*) moved to css/tokens.css: it was
+   the only full copy, and tags.html carried a partial, unused one.
+   --amber / --a-dim / --a-bd went with it — they duplicated --warn-* and
+   nothing referenced them. */
 :root {
   --active-ring: hsla(220, 20%, 18%, 0.88);
   --active-ring-soft: hsla(220, 16%, 36%, 0.28);
   --active-glow: hsla(220, 22%, 42%, 0.12);
   --active-surface: hsla(220, 35%, 100%, 0.32);
-  --mod-bg: #e8f2fb; --mod-bd: #bad4ee; --mod-lbl: #2b7bbf;
-  --p1-bg: #e6f5ee; --p1-bd: #b3ddc6; --p1-lbl: #1e8a4a;
-  --p2-bg: #f2e8f8; --p2-bd: #d8b4ec; --p2-lbl: #8030b8;
-  --p3-bg: #faf3e0; --p3-bd: #e8d090; --p3-lbl: #9a6c00;
-  --p4-bg: #fde8e8; --p4-bd: #f0aaaa; --p4-lbl: #b82020;
-  --amber: #c47d0a; --a-dim: rgba(196,125,10,.08); --a-bd: rgba(196,125,10,.22);
 }
 
 /* :root-scoped, like tokens.css. Unscoped, this repaints any element
@@ -175,12 +167,6 @@ fetch('/api/settings').then(r=>r.json()).then(s=>{
   --active-ring-soft: hsla(210, 24%, 72%, 0.42);
   --active-glow: hsla(210, 30%, 68%, 0.18);
   --active-surface: hsla(210, 24%, 96%, 0.05);
-  --mod-bg: #0f1f2e; --mod-bd: #1a3a55; --mod-lbl: #5da8e0;
-  --p1-bg: #0f221a; --p1-bd: #1a4530; --p1-lbl: #4dbe80;
-  --p2-bg: #221426; --p2-bd: #42225a; --p2-lbl: #c07ae8;
-  --p3-bg: #241d0e; --p3-bd: #4a3a18; --p3-lbl: #d4a940;
-  --p4-bg: #221010; --p4-bd: #4a1818; --p4-lbl: #e05c5c;
-  --amber: #f5a623; --a-dim: rgba(245,166,35,.10); --a-bd: rgba(245,166,35,.25);
 }
 
 html, body { height: 100%; font-family: var(--font-body, 'Inter', system-ui, sans-serif); background: var(--bg); color: var(--fg);
@@ -203,14 +189,6 @@ body { font-size: inherit; }
 .tb-rec-name-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
 .tb-rec-name { font-size: 0.923rem; font-weight: 500; color: var(--fg); flex: 0 1 auto;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.tb-rec-edit {
-  width: 22px; height: 22px; border-radius: var(--radius);
-  background: none; border: none; cursor: pointer; color: var(--muted-fg);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0.7; transition: all 0.12s; flex-shrink: 0;
-}
-.tb-rec-edit:hover { color: var(--accent); background: var(--accent-dim); opacity: 1; }
-.tb-rec-edit svg { width: 11px; height: 11px; }
 .tb-rec-name-edit {
   flex: 1; min-width: 0; font-size: 0.923rem; font-weight: 500; color: var(--fg);
   background: var(--muted); border: 1px solid var(--accent); border-radius: var(--radius);
@@ -230,7 +208,7 @@ body { font-size: inherit; }
 .proj-pill.open .proj-tooltip { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
 .tooltip-row { padding: 11px 14px; border-bottom: 1px solid var(--border); }
 .tooltip-row:last-child { border-bottom: none; }
-.tooltip-lbl { font-size: 0.769rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+.tooltip-lbl { font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking); text-transform: uppercase;
   color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 4px; }
 .tooltip-val { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; }
 
@@ -260,34 +238,31 @@ body { font-size: inherit; }
 .comment-anchor:hover,
 .comment-anchor.cmt-hover-highlight { background: var(--accent-bd); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+/* Chips are <button>s: they were <span onclick>, so they took no focus and
+   did not fire on Enter or Space. background/color still come from the
+   inline style, which carries the code's own colour. */
 .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 0.846rem; font-weight: 500;
-  padding: 3px 9px 3px 7px; border-radius: var(--radius-pill); cursor: pointer; border: 1px solid transparent; }
+  padding: 3px 9px 3px 7px; border-radius: var(--radius-pill); cursor: pointer; border: 1px solid transparent;
+  background: none; color: inherit; font-family: var(--font-body); line-height: 1.35;
+  transition: border-color .15s, background .15s, color .15s; }
+.chip:focus-visible { outline: none; box-shadow: var(--btn-focus-ring); }
+
+/* Раскладочные остатки: оформление полей теперь в css/ui-system.css (.field). */
+.popup-search .field, .new-tag-form .field { flex: 1; min-width: 0; }
+.part-notes-label { display: block; font-size: var(--label-size); font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking); text-transform: uppercase; color: var(--muted-fg); margin-bottom: 6px; }
+.part-notes { min-height: 84px; }
 .chip .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .chip .n { font-family: var(--font-mono); font-size: 0.769rem; opacity: .65; }
+/* "+ New code" / "Import from another project" — an action, not a code, so a
+   dashed outline rather than a code colour. */
+.chip-add { border: 1px dashed var(--border); color: var(--muted-fg); }
+.chip-add:hover { border-color: var(--accent-bd); color: var(--fg); background: var(--muted); }
 .new-tag-form {
   display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px;
   background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
 }
-.new-tag-form input {
-  flex: 1; background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 6px 10px; font-size: 0.923rem; color: var(--fg);
-  font-family: var(--font-body); outline: none;
-}
-.new-tag-form input:focus { border-color: var(--accent); }
-.new-tag-form input::placeholder { color: var(--muted-fg); }
 
-.cmt-textarea {
-  width: 100%;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  font-size: 0.923rem;
-  color: var(--fg);
-  font-family: var(--font-body);
-  resize: vertical;
-  outline: none;
-}
 
 .cmt-actions {
   display: flex;
@@ -296,33 +271,16 @@ body { font-size: inherit; }
   justify-content: flex-end;
 }
 
-.cmt-action-btn {
-  width: auto;
-  padding: 0 12px;
-}
 
-.cmt-action-btn.is-primary {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border-color: var(--accent);
-}
 .q-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px;
   margin-bottom: 7px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
 .q-card:hover { border-color: var(--border); }
 .q-card-content { flex: 1; min-width: 0; }
-.q-card-remove { flex-shrink: 0; width: 22px; height: 22px; border-radius: var(--radius); background: none;
-  border: 1px solid transparent; color: var(--muted-fg); cursor: pointer; display: flex; align-items: center;
-  justify-content: center; padding: 0; transition: all .15s; opacity: 0.6; }
-.q-card-remove:hover { background: var(--destr-dim); color: var(--destr); border-color: var(--destr-bd); opacity: 1; }
 .chip-clickable { cursor: pointer; }
 .q-text { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 6px; }
 .q-meta { display: flex; justify-content: space-between; font-size: 0.769rem; font-family: var(--font-mono); color: var(--muted-fg); }
 .cmt-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 11px; margin-bottom: 8px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
 .cmt-card-content { flex: 1; min-width: 0; }
-.cmt-card-remove { flex-shrink: 0; width: 22px; height: 22px; border-radius: var(--radius); background: none;
-  border: 1px solid transparent; color: var(--muted-fg); cursor: pointer; display: flex; align-items: center;
-  justify-content: center; padding: 0; transition: all .15s; opacity: 0.6; }
-.cmt-card-remove:hover { background: var(--destr-dim); color: var(--destr); border-color: var(--destr-bd); opacity: 1; }
 .cmt-anchor { font-size: 0.846rem; color: var(--muted-fg); font-style: italic; border-left: 2px solid var(--border); padding-left: 8px; margin-bottom: 7px; }
 .cmt-body { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 6px; white-space: pre-wrap; }
 .cmt-meta { font-size: 0.769rem; color: var(--muted-fg); font-family: var(--font-mono); }
@@ -337,72 +295,32 @@ body { font-size: inherit; }
 .sel-highlight { background: var(--accent-dim); border-radius: 2px; }
 .popup-hd { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); font-size: 0.846rem; font-weight: 500; color: var(--muted-fg); }
 .popup-search { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
-.popup-search input { flex: 1; min-width: 0; background: var(--muted); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 6px 10px; font-size: 0.923rem; outline: none; }
-.tag-color-swatch {
-  width: 24px; height: 24px; border-radius: var(--radius); flex-shrink: 0;
-  border: 2px solid var(--border); cursor: pointer; padding: 0;
-  transition: border-color .15s, transform .1s;
-}
-.tag-color-swatch:hover { border-color: var(--accent-bd); transform: scale(1.05); }
 .color-picker-popover {
   position: fixed; z-index: var(--z-popover); padding: 8px;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   opacity: 0; pointer-events: none; transition: opacity .15s;
 }
 .color-picker-popover.show { opacity: 1; pointer-events: all; }
 .spk-popover {
   position: fixed; z-index: var(--z-popover); padding: 8px;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   opacity: 0; pointer-events: none; transition: opacity .15s;
   display: flex; flex-direction: column; gap: 7px; min-width: 170px;
 }
 .spk-popover.show { opacity: 1; pointer-events: all; }
-.spk-popover-input {
-  width: 100%; box-sizing: border-box;
-  background: var(--secondary); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 4px 7px; font-size: 0.846rem; color: var(--fg);
-  font-family: var(--font-body, 'Space Grotesk', system-ui, sans-serif);
-}
-.spk-popover-input:focus { outline: none; border-color: var(--accent); }
 .spk-color-row { display: flex; gap: 5px; }
-.spk-color-swatch {
-  width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
-  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
-}
-.spk-color-swatch:hover { transform: scale(1.15); }
-.spk-color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
 .color-grid { display: grid; grid-template-columns: repeat(6, 22px); gap: 5px; }
-.color-grid .color-swatch {
-  width: 22px; height: 22px; border-radius: var(--radius); border: 2px solid transparent;
-  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
-}
-.color-grid .color-swatch:hover { transform: scale(1.15); }
-.color-grid .color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
 
 .tag-chip-popover {
   position: fixed; z-index: var(--z-popover); padding: 10px;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   opacity: 0; pointer-events: none; transition: opacity .15s; display: flex; flex-direction: column; gap: 10px;
 }
 .tag-chip-popover.show { opacity: 1; pointer-events: all; }
 .tag-chip-popover-colors { display: grid; grid-template-columns: repeat(6, 22px); gap: 5px; }
-.tag-chip-name-input {
-  width: 100%; box-sizing: border-box;
-  background: var(--secondary); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 4px 7px; font-size: 0.846rem; color: var(--fg);
-  font-family: var(--font-body, 'Space Grotesk', system-ui, sans-serif);
-}
-.tag-chip-name-input:focus { outline: none; border-color: var(--accent); }
-.tag-chip-popover-colors .color-swatch {
-  width: 22px; height: 22px; border-radius: var(--radius); border: 2px solid transparent;
-  cursor: pointer; padding: 0; transition: transform .1s, border-color .15s;
-}
-.tag-chip-popover-colors .color-swatch:hover { transform: scale(1.15); }
-.tag-chip-popover-colors .color-swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 1px var(--card); }
 .tag-chip-remove-btn { width: 100%; }
 .popup-tags { flex: 1; overflow-y: auto; padding: 5px 8px; }
 .ptag-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius);
@@ -472,14 +390,12 @@ body { font-size: inherit; }
 
 .fr-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .fr-label { font-size: 0.846rem; color: var(--muted-fg); }
-.fr-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--fg); font-size: 1rem; }
-.fr-input:focus { outline: none; border-color: var(--accent); }
 .transcript-panel {
   flex: 1; overflow-y: auto; padding: 12px 14px;
-  scrollbar-width: thin; scrollbar-color: var(--secondary) transparent;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
 }
 .transcript-panel::-webkit-scrollbar { width: 4px; }
-.transcript-panel::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: var(--radius-pill); }
+.transcript-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 
 .utt {
   display: flex; gap: 10px; border-radius: var(--radius); padding: 7px 10px; cursor: pointer;
@@ -567,12 +483,11 @@ mark.pending-selection-highlight {
 }
 .rtab-bar { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .rtab { flex: 1; border-bottom: 2px solid transparent; }
-.rtab-content { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: var(--secondary) transparent; }
-.rtab-content::-webkit-scrollbar { width: 3px; }
-.rtab-content::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: var(--radius-pill); }
-.sec-lbl { font-size: 0.846rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 8px; }
-.right-placeholder { font-size: 0.923rem; font-weight: 400; color: var(--muted-fg); font-style: italic; }
+.rtab-content { flex: 1; overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.rtab-content::-webkit-scrollbar { width: 4px; }
+.rtab-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
+.sec-lbl { font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking); text-transform: uppercase;
+  color: var(--muted-fg); margin-bottom: 8px; }
 .right-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: 12px; }
 .tags-link-btn { width: 100%; }
 
@@ -581,16 +496,6 @@ mark.pending-selection-highlight {
 .error-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted-fg); padding: 24px; }
 .error-state p { font-size: 1rem; color: var(--destr); text-align: center; }
 
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(5px);
-  z-index: var(--z-toast); display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none; transition: opacity .2s; }
-.overlay.show { opacity: 1; pointer-events: all; }
-.modal { width: 380px; background: var(--card); border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 2); padding: 24px;
-  box-shadow: 0 24px 64px rgba(0,0,0,.6);
-  transform: translateY(8px); transition: transform .2s; }
-.overlay.show .modal { transform: translateY(0); }
-.modal-title { font-size: 1.154rem; font-weight: 700; letter-spacing: -.2px; margin-bottom: 6px; }
 .m-sub { font-size: 1rem; color: var(--muted-fg); margin-bottom: 16px; line-height: 1.5; }
 .m-row { display: flex; align-items: center; justify-content: space-between;
   padding: 9px 0; border-bottom: 1px solid var(--border); }
@@ -620,11 +525,11 @@ mark.pending-selection-highlight {
 .import-proj-search-in::placeholder { color: var(--muted-fg); }
 .import-proj-scroll { max-height: 220px; overflow-y: auto; margin-bottom: 4px; scrollbar-width: thin; }
 .import-section-lbl {
-  font-size: 0.769rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking); text-transform: uppercase;
   color: var(--muted-fg); padding: 2px 2px 6px;
 }
 .import-section-list { margin-bottom: 2px; }
-.archive-toggle-btn { width: 100%; gap: 8px; font-size: 0.846rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--font-body); }
+.archive-toggle-btn { width: 100%; gap: 8px; font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking); text-transform: uppercase; font-family: var(--font-body); }
 .archive-toggle-btn svg { transition: transform 0.2s; flex-shrink: 0; }
 .archive-toggle-btn.collapsed svg { transform: rotate(-90deg); }
 .archive-badge {
@@ -653,21 +558,10 @@ mark.pending-selection-highlight {
 .import-tag-name { font-size: 0.923rem; color: var(--fg); }
 .import-tag-dup { font-size: 0.769rem; color: var(--muted-fg); font-style: italic; margin-left: auto; }
 .import-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
-.import-empty { font-size: 0.923rem; color: var(--muted-fg); font-style: italic; padding: 16px 0; text-align: center; }
 .fmt-hint { font-size: 0.846rem; color: var(--muted-fg); text-align: right; margin-top: -6px; margin-bottom: 4px; }
 .pii-export-time { color: var(--muted-fg); font-weight: 400; }
-.m-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
 /* â•â•â• PARTICIPANT DETAILS â•â•â• */
-.part-select {
-  width: 100%; background: var(--muted); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 8px 34px 8px 12px; font-size: 1rem; color: var(--fg);
-  font-family: 'Space Grotesk', sans-serif; outline: none; cursor: pointer;
-  transition: border-color .15s; -webkit-appearance: none; appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23606078' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 12px center;
-}
-.part-select:focus { border-color: var(--accent); }
 .part-seg-info {
   background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 12px 14px; margin-top: 10px;
@@ -675,30 +569,19 @@ mark.pending-selection-highlight {
 .part-seg-info-row { margin-bottom: 10px; }
 .part-seg-info-row:last-child { margin-bottom: 0; }
 .part-info-lbl {
-  font-size: 0.692rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking); text-transform: uppercase;
   color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 3px;
 }
 .part-info-val { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.5; white-space: pre-wrap; }
-.part-notes-label {
-  font-size: 0.769rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--muted-fg); font-family: var(--font-mono); margin-bottom: 6px; margin-top: 16px;
-  display: block;
-}
-.part-notes {
-  width: 100%; background: var(--muted); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px 12px; font-size: 1rem; color: var(--muted-fg);
-  font-family: 'Space Grotesk', sans-serif; resize: vertical; min-height: 80px;
-  outline: none; line-height: 1.5; transition: border-color .15s;
-}
-.part-notes:focus { border-color: var(--accent); color: var(--fg); }
-.part-notes::placeholder { color: var(--muted-fg); font-style: italic; }
 .part-pill-assigned { color: var(--accent); border-color: var(--accent-bd) !important; }
 
 /* â•â•â• TOAST â•â•â• */
 /* Toast and inline save status live in css/save-status.css */
 </style>
 <script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
+<script src="{{ url_for('static', filename='js/palette.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui-system.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
 </head>
 <body>
@@ -706,8 +589,8 @@ mark.pending-selection-highlight {
 <div class="sel-popup" id="selPopup">
   <div class="popup-hd">Apply code or add comment</div>
   <div class="popup-search">
-    <button type="button" class="tag-color-swatch" id="tagColorSwatch" onclick="openColorModal(this)" title="Choose code color"></button>
-    <input type="text" id="tagSearchIn" />
+    <button type="button" class="color-swatch color-swatch-lg" id="tagColorSwatch" onclick="openColorModal(this)" title="Choose code color"></button>
+    <input type="text" id="tagSearchIn" class="field field-sm" />
   </div>
   <div class="popup-tags" id="popupTagList"></div>
   <div class="popup-footer" id="popupFooterTag">
@@ -717,10 +600,10 @@ mark.pending-selection-highlight {
     </button>
   </div>
   <div class="popup-footer" id="popupFooterCmt" style="display:none">
-    <textarea id="cmtTextarea" class="cmt-textarea" rows="3"></textarea>
+    <textarea id="cmtTextarea" class="field" rows="3"></textarea>
     <div class="cmt-actions">
-      <button type="button" class="add-cmt-btn cmt-action-btn" onclick="cancelComment()">Cancel</button>
-      <button type="button" class="add-cmt-btn cmt-action-btn is-primary" onclick="submitComment()">Save</button>
+      <button type="button" class="m-cancel" onclick="cancelComment()">Cancel</button>
+      <button type="button" class="m-export-btn" onclick="submitComment()">Save</button>
     </div>
   </div>
 </div>
@@ -731,7 +614,7 @@ mark.pending-selection-highlight {
     <div class="modal-title">Participant details</div>
     <div style="margin-bottom:14px">
       <div class="part-info-lbl" style="margin-bottom:6px">Segment</div>
-      <select class="part-select" id="partSegSelect">
+      <select class="field" id="partSegSelect">
         <option value="">— Unassigned —</option>
       </select>
     </div>
@@ -748,7 +631,7 @@ mark.pending-selection-highlight {
       </div>
     </div>
     <label class="part-notes-label" for="partNotes">Additional details</label>
-    <textarea class="part-notes" id="partNotes" rows="4"></textarea>
+    <textarea class="field part-notes" id="partNotes" rows="4"></textarea>
     <div class="m-actions">
       <button class="m-cancel" onclick="closeParticipantModal()">Cancel</button>
       <button class="m-export-btn" onclick="saveParticipantDetails()">Save</button>
@@ -763,13 +646,13 @@ mark.pending-selection-highlight {
 
 <!-- Speaker name + color popover -->
 <div id="speakerPopover" class="spk-popover" onclick="event.stopPropagation()">
-  <input id="speakerPopoverInput" class="spk-popover-input" type="text" />
+  <input id="speakerPopoverInput" class="field field-sm" type="text" />
   <div class="spk-color-row" id="speakerColorRow"></div>
 </div>
 
 <!-- Tag chip edit popover (color + Remove tag) -->
 <div class="tag-chip-popover" id="tagChipPopover" onclick="event.stopPropagation()">
-  <input type="text" id="tagChipNameInput" class="tag-chip-name-input" placeholder="Code name" />
+  <input type="text" id="tagChipNameInput" class="field field-sm" placeholder="Code name" />
   <div class="tag-chip-popover-colors" id="tagChipColorGrid"></div>
   <button type="button" class="tag-chip-remove-btn" id="tagChipRemoveBtn">Remove code</button>
 </div>
@@ -808,12 +691,12 @@ mark.pending-selection-highlight {
     <div class="m-sub">Mass-fix recurring transcription errors across this recording. Existing codes &amp; comments stay anchored to the same words.</div>
     <div class="fr-field">
       <label class="fr-label" for="frFind">Find</label>
-      <input type="text" id="frFind" class="fr-input" placeholder="e.g. kubernetis" autocomplete="off"
+      <input type="text" id="frFind" class="field" placeholder="e.g. kubernetis" autocomplete="off"
              onkeydown="if(event.key==='Enter'){event.preventDefault();doFindReplace();}" />
     </div>
     <div class="fr-field">
       <label class="fr-label" for="frReplace">Replace with</label>
-      <input type="text" id="frReplace" class="fr-input" placeholder="e.g. Kubernetes" autocomplete="off"
+      <input type="text" id="frReplace" class="field" placeholder="e.g. Kubernetes" autocomplete="off"
              onkeydown="if(event.key==='Enter'){event.preventDefault();doFindReplace();}" />
     </div>
     <div class="m-row"><span class="m-lbl">Match case</span><div class="sw" id="frMatchCase" onclick="this.classList.toggle('on')"></div></div>
@@ -862,13 +745,18 @@ mark.pending-selection-highlight {
     <div class="tb-sep"></div>
     <div class="tb-rec-name-wrap">
       <span class="tb-rec-name" id="topbarTitle">Loading…</span>
-      <button class="tb-rec-edit" id="topbarRenameBtn" onclick="beginRenameRecordingTitle()" title="Rename recording">
+      <button class="icon-btn icon-btn-accent" id="topbarRenameBtn" onclick="beginRenameRecordingTitle()" title="Rename recording">
         <svg viewBox="0 0 13 13" fill="none"><path d="M9.5 1.5l2 2-7.5 7.5-2.5.5.5-2.5 7.5-7.5z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
     <span class="save-status" id="pageSaveStatus" role="status" aria-live="polite"></span>
     <div class="topbar-right">
-      <div class="proj-pill" id="projPill" onclick="toggleProjDetails(event)" style="position:relative">
+      <!-- Not a <button>: it wraps the tooltip panel, which is flow content a
+           button may not contain. role + tabindex + key handler instead. -->
+      <div class="proj-pill" id="projPill" role="button" tabindex="0"
+           onclick="toggleProjDetails(event)"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleProjDetails(event);}"
+           style="position:relative">
         <svg viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 4.5h5M3.5 7h3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         Project details
         <div class="proj-tooltip" id="projTooltip">
@@ -877,10 +765,10 @@ mark.pending-selection-highlight {
           </div>
         </div>
       </div>
-      <div class="proj-pill" id="partPill" onclick="openParticipantModal()">
+      <button type="button" class="proj-pill" id="partPill" onclick="openParticipantModal()">
         <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 11c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         <span id="partPillLabel">Participant details</span>
-      </div>
+      </button>
       <button class="export-btn" onclick="openFindReplace()" title="Find &amp; replace text across this transcript — fix recurring transcription errors">
         <svg viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 11 11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         Fix text
@@ -948,8 +836,8 @@ mark.pending-selection-highlight {
           <div class="sec-lbl">Project codes</div>
           <div class="chip-row" id="tagChips"></div>
           <div class="new-tag-form" id="newTagForm" style="display:none">
-            <button type="button" class="tag-color-swatch" id="newTagColorSwatch" onclick="openColorModal(this,'newTag')" title="Choose code color"></button>
-            <input type="text" id="newTagInput" maxlength="64" />
+            <button type="button" class="color-swatch color-swatch-lg" id="newTagColorSwatch" onclick="openColorModal(this,'newTag')" title="Choose code color"></button>
+            <input type="text" id="newTagInput" class="field field-sm" maxlength="64" />
           </div>
           <div class="sec-lbl" style="margin-top:12px">Coded in this recording</div>
           <div id="taggedQuotes"></div>
@@ -1460,10 +1348,10 @@ function renderTagsPane(tags, tagSpans, segments) {
   chipsEl.innerHTML = tags.map(t => {
     const n = tagSpans.filter(s => s.tag_id === t.id).length;
     const col = tagColor(t.color);
-    return `<span class="chip chip-clickable" style="background:${col}22;color:${col};border-color:${col}" data-tag-id="${esc(t.id)}" data-tag-name="${esc(t.name)}" title="${esc(t.description || '')}" onclick="openTagChipPopover(this, event)"><div class="dot" style="background:${col}"></div>${esc(t.name)} <span class="n">${n}</span></span>`;
+    return `<button type="button" class="chip chip-clickable" style="background:${col}22;color:${col};border-color:${col}" data-tag-id="${esc(t.id)}" data-tag-name="${esc(t.name)}" title="${esc(t.description || '')}" onclick="openTagChipPopover(this, event)"><span class="dot" style="background:${col}"></span>${esc(t.name)} <span class="n">${n}</span></button>`;
   }).join('')
-    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" onclick="showNewTagForm()">+ New code</span>`
-    + `<span class="chip" style="border:1px dashed var(--border);color:var(--muted-fg);cursor:pointer" title="Copy codes from another project" onclick="openImportTagsModal()">&rarr; Import from another project</span>`;
+    + `<button type="button" class="chip chip-add" onclick="showNewTagForm()">+ New code</button>`
+    + `<button type="button" class="chip chip-add" title="Copy codes from another project" onclick="openImportTagsModal()">&rarr; Import from another project</button>`;
   const quotes = [];
   tagSpans.forEach(sp => {
     const seg = segments[sp.segment_idx];
@@ -1477,23 +1365,13 @@ function renderTagsPane(tags, tagSpans, segments) {
   quotesEl.innerHTML = quotes.map(q => {
     const sp = q.span;
     const spanData = `data-span-id="${esc(sp.id || '')}" data-seg="${sp.segment_idx}" data-tag-id="${esc(sp.tag_id)}" data-start="${sp.start_char}" data-end="${sp.end_char}"`;
-    return `<div class="q-card" ${spanData}><div class="q-card-content" onclick="seekTo(${q.start})"><div class="q-text">${esc(q.text)}</div><div class="q-meta"><span><span class="q-tag-dot" style="background:${tagColor(q.tag?.color)}"></span>${esc(q.tag?.name || '')}</span><span>${fmtTime(q.start)}</span></div></div><button type="button" class="q-card-remove" onclick="event.stopPropagation();removeTagSpan(this)" title="Remove this code from selection">&times;</button></div>`;
-  }).join('') || '<div class="right-placeholder">No coded quotes yet. Highlight text to apply a code.</div>';
+    return `<div class="q-card" ${spanData}><div class="q-card-content" onclick="seekTo(${q.start})"><div class="q-text">${esc(q.text)}</div><div class="q-meta"><span><span class="q-tag-dot" style="background:${tagColor(q.tag?.color)}"></span>${esc(q.tag?.name || '')}</span><span>${fmtTime(q.start)}</span></div></div><button type="button" class="icon-btn icon-btn-danger" onclick="event.stopPropagation();removeTagSpan(this)" title="Remove this code from selection">&times;</button></div>`;
+  }).join('') || '<div class="empty-inline">No coded quotes yet. Highlight text to apply a code.</div>';
 }
 
-const TAG_PALETTE = [
-  '#f04f4f', '#34c97a', '#f5a623', '#5da8e0', '#a0a0b8', '#e91e63',
-  '#9c27b0', '#00bcd4', '#8bc34a', '#ff5722', '#607d8b', '#795548'
-];
-let selectedTagColor = '#a0a0b8';
+// TAG_PALETTE and tagColor() come from js/palette.js
+let selectedTagColor = TAG_COLOR_FALLBACK;
 let _colorPickerCloseHandler = null;
-
-function tagColor(c) {
-  // Strict hex validation — never let an arbitrary string reach a style attr.
-  if (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
-  const map = { pain: '#f04f4f', ins: '#34c97a', del: '#f5a623', conf: '#5da8e0', fu: '#a0a0b8' };
-  return map[c] || '#a0a0b8';
-}
 
 // Collision-resistant id (Date.now() alone collides within the same ms).
 function uid() {
@@ -1576,8 +1454,8 @@ function renderCommentsPane(comments, segments) {
         return seg ? (seg.text || '').slice(c.start_char, c.end_char) : '';
       })();
     const cid = c.id || '';
-    return `<div class="cmt-card" id="cmt-${cid}" data-comment-id="${esc(cid)}" onmouseenter="highlightCommentSpan(${escJsAttr(cid)}, true)" onmouseleave="highlightCommentSpan(${escJsAttr(cid)}, false)"><div class="cmt-card-content"><div class="cmt-anchor">"${esc(anchor)}"</div><div class="cmt-body">${esc(c.text || '')}</div><div class="cmt-meta">${c.created_at || '—'}</div></div><button type="button" class="cmt-card-remove" onclick="event.stopPropagation();removeComment(this)" title="Remove this comment">&times;</button></div>`;
-  }).join('') || '<div class="right-placeholder">No comments yet. Highlight text and click Add comment.</div>';
+    return `<div class="cmt-card" id="cmt-${cid}" data-comment-id="${esc(cid)}" onmouseenter="highlightCommentSpan(${escJsAttr(cid)}, true)" onmouseleave="highlightCommentSpan(${escJsAttr(cid)}, false)"><div class="cmt-card-content"><div class="cmt-anchor">"${esc(anchor)}"</div><div class="cmt-body">${esc(c.text || '')}</div><div class="cmt-meta">${c.created_at || '—'}</div></div><button type="button" class="icon-btn icon-btn-danger" onclick="event.stopPropagation();removeComment(this)" title="Remove this comment">&times;</button></div>`;
+  }).join('') || '<div class="empty-inline">No comments yet. Highlight text and click Add comment.</div>';
 }
 
 function removeComment(btnEl) {
@@ -2315,7 +2193,7 @@ function renderImportProjectPicker() {
   const arch = _importProjectsCache.archived.filter(match);
 
   if (!act.length && !arch.length) {
-    body.innerHTML = '<div class="import-empty">No matching projects.</div>';
+    body.innerHTML = '<div class="empty-inline">No matching projects.</div>';
     return;
   }
 
@@ -2356,7 +2234,7 @@ async function openImportTagsModal() {
   if (searchEl) searchEl.value = '';
   _importArchiveOpen = false;
   const body = document.getElementById('importProjBody');
-  body.innerHTML = '<div class="import-empty">Loading…</div>';
+  body.innerHTML = '<div class="empty-inline">Loading…</div>';
   overlay.classList.add('show');
   try {
     const res = await fetch(API + '?include_tags=1', { cache: 'no-store' });
@@ -2377,12 +2255,12 @@ async function openImportTagsModal() {
     const searchWrap = document.getElementById('importProjSearchWrap');
     if (searchWrap) searchWrap.style.display = (active.length + archived.length) <= 2 ? 'none' : '';
     if (!active.length && !archived.length) {
-      body.innerHTML = '<div class="import-empty">No other projects found.</div>';
+      body.innerHTML = '<div class="empty-inline">No other projects found.</div>';
       return;
     }
     renderImportProjectPicker();
   } catch (e) {
-    body.innerHTML = '<div class="import-empty">Failed to load projects.</div>';
+    body.innerHTML = '<div class="empty-inline">Failed to load projects.</div>';
   }
 }
 
@@ -2488,7 +2366,7 @@ function openSpeakerEdit(el) {
   // so they follow the theme. They previously hardcoded the dark-theme hexes
   // and so disagreed with the rendered rows in light theme.
   row.innerHTML = _SPK_CLASSES.map(cls =>
-    `<button type="button" class="spk-color-swatch${cls === _spkPopoverSelectedCls ? ' selected' : ''}" style="background:var(--${cls}-lbl)" data-cls="${cls}" onclick="commitSpeakerEdit(${escJsAttr(cls)})"></button>`
+    `<button type="button" class="color-swatch color-swatch-round${cls === _spkPopoverSelectedCls ? ' selected' : ''}" style="background:var(--${cls}-lbl)" data-cls="${cls}" onclick="commitSpeakerEdit(${escJsAttr(cls)})"></button>`
   ).join('');
 
   const popover = document.getElementById('speakerPopover');

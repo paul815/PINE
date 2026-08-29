@@ -101,14 +101,14 @@ body { font-size: inherit; }
 .tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
 .py-link-status {
   width: 22px; height: 22px; border: 1px solid transparent; border-radius: var(--radius-pill);
-  background: transparent; color: #8f98aa; display: inline-flex; align-items: center;
+  background: transparent; color: var(--muted-fg); display: inline-flex; align-items: center;
   justify-content: center; padding: 0; cursor: default;
 }
 .py-link-status::before {
   content: ''; width: 11px; height: 11px; border-radius: 50%; background: currentColor;
 }
-.py-link-status.state-ok { color: #22C55E; }
-.py-link-status.state-checking { color: #8f98aa; }
+.py-link-status.state-ok { color: var(--accent); }
+.py-link-status.state-checking { color: var(--muted-fg); }
 .py-link-status.state-warn { color: var(--warn); }
 .py-link-status.state-error { color: var(--destr); }
 .py-link-status.state-restarting { color: var(--warn); }
@@ -151,7 +151,7 @@ body { font-size: inherit; }
   scrollbar-width: thin; scrollbar-color: var(--border) transparent;
 }
 .project-list::-webkit-scrollbar { width: 4px; }
-.project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 .list-section { padding-top: 4px; }
 
 .project-row {
@@ -168,7 +168,7 @@ body { font-size: inherit; }
 
 .archive-toggle-btn {
   width: 100%; gap: 8px;
-  font-size: 0.846rem; font-weight: 500; letter-spacing: 0.08em;
+  font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking);
   text-transform: uppercase; font-family: var(--font-body);
 }
 .archive-toggle-btn svg { transition: transform 0.2s; }
@@ -202,8 +202,6 @@ body { font-size: inherit; }
   align-items: center; justify-content: center;
   gap: 12px; color: var(--muted-fg); text-align: center; padding: 40px;
 }
-.empty-state > svg { width: 40px; height: 40px; opacity: 0.25; }
-.empty-state p { font-size: 1rem; color: var(--muted-fg); max-width: 220px; line-height: 1.6; }
 #emptyNewProjectBtn.btn-new {
   width: auto; min-height: var(--btn-h-sm); padding: 0 14px;
   background: transparent; color: var(--muted-fg);
@@ -232,8 +230,8 @@ body { font-size: inherit; }
 .single-tx-list-hdr {
   margin-top: 16px; padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
-  font-size: 0.769rem; font-weight: 500; color: var(--muted-fg);
-  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--label-size); font-weight: var(--label-weight); color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: var(--label-tracking);
 }
 .single-tx-list { max-height: 260px; overflow-y: auto; margin-top: 4px; }
 .single-tx-item {
@@ -244,13 +242,6 @@ body { font-size: inherit; }
 .single-tx-item:hover { background: var(--muted); }
 .stx-name { flex: 1; font-size: 0.923rem; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stx-date { font-size: 0.769rem; color: var(--muted-fg); white-space: nowrap; }
-.stx-del {
-  background: none; border: none; color: var(--muted-fg);
-  cursor: pointer; padding: 2px; opacity: 0; transition: opacity 0.15s;
-  display: inline-flex; align-items: center;
-}
-.single-tx-item:hover .stx-del { opacity: 1; }
-.stx-del:hover { color: var(--destr); }
 .stx-dropzone {
   border: 2px dashed var(--border); border-radius: var(--radius);
   padding: 28px 16px; text-align: center; cursor: pointer;
@@ -266,7 +257,7 @@ body { font-size: inherit; }
   display: none; position: fixed;
   width: 420px; max-height: 480px; overflow-y: auto;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 16px; z-index: var(--z-popover);
+  box-shadow: var(--shadow-md); padding: 16px; z-index: var(--z-popover);
 }
 .stx-popover.open { display: block; animation: stxFadeUp 0.15s ease both; }
 .stx-popover-title { font-size: 1rem; font-weight: 600; color: var(--fg); margin-bottom: 4px; }
@@ -280,7 +271,7 @@ body { font-size: inherit; }
 .launch-prompt {
   display: none; position: absolute; left: 8px; right: 8px; bottom: 8px;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 14px; z-index: var(--z-popover);
+  box-shadow: var(--shadow-md); padding: 14px; z-index: var(--z-popover);
 }
 .launch-prompt.open { display: block; animation: stxFadeUp 0.15s ease both; }
 .launch-prompt-hdr { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
@@ -311,7 +302,7 @@ body { font-size: inherit; }
 .lang-confirm-modal {
   width: 100%; max-width: 420px; background: var(--card);
   border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.2); padding: 20px;
+  box-shadow: var(--shadow-md); padding: 20px;
 }
 .lang-confirm-modal h3 { font-size: 1.154rem; font-weight: 700; color: var(--fg); margin-bottom: 8px; }
 .lang-confirm-desc { font-size: 1rem; color: var(--muted-fg); margin-bottom: 14px; line-height: 1.55; }
@@ -410,7 +401,7 @@ body { font-size: inherit; }
 .split-btn .btn-outline { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
 /* hover the main part → whole control gets a black outline (both halves) */
 .split-btn .btn-outline:hover:not(:disabled),
-.split-btn .btn-outline:hover:not(:disabled) + .split-arrow { border-color: #111827; }
+.split-btn .btn-outline:hover:not(:disabled) + .split-arrow { border-color: var(--accent-bd); }
 .split-arrow {
   height: var(--btn-h-lg); width: 26px;
   border: 1px solid var(--border); border-left: none;
@@ -426,7 +417,7 @@ body { font-size: inherit; }
 .split-dropdown-menu {
   position: absolute; top: calc(100% + 4px); right: 0;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   padding: 4px; min-width: 110px; display: none; z-index: var(--z-dropdown);
 }
 .split-dropdown.open .split-dropdown-menu { display: block; }
@@ -447,8 +438,8 @@ body { font-size: inherit; }
   background: var(--sunken); display: flex; flex-direction: column; gap: 20px;
   scrollbar-width: thin; scrollbar-color: var(--border) transparent;
 }
-.right-body::-webkit-scrollbar { width: 6px; }
-.right-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.right-body::-webkit-scrollbar { width: 4px; }
+.right-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); }
 
 /* ── Field cards ── */
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -457,12 +448,12 @@ body { font-size: inherit; }
   border-radius: var(--radius); padding: 14px;
 }
 .field-card .label {
-  font-size: 0.846rem; font-weight: 500; color: #9CA3AF;
-  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  font-size: var(--label-size); font-weight: var(--label-weight); color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: var(--label-tracking); margin-bottom: 6px;
   display: flex; align-items: center;
 }
 .field-card .value { font-size: 1.077rem; color: var(--fg); line-height: 1.6; }
-.field-card .value[contenteditable] { outline: none; cursor: text; position: relative; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.field-card .value[contenteditable] { outline: none; cursor: text; position: relative; border-bottom: 1px dashed var(--field-underline); padding-bottom: 2px; }
 .field-card .value[contenteditable]:focus {
   box-shadow: 0 0 0 1px var(--border); border-radius: 3px;
 }
@@ -470,7 +461,7 @@ body { font-size: inherit; }
 .field-card .value[contenteditable]:not(:focus) { cursor: text; }
 /* .save-status lives in css/save-status.css */
 
-.num-list { list-style: none; padding: 0; cursor: text; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.num-list { list-style: none; padding: 0; cursor: text; border-bottom: 1px dashed var(--field-underline); padding-bottom: 2px; }
 .num-list:empty::before { content: ''; display: block; height: calc(1.5 * 1.077rem); margin-bottom: 4px; }
 .num-list li { font-size: 1.077rem; color: var(--fg); margin-bottom: 4px; line-height: 1.5; }
 .num-list li::before {
@@ -489,7 +480,7 @@ body { font-size: inherit; }
   border-radius: var(--radius); transition: border-color 0.15s, box-shadow 0.15s;
 }
 .recording-row.clickable { cursor: pointer; }
-.recording-row.clickable:hover { border-color: var(--accent-bd); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.recording-row.clickable:hover { border-color: var(--accent-bd); box-shadow: var(--shadow-sm); }
 
 .status-icon { flex-shrink: 0; line-height: 0; cursor: default; }
 .status-icon.status-clickable { cursor: pointer; }
@@ -512,7 +503,7 @@ body { font-size: inherit; }
 .rec-segment:hover { background: var(--muted); color: var(--fg); }
 .seg-picker {
   position: fixed; background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   padding: 4px; min-width: 180px; max-height: 280px; overflow-y: auto;
   z-index: var(--z-overlay); display: none;
 }
@@ -541,24 +532,6 @@ body { font-size: inherit; }
   background: var(--muted); border: 1px solid var(--accent); border-radius: var(--radius);
   padding: 4px 8px; outline: none; font-family: var(--font-body);
 }
-.rec-edit {
-  width: 22px; height: 22px; border-radius: var(--radius);
-  background: none; border: none; cursor: pointer; color: var(--muted-fg);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: all 0.15s; flex-shrink: 0;
-}
-.recording-row:hover .rec-edit { opacity: 1; }
-.rec-edit:hover { color: var(--accent); background: var(--accent-dim); }
-.rec-edit svg { width: 11px; height: 11px; }
-.rec-del {
-  width: 22px; height: 22px; border-radius: var(--radius);
-  background: none; border: none; cursor: pointer; color: var(--muted-fg);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: all 0.15s; flex-shrink: 0;
-}
-.recording-row:hover .rec-del { opacity: 1; }
-.rec-del:hover { color: var(--destr); background: var(--destr-dim); }
-.rec-del svg { width: 11px; height: 11px; }
 
 .btn-tx-cancel {
   background: none; border: none; color: var(--muted-fg); cursor: pointer;
@@ -596,14 +569,6 @@ body { font-size: inherit; }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin-top: 8px; flex-wrap: wrap;
 }
-.dz-mt-btn {
-  padding: 5px 11px; border-radius: var(--btn-radius);
-  border: 1px solid var(--border); background: transparent;
-  color: var(--muted-fg); font-size: 0.846rem; cursor: pointer;
-  font-family: var(--font-body, inherit);
-}
-.dz-mt-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-subtle, var(--border)); }
-.dz-mt-btn:disabled { opacity: 0.55; cursor: default; }
 .dz-hint-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
 .dz-hint-pop {
   display: none;
@@ -616,7 +581,7 @@ body { font-size: inherit; }
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-md);
   z-index: var(--z-sticky);
   font-size: 0.846rem;
   line-height: 1.5;
@@ -634,11 +599,11 @@ body { font-size: inherit; }
   border-radius: var(--radius); padding: 16px;
 }
 .summary-card .s-label {
-  font-size: 0.846rem; font-weight: 500; color: var(--muted-fg);
-  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+  font-size: var(--label-size); font-weight: var(--label-weight); color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: var(--label-tracking); margin-bottom: 6px;
 }
 .summary-card .value { font-size: 1.077rem; line-height: 1.6; color: var(--fg); }
-.summary-card .value[contenteditable] { outline: none; cursor: text; border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px; }
+.summary-card .value[contenteditable] { outline: none; cursor: text; border-bottom: 1px dashed var(--field-underline); padding-bottom: 2px; }
 .summary-card .value[contenteditable]:focus {
   box-shadow: 0 0 0 1px var(--border); border-radius: 3px;
 }
@@ -647,20 +612,12 @@ body { font-size: inherit; }
 /* ── Attachments ── */
 .att-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .att-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); transition: border-color 0.15s, box-shadow 0.15s; }
-.att-item:hover { border-color: var(--accent-bd); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.att-item:hover { border-color: var(--accent-bd); box-shadow: var(--shadow-sm); }
 .att-name-wrap { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
 .att-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .att-name:hover { text-decoration: underline; }
 .att-name-edit { flex: 1; font-size: 1.077rem; font-weight: 500; color: var(--fg); outline: none; background: transparent; border: none; border-bottom: 1px dashed var(--border); cursor: text; min-width: 0; }
 .att-name-edit:focus { border-bottom-color: var(--accent); }
-.att-edit { width: 22px; height: 22px; border-radius: var(--radius); background: none; border: none; cursor: pointer; color: var(--muted-fg); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: all 0.15s; flex-shrink: 0; }
-.att-item:hover .att-edit { opacity: 1; }
-.att-edit:hover { color: var(--accent); background: var(--accent-dim); }
-.att-edit svg { width: 11px; height: 11px; }
-.att-del { width: 22px; height: 22px; border-radius: var(--radius); background: none; border: none; cursor: pointer; color: var(--muted-fg); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: all 0.15s; flex-shrink: 0; }
-.att-item:hover .att-del { opacity: 1; }
-.att-del:hover { color: var(--destr); background: var(--destr-dim); }
-.att-del svg { width: 11px; height: 11px; }
 .att-dz-wrap { position: relative; margin-top: 8px; }
 label.att-upload-zone.drop-zone { display: block; }
 
@@ -674,18 +631,9 @@ label.att-upload-zone.drop-zone { display: block; }
 .seg-card-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
 .seg-name {
   flex: 1; font-size: 1.077rem; font-weight: 600; color: var(--fg); outline: none; cursor: text;
-  border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px;
+  border-bottom: 1px dashed var(--field-underline); padding-bottom: 2px;
 }
 .seg-name:focus { box-shadow: 0 0 0 1px var(--border); border-radius: 3px; }
-.seg-del {
-  width: 20px; height: 20px; border-radius: var(--radius);
-  background: none; border: none; cursor: pointer; color: var(--muted-fg);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: all 0.15s; flex-shrink: 0;
-}
-.seg-card:hover .seg-del { opacity: 1; }
-.seg-del:hover { color: var(--destr); background: var(--destr-dim); }
-.seg-del svg { width: 11px; height: 11px; }
 .seg-target-row {
   display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
   font-size: 0.923rem; color: var(--muted-fg);
@@ -712,18 +660,18 @@ label.att-upload-zone.drop-zone { display: block; }
 .seg-target-input::-webkit-outer-spin-button,
 .seg-target-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .seg-target-input:focus { border-left-color: var(--accent); border-right-color: var(--accent); }
-.seg-assigned { display: flex; align-items: center; gap: 4px; font-size: 0.923rem; color: #6B7280; margin-left: 6px; }
-.seg-assigned svg { color: #9CA3AF; flex-shrink: 0; }
+.seg-assigned { display: flex; align-items: center; gap: 4px; font-size: 0.923rem; color: var(--muted-fg); margin-left: 6px; }
+.seg-assigned svg { color: var(--muted-fg); flex-shrink: 0; }
 .seg-field { margin-bottom: 8px; }
 .seg-field:last-child { margin-bottom: 0; }
 .seg-field-lbl {
-  font-size: 0.846rem; font-weight: 500; color: #9CA3AF;
-  letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px;
+  font-size: var(--label-size); font-weight: var(--label-weight); color: var(--muted-fg);
+  letter-spacing: var(--label-tracking); text-transform: uppercase; margin-bottom: 4px;
 }
 .seg-field-val {
   font-size: 1.077rem; color: var(--fg); line-height: 1.5;
   outline: none; cursor: text; min-height: 18px; position: relative;
-  border-bottom: 1px dashed #D1D5DB; padding-bottom: 2px;
+  border-bottom: 1px dashed var(--field-underline); padding-bottom: 2px;
 }
 .seg-field-val:focus { box-shadow: 0 0 0 1px var(--border); border-radius: 3px; }
 .btn-add-seg {
@@ -774,7 +722,7 @@ label.att-upload-zone.drop-zone { display: block; }
 .rec-filter-menu {
   position: absolute; top: calc(100% + 4px); left: 0;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   padding: 4px; min-width: 180px; display: none; z-index: var(--z-dropdown);
 }
 .rec-filter-menu.show { display: block; }
@@ -799,17 +747,10 @@ label.att-upload-zone.drop-zone { display: block; }
 .add-sec-menu {
   position: absolute; top: calc(100% + 4px); right: 0;
   background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
   padding: 4px; min-width: 160px; display: none; z-index: var(--z-dropdown);
 }
 .add-sec-menu.show { display: block; }
-.remove-section-btn {
-  background: none; border: none; cursor: pointer; padding: 2px;
-  color: var(--muted-fg); border-radius: 3px; line-height: 0;
-  transition: color 0.15s, background 0.15s; flex-shrink: 0; margin-left: auto;
-}
-.remove-section-btn:hover { color: var(--destr); background: var(--destr-dim); }
-.remove-section-btn svg { width: 9px; height: 9px; }
 
 /* ── Draggable section cards ── */
 .field-card.draggable { cursor: grab; position: relative; }
@@ -820,8 +761,8 @@ label.att-upload-zone.drop-zone { display: block; }
    and the trailing control stays hard right. */
 .section-head-row .save-status { margin-right: auto; }
 .custom-block-title { outline: none; border-bottom: 1px dashed transparent; cursor: text; }
-.custom-block-title:hover { border-bottom-color: #9CA3AF; }
-.custom-block-title:focus { border-bottom-color: var(--accent, #6366F1); }
+.custom-block-title:hover { border-bottom-color: var(--muted-fg); }
+.custom-block-title:focus { border-bottom-color: var(--accent); }
 .field-card.dragging { opacity: 0.6; }
 .field-card.drop-before::before,
 .field-card.drop-after::after {
@@ -832,23 +773,6 @@ label.att-upload-zone.drop-zone { display: block; }
 .field-card.drop-after::after { bottom: -6px; }
 
 /* ── Modals ── */
-.overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.35);
-  backdrop-filter: blur(4px); z-index: var(--z-modal);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none; transition: opacity 0.18s;
-}
-.overlay.show { opacity: 1; pointer-events: all; }
-.modal {
-  width: 380px; background: var(--card); border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 2); padding: 24px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.18);
-  transform: translateY(8px); transition: transform 0.18s;
-}
-.overlay.show .modal { transform: translateY(0); }
-.modal-title { font-size: 1.154rem; font-weight: 700; margin-bottom: 6px; font-family: var(--font-body); }
-.modal-desc { font-size: 1rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 20px; }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* export modal */
 .m-sub { font-size: 1rem; color: var(--muted-fg); margin-bottom: 14px; line-height: 1.5; }
@@ -905,7 +829,6 @@ label.att-upload-zone.drop-zone { display: block; }
 }
 .export-rec-name { flex: 1; font-size: 0.923rem; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .export-rec-dur { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); flex-shrink: 0; }
-.m-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .fmt-hint { font-size: 0.846rem; color: var(--muted-fg); text-align: right; margin-top: -6px; margin-bottom: 4px; }
 .pii-export-time { color: var(--muted-fg); font-weight: 400; }
 
@@ -914,6 +837,7 @@ label.att-upload-zone.drop-zone { display: block; }
 <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui-system.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
 </head>
 <body>
@@ -923,7 +847,7 @@ label.att-upload-zone.drop-zone { display: block; }
   <div class="modal">
     <div class="modal-title" id="deleteModalTitle">Delete project?</div>
     <div class="modal-desc" id="deleteModalDesc">This will permanently remove the project folder and all its transcriptions, codes, and comments. This cannot be undone.</div>
-    <div class="modal-actions">
+    <div class="m-actions">
       <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
       <button class="btn-delete-confirm" id="deleteConfirmBtn">Delete permanently</button>
     </div>
@@ -1314,7 +1238,7 @@ function buildSectionBlockHtml(key, pid, p) {
     if (block) return buildCustomBlockHtml(block, pid, false);
     return '';
   }
-  const rmBtn = (k) => `<button class="remove-section-btn" onclick="removeSection(${escJsAttr(k)},${pid})" title="Remove section">${SVG_RM}</button>`;
+  const rmBtn = (k) => `<button class="icon-btn icon-btn-danger" onclick="removeSection(${escJsAttr(k)},${pid})" title="Remove section">${SVG_RM}</button>`;
   const qItems = (p?.research_questions || []).map((q, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(q)}</li>`).join('');
   const hItems = (p?.hypotheses || []).map((h, i) => `<li data-n="H${i+1}" contenteditable="true" spellcheck="false">${esc(h)}</li>`).join('');
   const sItems = (p?.stakeholders || []).map((s, i) => `<li data-n="${i+1}." contenteditable="true" spellcheck="false">${esc(s)}</li>`).join('');
@@ -1332,12 +1256,12 @@ function buildSectionBlockHtml(key, pid, p) {
 function buildCustomBlockHtml(block, pid, isSummary) {
   const attrKey = isSummary ? 'data-summary-key' : 'data-section-key';
   const removeFn = isSummary ? 'removeSummarySection' : 'removeSection';
-  const rmBtn = `<button class="remove-section-btn" onclick="${removeFn}(${escJsAttr(block.id)},${pid})" title="Remove section">${SVG_RM}</button>`;
+  const rmBtn = `<button class="icon-btn icon-btn-danger" onclick="${removeFn}(${escJsAttr(block.id)},${pid})" title="Remove section">${SVG_RM}</button>`;
   return `<div class="field-card draggable" ${attrKey}="${block.id}" draggable="true"><div class="label"><span class="custom-block-title" contenteditable="true" spellcheck="false" data-block-id="${block.id}" data-project-id="${pid}" data-summary="${isSummary ? '1' : ''}">${esc(block.title || 'Other')}</span> ${rmBtn}</div><div class="value${(block.content || '') ? '' : ' empty'}" id="field-${block.id}" contenteditable="true" spellcheck="false" data-field="${block.id}" data-project-id="${pid}" data-custom-block="1" data-summary="${isSummary ? '1' : ''}">${esc(block.content || '') || ''}</div></div>`;
 }
 
 function buildSummaryBlockHtml(key, pid, p) {
-  const rmBtn = (k) => `<button class="remove-section-btn" onclick="removeSummarySection(${escJsAttr(k)},${pid})" title="Remove section">${SVG_RM}</button>`;
+  const rmBtn = (k) => `<button class="icon-btn icon-btn-danger" onclick="removeSummarySection(${escJsAttr(k)},${pid})" title="Remove section">${SVG_RM}</button>`;
   // Handle custom blocks
   if (key.startsWith('custom_')) {
     const block = (p?.custom_summary_sections || []).find(b => b.id === key);
@@ -1548,12 +1472,12 @@ function renderDetail(p) {
       <span class="rec-sep" aria-hidden="true">·</span>
       <div class="rec-name-wrap">
         <span class="rec-name" data-original-name="${esc(origName)}">${esc(displayName)}</span>
-        <button class="rec-edit" onclick="event.stopPropagation();beginRenameRecording(this)" title="Rename recording">${SVG_PENCIL}</button>
+        <button class="icon-btn icon-btn-accent" onclick="event.stopPropagation();beginRenameRecording(this)" title="Rename recording">${SVG_PENCIL}</button>
       </div>
       <span class="rec-duration">${fmtDuration(r.duration_seconds)}</span>${trackBadge}
       <span class="rec-sep">·</span>
       <span class="rec-meta">${timeAgo(r.created_at)}</span>
-      <button class="rec-del" onclick="event.stopPropagation();deleteRecording(${p.id},${r.id})" title="Delete recording">${SVG_DELETE}</button>
+      <button class="icon-btn icon-btn-danger" onclick="event.stopPropagation();deleteRecording(${p.id},${r.id})" title="Delete recording">${SVG_DELETE}</button>
     </div>`;
   }).join('');
 
@@ -1594,7 +1518,7 @@ function renderDetail(p) {
       </div>
       <div class="actions-wrap">
         <div class="actions">
-          <button class="btn-primary btn-lg" onclick="window.location.href='/project/${p.id}/tags'">${SVG_TAGS} Work with codes</button>
+          <button class="btn-outline btn-lg" onclick="window.location.href='/project/${p.id}/tags'">${SVG_TAGS} Work with codes</button>
           <button class="btn-outline btn-lg" onclick="openExport(${p.id})">${SVG_EXPORT} Export</button>
           <span style="flex:1"></span>
           ${archiveDropdown}
@@ -1674,8 +1598,8 @@ function renderDetail(p) {
                  pickers are native because we need a real path on disk: the
                  tracks are read where they lie rather than copied in. -->
             <div class="dz-multitrack">
-              <button type="button" class="dz-mt-btn" id="dzZoomBtn-${p.id}" onclick="openZoomFolderPick(${p.id})">Add Zoom folder</button>
-              <button type="button" class="dz-mt-btn" id="dzChanBtn-${p.id}" onclick="openChannelTrackPick(${p.id})">Add file with a channel per speaker</button>
+              <button type="button" class="btn-outline btn-sm" id="dzZoomBtn-${p.id}" onclick="openZoomFolderPick(${p.id})">Add Zoom folder</button>
+              <button type="button" class="btn-outline btn-sm" id="dzChanBtn-${p.id}" onclick="openChannelTrackPick(${p.id})">Add file with a channel per speaker</button>
             </div>
             <input type="file" id="fileInput-${p.id}" style="display:none" accept=".mp3,.mp4,.m4a,.wav,.mkv,.webm,.ogg,.flac" multiple />
           </div>
@@ -2833,7 +2757,7 @@ function segCardHTML(s, pid) {
   return `<div class="seg-card" data-seg-id="${s.id}">
     <div class="seg-card-header">
       <div class="seg-name" contenteditable="true" spellcheck="false" data-seg-id="${s.id}" data-pid="${pid}">${esc(s.name)}</div>
-      <button class="seg-del" onclick="deleteSegment(${pid},${s.id})" title="Delete segment">${SVG_DELETE}</button>
+      <button class="icon-btn icon-btn-danger" onclick="deleteSegment(${pid},${s.id})" title="Delete segment">${SVG_DELETE}</button>
     </div>
     <div class="seg-target-row">
       <span>Target interviews:</span>
@@ -2842,7 +2766,7 @@ function segCardHTML(s, pid) {
         <input class="seg-target-input" type="number" min="0" value="${target}" data-seg-id="${s.id}" data-pid="${pid}" />
         <button class="seg-stepper-btn" type="button" data-delta="1" data-seg-id="${s.id}" data-pid="${pid}" aria-label="Increase">+</button>
       </div>
-      <span class="seg-assigned" style="${assignedColor}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>${assigned} interview${assigned !== 1 ? 's' : ''} assigned</span>
+      <span class="seg-assigned" style="${assignedColor}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-fg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>${assigned} interview${assigned !== 1 ? 's' : ''} assigned</span>
     </div>
     <div class="seg-field">
       <div class="seg-field-lbl">Recruitment criteria</div>
@@ -3747,7 +3671,7 @@ async function loadSingleTranscriptions() {
         <span>${statusHtml}</span>
         <span class="stx-name" title="${name}">${name}</span>
         <span class="stx-date">${dateStr}</span>
-        <button class="stx-del" onclick="event.stopPropagation();deleteSingleTx(${r.id})" title="Delete">
+        <button class="icon-btn icon-btn-danger" onclick="event.stopPropagation();deleteSingleTx(${r.id})" title="Delete">
           <svg viewBox="0 0 10 10" width="10" height="10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         </button>
       </div>`;
@@ -3930,9 +3854,9 @@ function renderAttachments(pid, atts) {
     <div class="att-item" data-aid="${a.id}">
       <div class="att-name-wrap">
         <span class="att-name" onclick="downloadAttachment(${pid},${escJsAttr(a.id)})" title="Download">${esc(a.display_name)}</span>
-        <button class="att-edit" onclick="startRenameAttachment(${pid},${escJsAttr(a.id)})" title="Rename">${SVG_PENCIL}</button>
+        <button class="icon-btn icon-btn-accent" onclick="startRenameAttachment(${pid},${escJsAttr(a.id)})" title="Rename">${SVG_PENCIL}</button>
       </div>
-      <button class="att-del" onclick="deleteAttachment(${pid},${escJsAttr(a.id)})" title="Delete">${SVG_DELETE}</button>
+      <button class="icon-btn icon-btn-danger" onclick="deleteAttachment(${pid},${escJsAttr(a.id)})" title="Delete">${SVG_DELETE}</button>
     </div>`).join('');
 }
 

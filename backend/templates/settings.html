@@ -259,17 +259,6 @@ body { font-size: inherit; }
 .backup-about p + p { margin-top: 10px; }
 .backup-about strong { color: var(--fg); font-weight: 600; }
 
-.inline-select {
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg);
-  font-family: var(--font-body);
-  font-size: 0.923rem;
-  padding: 5px 10px;
-  cursor: pointer;
-  outline: none;
-}
 
 /* ── Toggle switch ── */
 .sw {
@@ -295,14 +284,7 @@ body { font-size: inherit; }
 
 /* ── Text input ── */
 .input-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.text-input {
-  flex: 1; background: var(--muted); border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 7px 10px; font-size: 1rem; color: var(--fg); font-family: var(--font-body);
-  outline: none; transition: border-color 0.15s;
-}
-.text-input:focus { border-color: var(--accent-bd); }
-input[type="range"] { font-family: var(--font-body); font-size: 13px; }
+input[type="range"] { font-size: 1rem; }
 
 /* ── Disk bar ── */
 .disk-row { margin-top: 8px; }
@@ -352,20 +334,6 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
 .backup-actions button { padding: 4px 10px; font-size: 1rem; }
 
 /* ── Restore modal ── */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: var(--z-modal);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none; transition: opacity 0.2s;
-}
-.modal-overlay.open { opacity: 1; pointer-events: auto; }
-.modal-box {
-  background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius)*2);
-  padding: 20px 22px; width: 480px; max-width: 92vw; max-height: 80vh;
-  display: flex; flex-direction: column;
-}
-.modal-title { font-size: 1.154rem; font-weight: 700; margin-bottom: 14px; }
-.modal-body { flex: 1; overflow-y: auto; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .chk-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 1rem; }
 .chk-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 .radio-group { display: flex; gap: 6px; margin-top: 6px; }
@@ -406,6 +374,7 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
 </style>
 <script src="{{ url_for('static', filename='js/save-status.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/button-system.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ui-system.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/save-status.css') }}" />
 </head>
 <body>
@@ -642,7 +611,7 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
               <div class="row-lbl">Backup location</div>
               <div class="row-sub">Where backup ZIP files are stored</div>
               <div class="input-row">
-                <input class="text-input" id="backupPath" placeholder="Default: .../PINE/backups/" onblur="saveBackupPath()" />
+                <input class="field" id="backupPath" placeholder="Default: .../PINE/backups/" onblur="saveBackupPath()" />
                 <button type="button" class="btn-outline" onclick="browseBackupFolder()">Browse…</button>
                 <button type="button" class="btn-outline" onclick="openBackupFolder()" title="Open the backup folder in your file manager">Open</button>
               </div>
@@ -662,7 +631,7 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
               <div class="row-lbl">Automatic backups</div>
               <div class="row-sub">Back up on startup and on a schedule</div>
             </div>
-            <select id="autoBackupFreq" class="inline-select" onchange="setAutoBackupFreq(this.value)">
+            <select id="autoBackupFreq" class="field field-sm field-inline" onchange="setAutoBackupFreq(this.value)">
               <option value="24">Once a day</option>
               <option value="168" selected>Once a week</option>
               <option value="720">Once a month</option>
@@ -709,15 +678,15 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
       </div>
 
       <!-- Restore modal -->
-      <div class="modal-overlay" id="restoreModal">
-        <div class="modal-box">
+      <div class="overlay" id="restoreModal">
+        <div class="modal modal-wide">
           <div class="modal-title">Restore from backup</div>
           <div class="modal-body" id="restoreModalBody">Loading...</div>
           <div id="restoreProgress" style="display:none;margin-top:8px">
             <div class="disk-bar"><div class="disk-fill" id="restoreProgressFill" style="width:0%"></div></div>
             <div class="disk-lbl" id="restoreProgressMsg">Restoring...</div>
           </div>
-          <div class="modal-footer">
+          <div class="m-actions">
             <button class="btn-outline" onclick="closeRestoreModal()">Cancel</button>
             <button class="btn-save" id="restoreConfirmBtn" onclick="doRestore()">Restore</button>
           </div>
@@ -790,7 +759,7 @@ input[type="range"] { font-family: var(--font-body); font-size: 13px; }
         <div class="card reset-card">
           <p class="reset-warn">Reset all data? This will permanently remove all projects, recordings, transcripts, and annotations. This cannot be undone.</p>
           <div class="input-row" style="margin-top:12px">
-            <input class="text-input" id="resetConfirmInput" placeholder="Type Yes to confirm" style="max-width:200px" />
+            <input class="field" id="resetConfirmInput" placeholder="Type Yes to confirm" style="max-width:200px" />
             <button class="btn-reset" id="resetBtn" onclick="doReset()">Reset</button>
           </div>
           <div id="resetMsg" style="margin-top:8px;font-size:0.923rem"></div>
@@ -1618,7 +1587,7 @@ async function openRestoreModal(filename) {
   body.innerHTML = '<div style="color:var(--muted-fg)">Loading manifest...</div>';
   document.getElementById('restoreProgress').style.display = 'none';
   document.getElementById('restoreConfirmBtn').disabled = false;
-  modal.classList.add('open');
+  modal.classList.add('show');
 
   try {
     const res = await fetch(BACKUP_API + '/' + encodeURIComponent(filename) + '/manifest');
@@ -1653,7 +1622,7 @@ async function openRestoreModal(filename) {
 }
 
 function closeRestoreModal() {
-  document.getElementById('restoreModal').classList.remove('open');
+  document.getElementById('restoreModal').classList.remove('show');
 }
 
 function toggleRestoreAll(checked) {

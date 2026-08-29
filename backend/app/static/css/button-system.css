@@ -21,11 +21,11 @@
   .btn-new,
   .btn-primary,
   .btn-outline,
+  .btn-ghost,
   .btn-save,
   .btn-reset,
   .btn-cancel,
   .btn-delete-confirm,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .btn-validate,
   .m-cancel,
@@ -33,7 +33,6 @@
   .import-back-btn,
   .import-confirm-btn,
   .export-btn,
-  .export-csv-btn,
   .back-btn,
   .back-to-rec-btn,
   .tags-link-btn,
@@ -42,11 +41,9 @@
   .theme-btn,
   .font-btn,
   .fmt-btn,
-  .sidebar-theme-btn,
   .seg-chip,
   .export-tab,
   .proj-pill,
-  .import-tags-btn,
   .add-cmt-btn,
   .tag-chip-remove-btn,
   .archive-toggle-btn,
@@ -67,6 +64,7 @@
   border-radius: var(--btn-radius);
   font-family: var(--font-body);
   line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   transition:
@@ -83,11 +81,11 @@
   .btn-new,
   .btn-primary,
   .btn-outline,
+  .btn-ghost,
   .btn-save,
   .btn-reset,
   .btn-cancel,
   .btn-delete-confirm,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .btn-validate,
   .m-cancel,
@@ -95,7 +93,6 @@
   .import-back-btn,
   .import-confirm-btn,
   .export-btn,
-  .export-csv-btn,
   .back-btn,
   .back-to-rec-btn,
   .tags-link-btn,
@@ -104,11 +101,9 @@
   .theme-btn,
   .font-btn,
   .fmt-btn,
-  .sidebar-theme-btn,
   .seg-chip,
   .export-tab,
   .proj-pill,
-  .import-tags-btn,
   .add-cmt-btn,
   .tag-chip-remove-btn,
   .archive-toggle-btn,
@@ -131,11 +126,11 @@
   .btn-new,
   .btn-primary,
   .btn-outline,
+  .btn-ghost,
   .btn-save,
   .btn-reset,
   .btn-cancel,
   .btn-delete-confirm,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .btn-validate,
   .m-cancel,
@@ -143,7 +138,6 @@
   .import-back-btn,
   .import-confirm-btn,
   .export-btn,
-  .export-csv-btn,
   .back-btn,
   .back-to-rec-btn,
   .tags-link-btn,
@@ -152,11 +146,9 @@
   .theme-btn,
   .font-btn,
   .fmt-btn,
-  .sidebar-theme-btn,
   .seg-chip,
   .export-tab,
   .proj-pill,
-  .import-tags-btn,
   .add-cmt-btn,
   .tag-chip-remove-btn,
   .archive-toggle-btn,
@@ -181,11 +173,11 @@
   .btn-new,
   .btn-primary,
   .btn-outline,
+  .btn-ghost,
   .btn-save,
   .btn-reset,
   .btn-cancel,
   .btn-delete-confirm,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .btn-validate,
   .m-cancel,
@@ -193,7 +185,6 @@
   .import-back-btn,
   .import-confirm-btn,
   .export-btn,
-  .export-csv-btn,
   .proj-pill,
   .back-btn,
   .back-to-rec-btn,
@@ -210,11 +201,11 @@
   .btn-new,
   .btn-primary,
   .btn-outline,
+  .btn-ghost,
   .btn-save,
   .btn-reset,
   .btn-cancel,
   .btn-delete-confirm,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .btn-validate,
   .m-cancel,
@@ -222,7 +213,6 @@
   .import-back-btn,
   .import-confirm-btn,
   .export-btn,
-  .export-csv-btn,
   .proj-pill,
   .back-btn,
   .tags-link-btn,
@@ -241,7 +231,7 @@
   font-size: var(--btn-font-lg);
 }
 
-:is(.btn-sm, .btn-validate, .export-csv-btn) {
+:is(.btn-sm, .btn-validate) {
   min-height: var(--btn-h-sm);
   padding-left: var(--btn-pad-x-sm);
   padding-right: var(--btn-pad-x-sm);
@@ -263,15 +253,12 @@
   .btn-outline,
   .btn-ghost,
   .btn-new,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .export-btn,
-  .export-csv-btn,
   .proj-pill,
   .tags-link-btn,
   .import-back-btn,
-  .m-cancel,
-  .import-tags-btn
+  .m-cancel
 ) {
   background: var(--card);
   color: var(--fg);
@@ -282,15 +269,12 @@
   .btn-outline,
   .btn-ghost,
   .btn-new,
-  .btn-single-tx,
   .single-tx-sidebar-btn,
   .export-btn,
-  .export-csv-btn,
   .proj-pill,
   .tags-link-btn,
   .import-back-btn,
-  .m-cancel,
-  .import-tags-btn
+  .m-cancel
 ):hover:not(:disabled) {
   background: var(--muted);
   border-color: var(--accent-bd);
@@ -367,7 +351,7 @@
   border-color: var(--accent-bd);
 }
 
-:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .sidebar-theme-btn, .seg-chip) {
+:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .seg-chip) {
   min-height: var(--btn-h-sm);
   padding: 0 var(--btn-pad-x-sm);
   font-size: var(--btn-font-sm);
@@ -377,13 +361,13 @@
   border: 1px solid var(--border);
 }
 
-:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .sidebar-theme-btn, .seg-chip):hover:not(:disabled) {
+:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .seg-chip):hover:not(:disabled) {
   background: var(--secondary);
   color: var(--fg);
   border-color: var(--accent-bd);
 }
 
-:is(.size-btn.on, .theme-btn.on, .font-btn.on, .fmt-btn.on, .sidebar-theme-btn.on, .seg-chip.active) {
+:is(.size-btn.on, .theme-btn.on, .font-btn.on, .fmt-btn.on, .seg-chip.active) {
   background: var(--accent-dim);
   color: var(--accent);
   border-color: var(--accent-bd);
@@ -408,7 +392,7 @@
   background: var(--card);
   color: var(--fg);
   border-color: var(--border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
 }
 
 :is(.archive-toggle-btn, .btn-add-seg, .btn-add-sec) {
@@ -429,7 +413,7 @@
   color: var(--accent);
 }
 
-:is(.import-tags-btn, .add-cmt-btn) {
+.add-cmt-btn {
   min-height: var(--btn-h-sm);
   padding: 0 var(--btn-pad-x-sm);
   font-size: var(--btn-font-sm);
@@ -465,14 +449,11 @@
 }
 
 :is(
+  .icon-btn,
   .py-link-status,
-  .tb-rec-edit,
-  .q-card-remove,
-  .seg-del,
-  .remove-section-btn,
   .split-arrow,
   .play-btn,
-  .tag-color-swatch
+  .color-swatch
 ) {
   display: inline-flex;
   align-items: center;
@@ -491,18 +472,71 @@
     transform 0.15s ease;
 }
 
-:is(.py-link-status, .tb-rec-edit, .q-card-remove) {
+/* --------------------------------------------------------------------------
+   Row action — the small icon button that sits inside a list row, a card or
+   a panel header: delete, rename, remove-from-selection.
+
+   Replaces eleven private definitions that ranged 20-26px and disagreed on
+   whether the button is visible at all: main.html revealed .rec-del /
+   .att-del / .stx-del only on row hover, while recording.html and tags.html
+   kept theirs on screen at 0.6 opacity. Hover-reveal is unreachable on a
+   touch screen and invisible to keyboard users, so the visible variant wins.
+   -------------------------------------------------------------------------- */
+:is(.icon-btn, .py-link-status) {
   width: var(--btn-icon-sm);
   min-width: var(--btn-icon-sm);
   height: var(--btn-icon-sm);
   min-height: var(--btn-icon-sm);
 }
 
-:is(.seg-del, .remove-section-btn) {
-  width: var(--btn-icon-xs);
-  min-width: var(--btn-icon-xs);
-  height: var(--btn-icon-xs);
-  min-height: var(--btn-icon-xs);
+.icon-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted-fg);
+  opacity: 0.6;
+  /* Several of these draw a bare × instead of an icon; without this they
+     inherit whatever the surrounding card or label happens to use. */
+  font-size: 1.077rem;
+}
+
+.icon-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--muted);
+  color: var(--fg);
+}
+
+.icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.icon-btn-danger:hover:not(:disabled) {
+  background: var(--destr-dim);
+  color: var(--destr);
+  border-color: var(--destr-bd);
+}
+
+.icon-btn-accent:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-bd);
+}
+
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.icon-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+/* The multiplication-sign glyph some delete buttons use instead of an icon. */
+.icon-btn .x {
+  font-size: 1.077rem;
+  line-height: 1;
 }
 
 .play-btn {
@@ -512,11 +546,46 @@
   min-height: var(--btn-icon-md);
 }
 
-.tag-color-swatch {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
+/* --------------------------------------------------------------------------
+   Colour swatch — picking a colour for a code or a speaker. Was six private
+   definitions across four files at 16/22/24/28px and four different radii.
+   -------------------------------------------------------------------------- */
+.color-swatch {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+}
+
+.color-swatch:hover:not(:disabled) {
+  transform: scale(1.15);
+}
+
+.color-swatch.selected {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px var(--card);
+}
+
+/* Larger target where the swatch is the field itself rather than one cell of
+   a grid — it needs a visible edge, since nothing around it draws one. */
+.color-swatch-lg {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: var(--border);
+}
+
+.color-swatch-lg:hover:not(:disabled) {
+  border-color: var(--accent-bd);
+  transform: scale(1.05);
+}
+
+/* Speakers read as people, not categories — a disc, not a tile. */
+.color-swatch-round {
+  border-radius: 50%;
 }
 
 /* Special controls intentionally keep their original UI pattern. */
