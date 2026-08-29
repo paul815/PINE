@@ -9,6 +9,8 @@
 # data (projects/, backups/, backend/data/, backend/logs/).
 
 AGENTS.md
+CLAUDE.md
+DESIGN.md
 .editorconfig
 .gitattributes
 .github

@@ -83,12 +83,16 @@ body { font-size: inherit; }
   transition: background 0.15s; position: relative;
 }
 .step-item.active { background: var(--accent-dim); }
-.step-item:not(:last-child)::after {
+.step-item::before,
+.step-item::after {
   content: '';
-  position: absolute; left: 19px; top: calc(100% - 1px);
-  width: 1px; height: calc(100% - 8px);
+  position: absolute; left: 19px; width: 1px;
   background: var(--border); z-index: var(--z-base);
 }
+.step-item::before { top: 0; height: calc(50% - 10px); }
+.step-item::after { top: calc(50% + 10px); bottom: 0; }
+.step-item:first-child::before,
+.step-item:last-child::after { display: none; }
 
 .step-dot {
   width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
@@ -638,7 +642,7 @@ body { font-size: inherit; }
       </div>
       <div class="field-stack">
         <div class="field-card">
-          <div class="field-lbl">Models folder</div>
+          <div class="field-lbl">Models</div>
           <div class="field-sub" id="modelsSizeSub">Where downloaded model files are stored</div>
           <div class="path-row">
             <input class="path-in" type="text" id="modelsPath" />
@@ -647,7 +651,7 @@ body { font-size: inherit; }
           <div class="disk-status" id="modelsDisk"></div>
         </div>
         <div class="field-card">
-          <div class="field-lbl">Projects folder</div>
+          <div class="field-lbl">Projects</div>
           <div class="field-sub">Where your interview projects, transcripts, and notes are saved</div>
           <div class="path-row">
             <input class="path-in" type="text" id="projectsPath" />

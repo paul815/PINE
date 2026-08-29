@@ -250,3 +250,43 @@ def test_install_emit_without_session_only_socketio(monkeypatch):
 def _today_stamp():
     from datetime import datetime as _dt
     return _dt.now().strftime('%Y%m%d')
+
+
+def test_relocate_dev_files_clears_the_root_but_keeps_gitattributes(tmp_path):
+    (tmp_path / 'LICENSE').write_text('lic', encoding='utf-8')
+    (tmp_path / 'CLAUDE.md').write_text('ctx', encoding='utf-8')
+    (tmp_path / '.gitattributes').write_text('attrs', encoding='utf-8')
+
+    launcher_layout._relocate_dev_files(repo_root=tmp_path)
+
+    assert not (tmp_path / 'LICENSE').exists()
+    assert (tmp_path / 'documentation' / 'dev-config' / 'LICENSE').read_text(encoding='utf-8') == 'lic'
+    assert (tmp_path / 'documentation' / 'CLAUDE.context-mode.md').read_text(encoding='utf-8') == 'ctx'
+    # Without it every .bat checks out as LF and cmd.exe cannot find its labels.
+    assert (tmp_path / '.gitattributes').exists()
+
+
+def test_relocate_dev_files_keeps_an_existing_destination(tmp_path):
+    parked = tmp_path / 'documentation' / 'dev-config' / 'LICENSE'
+    parked.parent.mkdir(parents=True)
+    parked.write_text('from the first install', encoding='utf-8')
+    (tmp_path / 'LICENSE').write_text('unpacked over the top', encoding='utf-8')
+
+    launcher_layout._relocate_dev_files(repo_root=tmp_path)
+
+    assert not (tmp_path / 'LICENSE').exists()
+    assert parked.read_text(encoding='utf-8') == 'from the first install'
+
+
+def test_restore_default_launcher_layout_after_reset_returns_dev_files_to_root(tmp_path):
+    licence = tmp_path / 'documentation' / 'dev-config' / 'LICENSE'
+    licence.parent.mkdir(parents=True)
+    licence.write_text('lic', encoding='utf-8')
+    claude = tmp_path / 'documentation' / 'CLAUDE.context-mode.md'
+    claude.write_text('ctx', encoding='utf-8')
+
+    launcher_layout.restore_default_launcher_layout_after_reset(repo_root=tmp_path)
+
+    assert (tmp_path / 'LICENSE').read_text(encoding='utf-8') == 'lic'
+    assert (tmp_path / 'CLAUDE.md').read_text(encoding='utf-8') == 'ctx'
+    assert not licence.exists()

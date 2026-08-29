@@ -457,15 +457,32 @@ class Diarizer:
         elif 'use_auth_token' in sig.parameters:
             kwargs['use_auth_token'] = auth
 
-        # Tune segmentation step for speed (default 0.1 = 90% overlap → 0.2 = 80%)
-        diarize_step = float(os.environ.get('PINE_DIARIZE_STEP', '0.2'))
+        # How far the segmentation window slides, IN SECONDS. Two knobs in
+        # pyannote are called some version of "step" and they are not the same
+        # one: the pipeline's ``segmentation_step`` is a *fraction* of the window
+        # and defaults to 0.1, while ``Inference.step`` — the attribute set below
+        # — is seconds, and the pipeline builds it as 0.1 x 10s window = 1.0s.
+        # This used to be set to 0.2 reading the fraction's scale, which is not
+        # 2x coarser than the default but 5x finer: ~551 windows on 120s of audio
+        # against 111, through both the segmentation and the embedding pass.
+        # Measured on one 38-minute recording, MPS: 441.6s at 0.2, ~90s at 1.0,
+        # ~55s at 2.0. Finer was not more accurate either — 0.2 found four
+        # speakers in a two-person interview and left one of them unvoted-for and
+        # missing from the transcript, where 1.0 and 2.0 both found two.
+        #
+        # 1.0 is pyannote's own default and what the model was evaluated at. 2.0
+        # is available and roughly what the old comment meant to ask for, but it
+        # is past the tested setting, so it stays opt-in.
+        diarize_step = float(os.environ.get('PINE_DIARIZE_STEP', '1.0'))
 
         try:
             pipeline = Pipeline.from_pretrained(pretrained, **kwargs)
-            # Increase segmentation step to reduce number of inference windows
+            # Set on the Inference object, not on pipeline.segmentation_step:
+            # that one is read at construction time and assigning it here would
+            # be silently ignored.
             if hasattr(pipeline, '_segmentation') and hasattr(pipeline._segmentation, 'step'):
                 pipeline._segmentation.step = diarize_step
-                log.info('Diarization segmentation step set to %.2f', diarize_step)
+                log.info('Diarization segmentation step set to %.2fs', diarize_step)
             pipeline.to(device)
             # Smoke-test MPS with a tiny tensor to fail fast at load time
             if str(device) == 'mps':

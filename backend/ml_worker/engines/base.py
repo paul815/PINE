@@ -34,7 +34,7 @@ class EngineCapabilities:
 
 @dataclass
 class LanguageProbe:
-    """Result of a first-30-seconds language identification pass."""
+    """Result of a language identification pass over a short sample of audio."""
     code: str
     confidence: float
     second_confidence: float = 0.0
@@ -87,12 +87,27 @@ class EngineAdapter(ABC):
     def load(self):
         """Load model weights. Idempotent; raises on unrecoverable setup errors."""
 
-    def probe_language(self, audio_path, probe_audio):
-        """Identify the language from the first ~30 s.
+    def probe_window(self, audio_path, probe_secs, total_duration=0):
+        """The audio ``probe_language`` should listen to, as a 16 kHz float32 array.
 
-        ``probe_audio`` is a 16 kHz float32 mono numpy array; ``audio_path``
-        is available for engines that need file input. Returns a
-        LanguageProbe or None when probing is unsupported/failed (auto-detect).
+        The head of the file, which is right for any engine that gates its own
+        audio: whisperx runs a VAD before the model and never offers it the
+        ringback a phone call opens on. An engine without one sees whatever is
+        there and should override this to find the speech first — 30 s of dial
+        tone identifies a Russian interview as English at p=0.29, which is not an
+        uncertain model but an unanswerable question, and the pipeline stops to
+        put it to the user.
+        """
+        from ..audio import load_audio_range
+        return load_audio_range(audio_path, 0, probe_secs)
+
+    def probe_language(self, audio_path, probe_audio):
+        """Identify the language from a short sample of audio.
+
+        ``probe_audio`` is a 16 kHz float32 mono numpy array as returned by
+        ``probe_window``; ``audio_path`` is available for engines that need file
+        input. Returns a LanguageProbe or None when probing is
+        unsupported/failed (auto-detect).
         """
         return None
 

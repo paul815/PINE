@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, replace
 
 from . import compat
-from .audio import get_duration_secs, load_audio_range
+from .audio import get_duration_secs
 from .constants import PARALLEL_STAGES, PROGRESS_SCALE_KEY, SPEAKER_LABELS
 from .diarize import Diarizer, detect_diarize_device
 from .engines import TranscribeContext, create_engine, engine_kind_for_model
@@ -319,7 +319,11 @@ class MLPipeline:
 
         probe_secs = min(30.0, max(total_duration, 0.5) if total_duration > 0 else 30.0)
         try:
-            probe_audio = load_audio_range(job.audio_path, 0, probe_secs)
+            # Which part of the file to listen to is the engine's call — one that
+            # gates its own audio can take the head, one that does not has to go
+            # looking for the speech first.
+            probe_audio = self._engine.probe_window(
+                job.audio_path, probe_secs, total_duration)
         except Exception as exc:
             log.warning('Language probe: could not load audio sample: %s', exc)
             return None
@@ -440,12 +444,17 @@ class MLPipeline:
             diarize.start()
 
         try:
+            # From here, not from pipeline_t0: model loading, the language probe
+            # and however long the user took to answer it all sat inside this
+            # figure, so "STT took 312.4s" for 300.0s of transcription, and a user
+            # who steps away for two minutes reads as a slow engine.
+            stt_t0 = time.monotonic()
             out = self._engine.transcribe(
                 job.audio_path, total_duration, forced_lang, ctx)
             total_duration = out.duration_seconds
             detected_lang = out.language
 
-            stt_elapsed = time.monotonic() - pipeline_t0
+            stt_elapsed = time.monotonic() - stt_t0
             log.info('PERF: STT (%s) took %.1fs', self._engine.id, stt_elapsed)
 
             events.check_cancel()

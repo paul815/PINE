@@ -93,6 +93,194 @@ class TestSynchronizeMlxSegmentsForUi:
         assert segs[0]['words'][0]['word'] == 'Hello'
         assert segs[0]['words'][1]['word'] == 'world'
 
+    def test_keeps_a_hyphenated_word_whole(self):
+        """Whisper splits "как-то" into two tokens and marks the join by *not*
+        putting a space on the second. Joining on spaces printed "как -то" 89
+        times in one 38-minute interview."""
+        from ml_worker.engines.mlx_engine import synchronize_segments_for_ui
+        segs = [{
+            'words': [
+                {'word': ' во', 'start': 0.0, 'end': 0.3},
+                {'word': '-первых', 'start': 0.3, 'end': 0.8},
+                {'word': ' как', 'start': 0.9, 'end': 1.2},
+                {'word': '-то', 'start': 1.2, 'end': 1.5},
+            ],
+        }]
+        synchronize_segments_for_ui(segs)
+        assert segs[0]['text'] == 'во-первых как-то'
+        # The UI locates each word inside the text with indexOf, so every word it
+        # is handed still has to be findable there.
+        for w in segs[0]['words']:
+            assert w['word'] in segs[0]['text']
+
+    def test_falls_back_to_spaces_for_words_that_arrive_trimmed(self):
+        """Nothing left to read the spacing from, so the old join is the only
+        sane answer — which is also what makes running this twice a no-op."""
+        from ml_worker.engines.mlx_engine import synchronize_segments_for_ui
+        segs = [{'words': [{'word': 'Hello'}, {'word': 'world'}]}]
+        synchronize_segments_for_ui(segs)
+        assert segs[0]['text'] == 'Hello world'
+
+    def test_is_idempotent(self):
+        from ml_worker.engines.mlx_engine import synchronize_segments_for_ui
+        segs = [{'words': [{'word': ' как'}, {'word': '-то'}, {'word': ' вот'}]}]
+        synchronize_segments_for_ui(segs)
+        once = segs[0]['text']
+        synchronize_segments_for_ui(segs)
+        assert segs[0]['text'] == once == 'как-то вот'
+
+
+# ---------------------------------------------------------------------------
+# 0b. Keeping non-speech away from mlx-whisper (Mac-native; whisperx has a VAD)
+# ---------------------------------------------------------------------------
+
+def _tone(secs, freq=425.0, sample_rate=16000, on=None, off=None):
+    """A dial tone, optionally rung ``on`` seconds every ``on + off``."""
+    import numpy as np
+    t = np.arange(int(secs * sample_rate)) / sample_rate
+    wave = 0.3 * np.sin(2 * np.pi * freq * t)
+    if on is not None:
+        wave = wave * ((t % (on + off)) < on)
+    return wave.astype(np.float32)
+
+
+def _voice(secs, sample_rate=16000, seed=0):
+    """A 120 Hz harmonic stack with vibrato, breath noise and pauses.
+
+    Not speech, but it has what this code reads speech by: a stack of harmonics
+    where a tone has one line, and loud/quiet structure for the energy gate.
+    """
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    t = np.arange(int(secs * sample_rate)) / sample_rate
+    f0 = 120 + 8 * np.sin(2 * np.pi * 3 * t)
+    phase = 2 * np.pi * np.cumsum(f0) / sample_rate
+    wave = sum((1.0 / h) * np.sin(h * phase) for h in range(1, 40))
+    wave = wave * 0.2 * (0.6 + 0.4 * np.sin(2 * np.pi * 4 * t))
+    wave = wave * (np.sin(2 * np.pi * t / 7.0) > -0.7)      # pauses between turns
+    return (wave + rng.normal(0, 0.002, t.size)).astype(np.float32)
+
+
+def _telephone(wave, sample_rate=16000):
+    """Band-limit to 300-3400 Hz, as a phone line does before Whisper ever sees it."""
+    import numpy as np
+    spectrum = np.fft.rfft(wave)
+    freqs = np.fft.rfftfreq(wave.size, 1.0 / sample_rate)
+    spectrum[(freqs < 300) | (freqs > 3400)] = 0
+    return np.fft.irfft(spectrum, wave.size).astype(np.float32)
+
+
+class TestSpectralFlatness:
+    def test_a_tone_and_a_voice_land_orders_of_magnitude_apart(self):
+        from ml_worker.constants import MLX_VAD_MIN_FLATNESS
+        from ml_worker.engines.mlx_engine import spectral_flatness
+        assert spectral_flatness(_tone(5)) < MLX_VAD_MIN_FLATNESS / 100
+        assert spectral_flatness(_voice(5)) > MLX_VAD_MIN_FLATNESS * 10
+
+    def test_a_phone_line_does_not_collapse_the_measure(self):
+        """The reason flatness is read inside a band. Across the whole spectrum
+        the empty bins above 3.4 kHz dominate the geometric mean and drag a voice
+        down past any threshold that would separate it from a tone."""
+        from ml_worker.constants import MLX_VAD_MIN_FLATNESS
+        from ml_worker.engines.mlx_engine import spectral_flatness
+        assert spectral_flatness(_telephone(_tone(5))) < MLX_VAD_MIN_FLATNESS
+        assert spectral_flatness(_telephone(_voice(5))) > MLX_VAD_MIN_FLATNESS * 10
+
+    def test_too_little_audio_is_not_a_tone(self):
+        import numpy as np
+        from ml_worker.engines.mlx_engine import spectral_flatness
+        assert spectral_flatness(np.zeros(64, dtype=np.float32)) == 1.0
+
+
+class TestGateSpeechForMlx:
+    def test_ringback_is_cut_off_the_front_and_speech_survives(self):
+        """The failure this exists for: a call that opens on ringback, which the
+        energy gate passes as 'loud' and Whisper writes down as 'Звук колокола.'"""
+        import numpy as np
+        from ml_worker.engines.mlx_engine import gate_speech
+        audio = np.concatenate([
+            np.zeros(5 * 16000, dtype=np.float32),
+            _tone(20, on=1.0, off=4.0),
+            np.zeros(5 * 16000, dtype=np.float32),
+            _voice(60),
+        ])
+        gated, splices = gate_speech(audio)
+        assert splices is not None, 'expected the ringback to be cut'
+        # Everything kept comes from after the tone ends at 30s.
+        assert min(original for _, _, original in splices) >= 25.0
+        assert len(gated) < len(audio)
+
+    def test_audio_with_nothing_to_cut_is_passed_through_untouched(self):
+        from ml_worker.engines.mlx_engine import gate_speech
+        audio = _voice(60)
+        gated, splices = gate_speech(audio)
+        assert splices is None
+        assert gated is audio
+
+    def test_a_gate_that_would_swallow_the_recording_is_ignored(self):
+        """The dead-man's switch. Whatever the thresholds decide, dropping half
+        the recording is a misread, and the old behaviour is the safe one."""
+        import numpy as np
+        from ml_worker.engines.mlx_engine import gate_speech
+        # A tone throughout: read as speech by energy, as a tone by flatness,
+        # leaving nothing at all — so the audio has to go through as it is.
+        audio = np.concatenate([np.zeros(2 * 16000, dtype=np.float32), _tone(40)])
+        gated, splices = gate_speech(audio)
+        assert splices is None
+        assert gated is audio
+
+    def test_silence_is_not_mistaken_for_a_recording_to_gate(self):
+        import numpy as np
+        from ml_worker.engines.mlx_engine import gate_speech
+        audio = np.zeros(30 * 16000, dtype=np.float32)
+        gated, splices = gate_speech(audio)
+        assert splices is None
+        assert gated is audio
+
+
+class TestMlxLanguageProbeWindow:
+    """Where the language probe listens. Reading the first 30 s of a phone call
+    means reading ringback, which is how a Russian interview came back as English
+    at p=0.29 — and stopped the pipeline to ask the user about it."""
+
+    def _engine_over(self, monkeypatch, audio):
+        from ml_worker.engines import mlx_engine
+        monkeypatch.setattr(mlx_engine, 'load_audio_range',
+                            lambda path, offset, duration: audio)
+        return mlx_engine.MlxWhisperEngine(env=None)
+
+    def test_skips_the_ringback_and_listens_to_the_speech(self, monkeypatch):
+        import numpy as np
+        from ml_worker.constants import MLX_VAD_MIN_FLATNESS
+        from ml_worker.engines.mlx_engine import spectral_flatness
+        audio = np.concatenate([_tone(30, on=1.0, off=4.0), _voice(60)])
+        engine = self._engine_over(monkeypatch, audio)
+
+        window = engine.probe_window('call.m4a', 30.0, total_duration=90.0)
+
+        assert len(window) == 30 * 16000
+        assert spectral_flatness(window) > MLX_VAD_MIN_FLATNESS * 10, \
+            'the probe is still listening to the tone'
+
+    def test_falls_back_to_the_head_when_it_finds_no_speech(self, monkeypatch):
+        import numpy as np
+        audio = np.zeros(90 * 16000, dtype=np.float32)
+        engine = self._engine_over(monkeypatch, audio)
+
+        window = engine.probe_window('silence.wav', 30.0, total_duration=90.0)
+
+        assert len(window) == 30 * 16000
+
+    def test_speech_near_the_end_still_gets_a_full_window(self, monkeypatch):
+        """Pulled back from the end rather than handed the two seconds left."""
+        import numpy as np
+        audio = np.concatenate([_tone(70, on=1.0, off=4.0), _voice(20)])
+        engine = self._engine_over(monkeypatch, audio)
+
+        window = engine.probe_window('call.m4a', 30.0, total_duration=90.0)
+
+        assert len(window) == 30 * 16000
+
 
 class TestCleanTranscriptSegments:
     def test_drops_empty_and_zero_length_artifacts(self):

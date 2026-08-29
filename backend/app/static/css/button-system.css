@@ -241,7 +241,7 @@
   font-size: var(--btn-font-lg);
 }
 
-:is(.btn-sm, .btn-validate, .export-btn, .export-csv-btn) {
+:is(.btn-sm, .btn-validate, .export-csv-btn) {
   min-height: var(--btn-h-sm);
   padding-left: var(--btn-pad-x-sm);
   padding-right: var(--btn-pad-x-sm);

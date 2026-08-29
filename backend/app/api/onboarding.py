@@ -13,6 +13,7 @@ from flask import Blueprint, current_app, jsonify, request
 from ..models.ml_model import MLModel
 from ..models.setting import Setting
 from ..ports import read_supervisor_port_file, supervisor_port, supervisor_url
+from ..services.launcher_layout import finalize_root_layout_after_onboarding
 from ..services.model_manager import (
     IS_MAC,
     MODEL_REGISTRY,
@@ -307,6 +308,17 @@ def prepare_handoff():
     info = _ensure_supervisor_running()
     if not info:
         return jsonify({'ok': False, 'error': 'Supervisor did not start in time'}), 503
+
+    # Only now, with the install finished and the user having pressed Launch
+    # PINE, does the repo root get rearranged: the installers move under
+    # backend/ and "Launch Pine" takes their place. Deliberately after the
+    # supervisor check -- a failed handoff leaves the button retryable, and a
+    # retry needs the root it started from. The shuffle is best-effort by
+    # design, so a locked file must not turn a working launch into an error.
+    try:
+        finalize_root_layout_after_onboarding(current_app.config['ROOT_DIR'])
+    except Exception as exc:  # noqa: BLE001 — cosmetic step, never fails the launch
+        current_app.logger.warning('Post-onboarding root layout finalization failed: %s', exc)
 
     return jsonify({
         'ok': True,

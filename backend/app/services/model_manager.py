@@ -21,10 +21,6 @@ from pathlib import Path
 from ..extensions import db
 from ..extensions import safe_emit as _safe_emit
 from ..models.ml_model import MLModel
-from .launcher_layout import (
-    _refresh_windows_launcher_shortcuts,
-    _sync_platform_launcher_layout,
-)
 from .launcher_state import mark_onboarding_complete
 from .pip_installer import (
     _check_packages,
@@ -780,8 +776,12 @@ def download_models(app, model_ids, models_path, hf_token=None, finish_onboardin
                     from ..models.setting import Setting
                     Setting.set('onboarding_complete', 'true')
                     mark_onboarding_complete()
-                    _sync_platform_launcher_layout()
-                    _refresh_windows_launcher_shortcuts()
+                    # The repo-root shuffle deliberately does NOT happen here.
+                    # Downloads finishing is not the end of onboarding: the user
+                    # still has a Launch PINE button to press, and until they do
+                    # the root installer stays put as the way back in. See
+                    # launcher_layout.finalize_root_layout_after_onboarding,
+                    # called from the /handoff/prepare endpoint.
                     # Enable auto-backup by default for new installs
                     if not Setting.get('auto_backup_enabled'):
                         Setting.set('auto_backup_enabled', 'true')

@@ -47,13 +47,38 @@ def test_generated_windows_launcher_uses_supervisor_handoff_flow():
     assert 'call "%BACKEND_DIR%Setup_WIN.bat"' in launcher_layout_source
 
 
-def test_windows_installer_checks_shortcut_creation_result():
-    installer_source = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+def test_installers_leave_the_repo_root_alone():
+    """The root tidy waits for Launch PINE; until then the installer is the way back in."""
+    windows_installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    macos_installer = (REPO_ROOT / 'Setup_MAC.command').read_text(encoding='utf-8')
 
-    assert 'set "PINE_SHORTCUT_PATH=%PINE_ROOT_DIR%Launch Pine.lnk"' in installer_source
-    assert 'CreateShortcut($env:PINE_SHORTCUT_PATH)' in installer_source
-    assert 'if exist "%PINE_SHORTCUT_PATH%" goto :eof' in installer_source
-    assert 'Warning: could not create Launch Pine.lnk in the repo root.' in installer_source
+    # Both may seed backend/ -- reset rebuilds the clean root from those copies.
+    assert 'call :seed_backend_installers' in windows_installer
+    assert 'seed_backend_installers()' in macos_installer
+
+    # Neither may drop the root installer, move dev files out, or write the
+    # shortcut. All three are the finalize step's job now.
+    assert 'del /f /q "%PINE_ROOT_DIR%Setup_WIN.bat"' not in windows_installer
+    assert 'del /f /q "%PINE_ROOT_DIR%Setup_MAC.command"' not in windows_installer
+    assert 'rm -f "$ROOT_DIR/$f"' not in macos_installer
+    assert 'dev-config' not in windows_installer
+    assert 'dev-config' not in macos_installer
+    assert 'Launch Pine.lnk' not in windows_installer
+
+
+def test_root_layout_is_finalized_only_from_the_launch_handoff():
+    onboarding_source = (REPO_ROOT / 'backend' / 'app' / 'api' / 'onboarding.py').read_text(encoding='utf-8')
+    model_manager_source = (
+        REPO_ROOT / 'backend' / 'app' / 'services' / 'model_manager.py'
+    ).read_text(encoding='utf-8')
+
+    # /handoff/prepare is what the Launch PINE button calls.
+    assert 'def prepare_handoff():' in onboarding_source
+    assert 'finalize_root_layout_after_onboarding(' in onboarding_source
+
+    # Finishing the downloads is not finishing onboarding.
+    assert '_sync_platform_launcher_layout' not in model_manager_source
+    assert '_refresh_windows_launcher_shortcuts' not in model_manager_source
 
 
 def test_main_pagehide_releases_lease_without_quitting_backend():

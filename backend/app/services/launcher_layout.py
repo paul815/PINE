@@ -2,9 +2,13 @@
 
 The repo ships two installers at the root, `Setup_WIN.bat` and
 `Setup_MAC.command`. On first run each creates the venv, installs the base
-dependencies and then hands over: the installer for the *other* platform is
-moved out of the way, and the one that ran is replaced by a plain launcher
-(`Launch Pine.bat` / `Launch Pine.command`) that just starts the server.
+dependencies and seeds a copy of both installers under `backend/` — and stops
+there. The root itself is left untouched until onboarding actually succeeds and
+the user presses Launch PINE: only then does `finalize_root_layout_after_onboarding`
+move the installers and dev files out of the root and put the plain launcher
+(`Launch Pine.bat` / `Launch Pine.command`, plus `Launch Pine.lnk` on Windows)
+in their place. Until that moment the root installer is the only way back into
+an interrupted install, so nothing may remove it early.
 
 This module owns that shuffle and nothing else — it knows no models. Its one
 sizeable piece is `_windows_app_launcher_contents()`, a .bat script kept as a
@@ -50,6 +54,23 @@ LEGACY_INSTALLERS = {
 }
 
 INSTALLER_STORAGE_DIR = 'backend'
+
+# Root files that belong to the source checkout rather than to an installed
+# copy, mapped to where the finished install parks them. The root CLAUDE.md
+# holds context-mode routing rules, not project documentation, so it lands
+# under a name that says so; it is gitignored at both ends. AGENTS.md stays in
+# the root — agent tools only look for it there.
+#
+# .gitattributes is deliberately absent and must stay absent: it carries
+# "*.bat text eol=crlf", and cmd.exe cannot find labels in an LF batch file, so
+# a checkout without it leaves every installer and launcher unrunnable.
+RELOCATED_ROOT_FILES = (
+    ('DESIGN.md', 'documentation/DESIGN.md'),
+    ('CLAUDE.md', 'documentation/CLAUDE.context-mode.md'),
+    ('LICENSE', 'documentation/dev-config/LICENSE'),
+    ('.editorconfig', 'documentation/dev-config/.editorconfig'),
+    ('.gitignore', 'documentation/dev-config/.gitignore'),
+)
 
 def _platform_launcher_sets():
     if IS_MAC:
@@ -106,6 +127,35 @@ def _remove_launcher(path: Path, what: str):
             path.unlink()
     except OSError as exc:
         log.warning('Failed to remove %s %s: %s', what, path, exc)
+
+def _move_file(source: Path, target: Path, what: str):
+    """Move one file, degrading a locked path or a read-only folder to a log line.
+
+    A destination that already exists wins: the root copy is then just dropped,
+    so re-running this never overwrites what an earlier install parked there.
+    """
+    if not source.is_file():
+        return
+    try:
+        if target.exists():
+            source.unlink()
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+    except OSError as exc:
+        log.warning('Failed to %s %s -> %s: %s', what, source, target, exc)
+
+def _relocate_dev_files(repo_root=None):
+    """Move the source-checkout files out of the root once the install is done."""
+    root = _repo_root_path(repo_root)
+    for file_name, relative_destination in RELOCATED_ROOT_FILES:
+        _move_file(root / file_name, root / relative_destination, 'relocate root file')
+
+def _restore_dev_files_to_root(repo_root=None):
+    """Put the relocated dev files back, so a reset really is a clean slate."""
+    root = _repo_root_path(repo_root)
+    for file_name, relative_destination in RELOCATED_ROOT_FILES:
+        _move_file(root / relative_destination, root / file_name, 'restore root file')
 
 def _settings_api():
     """The settings API module, or None when it cannot be imported.
@@ -629,6 +679,18 @@ def _sync_platform_launcher_layout(repo_root=None):
     _cleanup_cross_platform_launchers(repo_root=repo_root)
     _ensure_root_windows_shortcut(repo_root=repo_root)
 
+def finalize_root_layout_after_onboarding(repo_root=None):
+    """The install's last step, run when the user presses Launch PINE.
+
+    Everything here rearranges what the user sees in the repo root, so it waits
+    for the one moment the install is known to have succeeded. Before that the
+    root installer has to stay put: it is the only way back into an onboarding
+    that was interrupted, cancelled or never finished downloading.
+    """
+    _relocate_dev_files(repo_root=repo_root)
+    _sync_platform_launcher_layout(repo_root=repo_root)
+    _refresh_windows_launcher_shortcuts()
+
 def _ensure_root_windows_shortcut(repo_root=None):
     """Ensure the repo-root Launch Pine.lnk exists after onboarding."""
     if sys.platform != 'win32':
@@ -644,6 +706,7 @@ def restore_default_launcher_layout_after_reset(repo_root=None):
     backend_dir = root / INSTALLER_STORAGE_DIR
 
     clear_onboarding_complete(root)
+    _restore_dev_files_to_root(repo_root=repo_root)
 
     for launcher_name in (
         WIN_APP_LAUNCHER,

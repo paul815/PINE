@@ -4,7 +4,6 @@ An LF-only Setup_WIN.bat makes cmd.exe fail its label lookup: the visible
 window dies at "call :open_browser", closes without a message, and the browser
 never opens. A CRLF .command breaks the macOS launcher the same way.
 """
-import re
 import sys
 from pathlib import Path
 
@@ -16,6 +15,10 @@ from check_line_endings import (  # noqa: E402
     check_file,
     iter_target_files,
 )
+
+sys.path.insert(0, str(REPO_ROOT / 'backend'))
+
+from app.services.launcher_layout import RELOCATED_ROOT_FILES  # noqa: E402
 
 
 def test_every_launcher_script_has_the_ending_its_shell_needs():
@@ -47,29 +50,13 @@ def test_gitattributes_pins_both_and_stays_in_the_repo_root():
     assert '*.bat     text eol=crlf' in attributes
     assert '*.command text eol=lf' in attributes
 
-    # The installers tidy the root on first run. .gitattributes must not be part
-    # of that sweep: without it every .bat checks out as LF again.
-    windows_installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
-    macos_installer = (REPO_ROOT / 'Setup_MAC.command').read_text(encoding='utf-8')
-
-    # Read the sweep list out of each installer rather than pinning its names:
-    # the list grows as root files are added, and only one thing about it is
-    # load-bearing here.
-    windows_sweep = re.search(
-        r'for %%F in \(([^)]*)\) do \(\s*if exist "%PINE_ROOT_DIR%%%F" move',
-        windows_installer,
-    )
-    macos_sweep = re.search(
-        r'for f in ([^;]*); do\s*\[\[ -f "\$ROOT_DIR/\$f" \]\] && mv',
-        macos_installer,
-    )
-    assert windows_sweep and macos_sweep
-    assert 'LICENSE' in windows_sweep.group(1)
-    assert 'LICENSE' in macos_sweep.group(1)
-    assert '.gitattributes' not in windows_sweep.group(1)
-    assert '.gitattributes' not in macos_sweep.group(1)
-    assert 'relocate_root_file ".gitattributes"' not in windows_installer
-    assert 'relocate_root_file ".gitattributes"' not in macos_installer
+    # The finished install sweeps dev files out of the root. .gitattributes must
+    # not be part of that sweep: without it every .bat checks out as LF again.
+    # Read the sweep list rather than pinning its names -- it grows as root files
+    # are added, and only one thing about it is load-bearing here.
+    swept = {name for name, _destination in RELOCATED_ROOT_FILES}
+    assert 'LICENSE' in swept
+    assert '.gitattributes' not in swept
 
 
 def test_checker_covers_both_shells():

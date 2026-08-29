@@ -130,6 +130,60 @@ TRACK_JOIN_GAP_SEC = float(os.environ.get('PINE_TRACK_JOIN_GAP_SEC', '1.5'))
 # otherwise arrive as one block nobody can scroll past or click into.
 TRACK_JOIN_MAX_SEC = float(os.environ.get('PINE_TRACK_JOIN_MAX_SEC', '30.0'))
 
+# ── Gating the audio for mlx-whisper (see engines/mlx_engine.py) ──
+#
+# whisperx drops non-speech before the model sees it; mlx-whisper has no VAD of
+# its own, so the same gate runs on the single mixed track for the MLX path. The
+# job here is narrower than on per-speaker tracks: not to cut every pause, but to
+# keep long stretches of non-speech away from the model. A phone interview opens
+# with ~45s of ringback, Whisper writes it down as "Звук колокола.", and
+# condition_on_previous_text hands that sentence to the next window as context —
+# one 38-minute recording lost its first 2.5 minutes, the consent question
+# included, exactly that way.
+#
+# Every value below is therefore biased toward keeping audio. Dropping a pause
+# saves seconds; dropping speech loses an answer the interview was recorded for.
+# A wider merge gap than the per-track VAD, so only real dead air is cut and the
+# pauses inside a sentence stay where they are.
+MLX_VAD_MERGE_GAP_SEC = float(os.environ.get('PINE_MLX_VAD_MERGE_GAP_SEC', '2.0'))
+# Double the per-track padding: one mixed track has no second track to catch a
+# word this one clipped, so the gate errs wide on both sides of every region.
+MLX_VAD_PAD_SEC = float(os.environ.get('PINE_MLX_VAD_PAD_SEC', '0.5'))
+# Below this share of the recording surviving the gate, the audio goes to the
+# model untouched. Not a tuning knob — a dead-man's switch for the case where the
+# thresholds misread the take, where the old behaviour is the safe one.
+MLX_VAD_MIN_KEEP_FRACTION = float(os.environ.get('PINE_MLX_VAD_MIN_KEEP', '0.5'))
+# And below this much to actually remove, splicing is not worth its own risk:
+# the recording goes through as it is.
+MLX_VAD_MIN_CUT_SEC = float(os.environ.get('PINE_MLX_VAD_MIN_CUT_SEC', '5.0'))
+# Ringback is loud, so an energy gate hands it to the model as speech — which is
+# how it got transcribed in the first place. Spectral flatness is what separates
+# them: the geometric mean of the power spectrum over its arithmetic mean, near
+# zero for a sine that puts everything in one bin, high for a voice carrying a
+# whole harmonic stack.
+#
+# Measured on synthetic tone and voice through a 300-3400 Hz telephone band (see
+# tests/test_transcription_pipeline.py), a voice holds 4.3e-2 whatever the noise
+# is doing, while the tone climbs off the floor as noise fills the band in: 1.5e-5
+# at 40 dB SNR, 8.3e-4 at 20 dB, 6.8e-3 at 10 dB. This sits far below the voice
+# rather than close under the noisiest tone it could catch, and so gives up on
+# ringback recorded below ~20 dB SNR. That trade is the whole point: missing a
+# tone leaves today's behaviour in place, while taking a voice for one deletes an
+# answer the interview was recorded for.
+MLX_VAD_MIN_FLATNESS = float(os.environ.get('PINE_MLX_VAD_MIN_FLATNESS', '0.001'))
+# Regions shorter than this are kept whatever they are made of. Low on purpose:
+# ringback is often a second of tone every five, so each ring arrives as its own
+# short region, and a threshold set to leave "short" audio alone would wave the
+# whole ring pattern through. Half a second is ~30 frames, plenty of spectrum to
+# read, and still above the back-channel — "угу", "да" — worth protecting.
+MLX_VAD_TONE_MIN_SEC = float(os.environ.get('PINE_MLX_VAD_TONE_MIN_SEC', '0.5'))
+# How far into the file to look for speech to identify the language on. The probe
+# used to read the first 30s whatever was there, which on a phone call is the
+# ringback — hence `p(en)=0.29` on a Russian interview, and a needless question to
+# the user. Long enough to clear an intro; the whole window is decoded once.
+MLX_LANG_PROBE_SEARCH_SEC = float(
+    os.environ.get('PINE_MLX_LANG_PROBE_SEARCH_SEC', '300.0'))
+
 SPEAKER_LABELS = [
     'Moderator',
     'Participant 1',
@@ -139,7 +193,7 @@ SPEAKER_LABELS = [
     'Participant 5',
 ]
 
-# Min probability on the first-30s language probe to skip asking the user (WhisperX: top-1 only).
+# Min probability on the language probe to skip asking the user (WhisperX: top-1 only).
 LANG_CONFIDENCE_MIN = float(os.environ.get('PINE_LANG_CONFIDENCE_MIN', '0.82'))
 # MLX: also require this margin between 1st and 2nd language probability.
 LANG_CONFIDENCE_MARGIN = float(os.environ.get('PINE_LANG_CONFIDENCE_MARGIN', '0.10'))

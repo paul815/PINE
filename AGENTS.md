@@ -261,11 +261,13 @@ migrations at startup. New migrations go there.
 - Forbidden without an explicit request: `git reset --hard`,
   `git checkout -- <path>`, recursive deletes touching user data paths
 
-Two things that bite here specifically: the installers tidy the repo root after a
-first run (`finalize_install_layout()` moves `DESIGN.md` and the root `CLAUDE.md`
-into `documentation/`), and a reset deletes everything at the root that is not
-listed in `backend/tools/reset_preserve_root.txt`. A new root-level file needs an
-entry in that allowlist or the first reset takes it.
+Two things that bite here specifically: a finished install tidies the repo root
+(`launcher_layout.finalize_root_layout_after_onboarding()` moves `DESIGN.md` and
+the root `CLAUDE.md` into `documentation/`, drops both installers under
+`backend/` and puts `Launch Pine` in their place — it runs when the user presses
+Launch PINE at the end of onboarding, not before), and a reset deletes everything
+at the root that is not listed in `backend/tools/reset_preserve_root.txt`. A new
+root-level file needs an entry in that allowlist or the first reset takes it.
 
 ## 9) Security and privacy
 
