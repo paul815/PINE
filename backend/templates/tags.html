@@ -13,7 +13,6 @@
 <script>
 var _fontStacks = {
   system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  'space-grotesk': "'Space Grotesk',sans-serif",
   inter: "'Inter',sans-serif",
   'source-sans-3': "'Source Sans 3',sans-serif",
   'open-sans': "'Open Sans',sans-serif",
@@ -178,6 +177,7 @@ body { font-size: inherit; }
 .tb-logo-icon { width: 18px; height: 18px; object-fit: contain; border-radius: var(--radius-sm); flex-shrink: 0; }
 .tb-name { font-size: 1rem; font-weight: 700; letter-spacing: 0.14em; color: var(--fg); line-height: 1; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 14px; flex-shrink: 0; }
+.tb-sub { font-size: 0.846rem; color: var(--muted-fg); letter-spacing: 0.04em; }
 /* ── Body ── */
 .body { flex: 1; display: flex; overflow: hidden; }
 
@@ -258,7 +258,7 @@ body { font-size: inherit; }
 
 .tag-info { flex: 1; min-width: 0; }
 .tag-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); }
-.tag-sub { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.tag-sub { font-size: 0.846rem; color: var(--muted-fg); }
 .tag-count {
   font-size: 0.846rem; font-weight: 600;
   font-family: var(--font-mono);
@@ -323,7 +323,7 @@ body { font-size: inherit; }
   flex-shrink: 0; padding: 10px 14px;
   border-top: 1px solid var(--border);
 }
-.tag-total { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.tag-total { font-size: 0.846rem; color: var(--muted-fg); }
 
 /* ── Right panel ── */
 .right { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--sunken); }
@@ -337,10 +337,10 @@ body { font-size: inherit; }
   display: flex; align-items: flex-start; justify-content: space-between;
 }
 .right-title {
-  font-size: 1.231rem; font-weight: 700; letter-spacing: -0.3px;
+  font-size: 1.538rem; font-weight: 700; letter-spacing: -0.3px;
   color: var(--fg); margin-bottom: 2px;
 }
-.right-subtitle { font-size: 0.923rem; color: var(--muted-fg); font-family: var(--font-mono); }
+.right-subtitle { font-size: 0.923rem; color: var(--muted-fg); }
 
 /* ── Quotes area ── */
 .quotes-scroll {
@@ -366,7 +366,7 @@ body { font-size: inherit; }
 }
 .ig-icon svg { width: 11px; height: 11px; }
 .ig-name { font-size: 1rem; font-weight: 500; color: var(--muted-fg); transition: color 0.15s; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ig-meta { font-size: 0.846rem; color: var(--muted-fg); font-family: var(--font-mono); flex-shrink: 0; }
+.ig-meta { font-size: 0.846rem; color: var(--muted-fg); flex-shrink: 0; }
 .ig-chevron { width: 12px; height: 12px; color: var(--muted-fg); transition: transform 0.2s; flex-shrink: 0; }
 .interview-group.collapsed .ig-chevron { transform: rotate(-90deg); }
 .interview-group.collapsed .ig-quotes { display: none; }
@@ -414,7 +414,6 @@ body { font-size: inherit; }
 .quote-jump {
   display: flex; align-items: center; gap: 4px;
   font-size: 0.846rem; color: var(--accent);
-  font-family: var(--font-mono);
   margin-left: auto; cursor: pointer; text-decoration: none;
   opacity: 0; transition: opacity 0.15s;
   white-space: nowrap;
@@ -431,7 +430,7 @@ body { font-size: inherit; }
 .quote-comment-label {
   font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-tracking);
   text-transform: uppercase; color: var(--accent);
-  font-family: var(--font-mono); margin-bottom: 3px;
+ margin-bottom: 3px;
 }
 .quote-comment-text { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.5; }
 
@@ -499,7 +498,7 @@ body { font-size: inherit; }
 .ins-h { display: flex; align-items: center; gap: 8px; font-size: var(--label-size); font-weight: var(--label-weight);
   text-transform: uppercase; letter-spacing: var(--label-tracking); color: var(--muted-fg); margin-bottom: 14px; }
 .ed-top { display: flex; align-items: center; gap: 10px; }
-.ed-name { flex: 1; min-width: 0; font-size: 1.154rem; font-weight: 700; letter-spacing: -.2px; color: var(--fg);
+.ed-name { flex: 1; min-width: 0; font-size: 1.077rem; font-weight: 700; letter-spacing: -.2px; color: var(--fg);
   background: transparent; border: 1px solid transparent; border-radius: var(--radius); padding: 4px 7px; outline: none; font-family: var(--font-body); }
 .ed-name:hover { border-color: var(--border); }
 .ed-name:focus { border-color: var(--accent-bd); background: var(--bg); }
@@ -510,7 +509,7 @@ body { font-size: inherit; }
 .mvb:disabled { opacity: .35; cursor: default; }
 .mvb svg { width: 14px; height: 14px; }
 .ed-stats { display: flex; gap: 20px; margin: 16px 2px 4px; }
-.ed-stats .n { font-size: 1.308rem; font-weight: 700; font-family: var(--font-mono); }
+.ed-stats .n { font-size: 1.077rem; font-weight: 700; font-family: var(--font-mono); }
 .ed-stats .l { font-size: var(--label-size); color: var(--muted-fg); text-transform: uppercase; letter-spacing: var(--label-tracking); font-weight: var(--label-weight);}
 label.fl { display: block; font-size: var(--label-size); font-weight: var(--label-weight); text-transform: uppercase; letter-spacing: var(--label-tracking);
   color: var(--muted-fg); margin: 18px 0 6px; }
@@ -544,6 +543,8 @@ label.fl { display: block; font-size: var(--label-size); font-weight: var(--labe
       <svg viewBox="0 0 13 13" fill="none" width="13" height="13"><path d="M8 2.5L4 6.5l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Back to Project
     </a>
+    <div class="tb-sep"></div>
+    <span class="tb-sub">Codes</span>
     <span class="save-status" id="pageSaveStatus" role="status" aria-live="polite"></span>
   </header>
 

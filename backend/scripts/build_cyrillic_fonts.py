@@ -33,6 +33,7 @@ JOBS = [
     ("Inter-Bold.woff2", "inter", ["wght=700", "opsz=14"]),
     ("Roboto-Regular.woff2", "roboto", ["wght=400", "wdth=100"]),
     ("Roboto-Medium.woff2", "roboto", ["wght=500", "wdth=100"]),
+    ("Roboto-SemiBold.woff2", "roboto", ["wght=600", "wdth=100"]),
     ("Roboto-Bold.woff2", "roboto", ["wght=700", "wdth=100"]),
     ("OpenSans-Regular.woff2", "opensans", ["wght=400", "wdth=100"]),
     ("OpenSans-Medium.woff2", "opensans", ["wght=500", "wdth=100"]),

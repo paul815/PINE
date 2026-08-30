@@ -90,7 +90,6 @@
      from the user's `font_family` setting (backend default: 'inter'). */
   --font-body:     'Inter', sans-serif;
   --font-mono:     'JetBrains Mono', monospace;
-  --font-display:  'Space Grotesk', sans-serif;
 
   /* The uppercase micro-label above a field or a panel section
      ("DESCRIPTION", "SEGMENT", "PROJECT CODES"). It is the most repeated

@@ -238,6 +238,15 @@
   font-size: var(--btn-font-sm);
 }
 
+/* Sits inside a running line of text rather than in a button row, so it gives
+   up the 30px hit target and takes the size of the copy around it. Pair it
+   with a variant class (.btn-outline) — this only sets the box. */
+.btn-inline-compact {
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: var(--btn-font-sm);
+}
+
 :is(.btn-primary, .btn-save, .m-export-btn, .import-confirm-btn) {
   background: var(--accent);
   color: var(--accent-fg, #fff);
@@ -675,7 +684,7 @@
   border: 1px solid var(--border);
   background: var(--muted);
   color: var(--muted-fg);
-  font-size: 0.692rem;
+  font-size: 0.769rem;
   font-weight: 700;
   line-height: 1;
   cursor: help;

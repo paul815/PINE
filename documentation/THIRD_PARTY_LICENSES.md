@@ -29,18 +29,14 @@ the license and copyright notice to be distributed with the font files.
 | Open Sans | `OpenSans-*.woff2` | SIL OFL 1.1 | [google/fonts · ofl/opensans](https://github.com/google/fonts/tree/main/ofl/opensans) |
 | Source Sans 3 | `SourceSans3-*.woff2` | SIL OFL 1.1 | [google/fonts · ofl/sourcesans3](https://github.com/google/fonts/tree/main/ofl/sourcesans3) |
 | JetBrains Mono | `JetBrainsMono-*.woff2` | SIL OFL 1.1 | [google/fonts · ofl/jetbrainsmono](https://github.com/google/fonts/tree/main/ofl/jetbrainsmono) |
-| Space Grotesk | `SpaceGrotesk-*.woff2` | SIL OFL 1.1 | [google/fonts · ofl/spacegrotesk](https://github.com/google/fonts/tree/main/ofl/spacegrotesk) |
 
 **Outstanding:** the license texts are not in the repository yet. Each family's
-`OFL.txt` carries its own copyright line, so fetch all six into
+`OFL.txt` carries its own copyright line, so fetch all five into
 `backend/app/static/fonts/licenses/`:
 
 ```bash
-mkdir -p backend/app/static/fonts/licenses && for f in inter roboto opensans sourcesans3 jetbrainsmono spacegrotesk; do curl -sSL "https://raw.githubusercontent.com/google/fonts/main/ofl/$f/OFL.txt" -o "backend/app/static/fonts/licenses/$f-OFL.txt"; done
+mkdir -p backend/app/static/fonts/licenses && for f in inter roboto opensans sourcesans3 jetbrainsmono; do curl -sSL "https://raw.githubusercontent.com/google/fonts/main/ofl/$f/OFL.txt" -o "backend/app/static/fonts/licenses/$f-OFL.txt"; done
 ```
-
-Space Grotesk is not produced by `build_cyrillic_fonts.py` — its WOFF2 files were
-added separately. Confirm the source before the next release.
 
 ### JavaScript — `backend/app/static/js/`
 

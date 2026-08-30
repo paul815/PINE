@@ -47,9 +47,12 @@ typography:
   font-body: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
   font-mono: "'JetBrains Mono', monospace"
   scale:
+    xs: "0.769rem"
     sm: "0.846rem"
     md: "0.923rem"
     lg: "1rem"
+    title: "1.077rem"
+    page: "1.538rem"
 
 layout:
   radius: "6px"
@@ -163,14 +166,30 @@ Qualitative coding categories carry their own scale, per theme: `--tag-pain`, `-
 
 **Body font** (`--font-body`): Inter, bundled as WOFF2 in `static/fonts/` and declared in `fonts.css`. The value in `tokens.css` is only the pre-JS fallback — each template's boot script overwrites it from the user's `font_family` setting (backend default: `inter`).
 
-**Mono font** (`--font-mono`): JetBrains Mono — used exclusively for transcript text and timestamps. Bundled as WOFF2.
+**Mono font** (`--font-mono`): JetBrains Mono, bundled as WOFF2 in 400 and 500. It
+carries **data, not prose**: timecodes and durations, counts and statistics, file
+paths, tokens, versions, and installer output. It is on ~46 rules across the six
+screens. Transcript text itself is *not* mono — `.utt-text` deliberately inherits
+the body face, and only the timecode beside it is monospaced.
 
-**Display font** (`--font-display`): Space Grotesk, for the few display-weight headings.
+Do not set mono on a sentence. A phrase like "1 tagged quote across 1 recording"
+reads as console output when monospaced, even though it is a panel subtitle.
 
-**Font size scale** — three steps only:
-- `0.846rem` — small labels, metadata, sidebar items
-- `0.923rem` — default UI text (most elements)
-- `1rem` — headings, primary actions
+**Font size scale** — six steps, nothing else. The root font size is set by the
+user (Settings, default 13px), so every size is a `rem` from this scale — never `px`.
+
+| Step | At 13px root | Role |
+|---|---|---|
+| `0.769rem` | 10px | uppercase labels (`var(--label-size)`), timestamps, meta, badges |
+| `0.846rem` | 11px | small text, sidebar items, secondary descriptions |
+| `0.923rem` | 12px | default UI text (most elements) |
+| `1rem` | 13px | emphasised text, dialog body copy |
+| `1.077rem` | 14px | section titles, dialog titles, editable content and transcript text |
+| `1.538rem` | 20px | screen title — one per screen, nothing else |
+
+Buttons never declare `font-size` of their own: the size comes from
+`--btn-font-sm/md/lg` in `button-system.css` via the button class. A component
+that needs a different button size picks a different button class.
 
 The user can override the body font family and font size at runtime through Settings. Components must use `var(--font-body)` so the override propagates.
 
@@ -232,6 +251,6 @@ All interactive controls inherit from a unified base class. Over 40 semantic but
 
 **Don't:**
 - Don't use `hsl(...)` or `#hex` literals in component CSS — they break theme switching
-- Don't add new one-off font sizes outside the three-step scale
+- Don't add new one-off font sizes outside the six-step scale, and never size text in `px`
 - Don't create new button classes without inheriting from the unified base selector list in `button-system.css`
 - Don't use `outline` for focus indicators — it conflicts with the macOS window chrome

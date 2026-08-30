@@ -31,17 +31,11 @@
 @font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-SemiBold.woff2') format('woff2'); }
 @font-face { font-family: 'Open Sans'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/OpenSans-Bold.woff2') format('woff2'); }
 
-/* ---- Roboto — user-selectable body face (no 600 weight shipped) --------- */
+/* ---- Roboto — user-selectable body face --------------------------------- */
 @font-face { font-family: 'Roboto'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Regular.woff2') format('woff2'); }
 @font-face { font-family: 'Roboto'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Roboto'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/Roboto-SemiBold.woff2') format('woff2'); }
 @font-face { font-family: 'Roboto'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/Roboto-Bold.woff2') format('woff2'); }
-
-/* ---- Space Grotesk — display face (--font-display), not user-selectable -- */
-@font-face { font-family: 'Space Grotesk'; font-weight: 300; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Light.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Regular.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 500; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Medium.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 600; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-SemiBold.woff2') format('woff2'); }
-@font-face { font-family: 'Space Grotesk'; font-weight: 700; font-style: normal; font-display: swap; src: url('../fonts/SpaceGrotesk-Bold.woff2') format('woff2'); }
 
 /* ---- JetBrains Mono — code/timecode face (--font-mono) ------------------ */
 @font-face { font-family: 'JetBrains Mono'; font-weight: 400; font-style: normal; font-display: swap; src: url('../fonts/JetBrainsMono-Regular.woff2') format('woff2'); }
