@@ -318,11 +318,21 @@ body { font-size: inherit; }
 .dl-item.dl-done { border-color: var(--accent-bd); }
 .dl-item.dl-active { border-color: var(--accent-bd); }
 .dl-item.dl-wait { opacity: 0.5; }
-.dl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.dl-name { font-size: 1.077rem; font-weight: 500; color: var(--fg); display: flex; align-items: center; gap: 8px; }
+.dl-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: nowrap; gap: 12px; margin-bottom: 8px;
+}
+.dl-name {
+  font-size: 1.077rem; font-weight: 500; color: var(--fg);
+  display: flex; align-items: center; gap: 8px;
+  flex: 0 0 auto; white-space: nowrap;
+}
 .dl-status {
   font-size: 0.846rem; font-family: var(--font-mono);
   color: var(--muted-fg); white-space: nowrap;
+  /* the status text is the variable half of the row: it truncates so the
+     name beside it never wraps and the head keeps a single line's height */
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 .dl-status.done { color: var(--accent); }
 .dl-status.active { color: var(--accent); }
