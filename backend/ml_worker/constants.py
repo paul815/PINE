@@ -129,6 +129,24 @@ TRACK_JOIN_GAP_SEC = float(os.environ.get('PINE_TRACK_JOIN_GAP_SEC', '1.5'))
 # ...but only up to here. Someone talking steadily for ten minutes would
 # otherwise arrive as one block nobody can scroll past or click into.
 TRACK_JOIN_MAX_SEC = float(os.environ.get('PINE_TRACK_JOIN_MAX_SEC', '30.0'))
+# Per-track gate, for the multitrack path only (ml_worker/multitrack.py).
+# Every region boundary there is a seam the transcript can tear along: whisperx
+# reads the compacted track as continuous and the aligner spreads words over
+# silence that was never spoken. The general-purpose 0.5s only closes the gaps
+# inside a sentence, which cut a 40-minute interview into 330 regions; two
+# seconds closes the breath between sentences as well, for ~5% more audio to
+# decode. The MLX gate settled on the same pair for the same reason.
+TRACK_VAD_MERGE_GAP_SEC = float(
+    os.environ.get('PINE_TRACK_VAD_MERGE_GAP_SEC', '2.0'))
+TRACK_VAD_PAD_SEC = float(os.environ.get('PINE_TRACK_VAD_PAD_SEC', '0.5'))
+# Cutting the pauses out also moves the words: whisperx aligns against audio
+# whose seams it cannot see, and a word landing a fifth of a second the wrong
+# side of one is remapped tens of seconds away from the rest of its sentence.
+# A lone word this close behind the previous one was never a second utterance —
+# a real one arrives after a pause — so it is kept with the words it belongs to.
+# Twice the inserted gap: nothing that follows a seam can be closer than one.
+TRACK_SEAM_CONTIGUOUS_SEC = float(
+    os.environ.get('PINE_TRACK_SEAM_CONTIGUOUS_SEC', '0.4'))
 
 # ── Gating the audio for mlx-whisper (see engines/mlx_engine.py) ──
 #

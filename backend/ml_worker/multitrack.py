@@ -26,7 +26,12 @@ import tempfile
 import time
 
 from .audio import load_audio_file, write_wav
-from .constants import TRACK_JOIN_GAP_SEC, TRACK_JOIN_MAX_SEC
+from .constants import (
+    TRACK_JOIN_GAP_SEC,
+    TRACK_JOIN_MAX_SEC,
+    TRACK_VAD_MERGE_GAP_SEC,
+    TRACK_VAD_PAD_SEC,
+)
 from .engines import TranscribeContext
 from .tracks import (
     SAMPLE_RATE,
@@ -136,13 +141,19 @@ def _regions_with_bleed(specs, check_cancel):
         masks.append(speech_mask(db, speech_thresholds(db)))
 
     resolved = resolve_bleed(levels, masks)
-    return [mask_to_regions(mask) for mask in resolved]
+    return [mask_to_regions(mask, **_GATE) for mask in resolved]
+
+
+# Wider than the general-purpose gate: see TRACK_VAD_MERGE_GAP_SEC. Every cut
+# here becomes a seam in audio the model reads as continuous, so the fewer the
+# better, and half a second of context either side costs nothing to decode.
+_GATE = {'merge_gap': TRACK_VAD_MERGE_GAP_SEC, 'pad': TRACK_VAD_PAD_SEC}
 
 
 def _speech_regions(samples):
     db = frame_db(samples)
     mask = speech_mask(db, speech_thresholds(db))
-    return mask_to_regions(mask, duration=len(samples) / SAMPLE_RATE)
+    return mask_to_regions(mask, duration=len(samples) / SAMPLE_RATE, **_GATE)
 
 
 def prepare_tracks(specs, events, work_dir):

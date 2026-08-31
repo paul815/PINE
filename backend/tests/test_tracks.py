@@ -177,6 +177,41 @@ def test_segment_spanning_a_splice_is_split():
     assert out[1]['start'] == pytest.approx(30.3, abs=TOLERANCE)   # 30.0 + 0.3
 
 
+def test_a_word_smeared_over_a_seam_stays_with_its_sentence():
+    """The case from the field: a question torn into three pieces 15s apart.
+
+    The aligner cannot see the cut, so it stretched one word across it. Taken at
+    face value that word's midpoint sits in the next region — a quarter of a
+    minute away in the recording — and the question comes apart.
+    """
+    splices = [(0.0, 4.0, 2.0), (4.2, 5.0, 30.0), (5.2, 9.0, 40.0)]
+    segment = {
+        'start': 3.0, 'end': 5.6, 'text': 'a b c',
+        # 'b' is reported across two seams; 'c' follows it without a pause.
+        'words': _fake_words([(3.0, 3.3), (3.4, 5.3), (5.4, 5.6)]),
+    }
+
+    out = remap([segment], splices)
+
+    assert len(out) == 1, 'one question, spoken once, is one segment'
+    assert out[0]['text'] == 'w0 w1 w2'
+    assert out[0]['start'] == pytest.approx(5.0, abs=TOLERANCE)   # 2.0 + 3.0
+
+
+def test_a_real_second_utterance_still_comes_apart():
+    """The guard on the rule above: a pause in front of it means it is real."""
+    splices = [(0.0, 4.0, 2.0), (4.2, 8.2, 30.0)]
+    segment = {
+        'start': 3.0, 'end': 6.0, 'text': 'a b c',
+        'words': _fake_words([(3.0, 3.5), (5.0, 5.4), (5.5, 6.0)]),
+    }
+
+    out = remap([segment], splices)
+
+    assert len(out) == 2
+    assert out[1]['start'] == pytest.approx(30.8, abs=TOLERANCE)  # 30.0 + 0.8
+
+
 def test_words_inside_the_inserted_gap_are_dropped():
     """There was no audio in the gap, so anything reported there is invented."""
     splices = [(0.0, 4.0, 2.0), (4.2, 8.2, 30.0)]

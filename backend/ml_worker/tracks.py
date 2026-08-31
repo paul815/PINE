@@ -26,6 +26,7 @@ import logging
 from bisect import bisect_right
 
 from .constants import (
+    TRACK_SEAM_CONTIGUOUS_SEC,
     VAD_CLOSE_FRACTION,
     VAD_COMPACT_GAP_SEC,
     VAD_DOMINANCE_DB,
@@ -300,8 +301,15 @@ def remap(segments, splices):
     splice, so a sentence the model stitched across a cut becomes two segments in
     the right two places rather than one segment spanning the silence between.
 
-    Anything that lands in an inserted gap is dropped: there was no audio there,
-    so there was nothing to transcribe.
+    The split follows the words only as far as the words can be trusted. The
+    aligner does not know the audio was cut, and smears words that sit next to a
+    seam across it; taken literally, that sends a word tens of seconds from the
+    sentence it was spoken in. So a word straddling a seam, and a lone word
+    following one without a pause, stay with their own run (see ``_word_runs``
+    and ``_absorb_seam_orphans``).
+
+    Anything that lands wholly in an inserted gap is dropped: there was no audio
+    there, so there was nothing to transcribe.
     """
     if not splices:
         return []
@@ -335,30 +343,83 @@ def remap(segments, splices):
 
 def _remap_words(seg, words, splices, starts):
     """Split one segment into runs of words sharing a splice, and move each."""
+    runs = _absorb_seam_orphans(_word_runs(words, splices, starts))
+
+    out = []
+    for run in runs:
+        splice = splices[run['splice']]
+        moved = []
+        for word in run['words']:
+            copy = dict(word)
+            copy['start'] = _to_original(float(word.get('start', 0) or 0), splice)
+            copy['end'] = _to_original(float(word.get('end', 0) or 0), splice)
+            moved.append(copy)
+        out.append({
+            'start': moved[0]['start'],
+            'end': moved[-1]['end'],
+            'text': ' '.join(str(w.get('word', '') or '').strip()
+                             for w in moved).strip(),
+            'speaker': seg.get('speaker', ''),
+            'words': moved,
+        })
+    return out
+
+
+def _straddles_seam(w_start, w_end, splices, starts):
+    """True when a word covers a splice boundary, which no real word can.
+
+    The audio either side of a seam is minutes apart and the silence between
+    was inserted, so a word reported across one was never spoken across one:
+    the aligner spread it over a cut it cannot see.
+    """
+    return (_locate(w_start, splices, starts)
+            != _locate(w_end, splices, starts))
+
+
+def _word_runs(words, splices, starts):
+    """Group a segment's words into runs sharing a splice, on the compact clock.
+
+    A word that straddles a seam keeps the run it was decoded next to rather
+    than its own reading: half a second of alignment error at a cut is tens of
+    seconds of error once the words are back on the original clock. A word that
+    falls wholly inside an inserted gap is still dropped — there was no audio
+    there to have said it.
+    """
     runs = []
     for word in words:
         w_start = float(word.get('start', 0) or 0)
         w_end = float(word.get('end', 0) or 0)
         # The midpoint, so a word padded a few ms past its region still lands in it.
         idx = _locate((w_start + w_end) / 2.0, splices, starts)
+        if runs and _straddles_seam(w_start, w_end, splices, starts):
+            idx = runs[-1]['splice']
         if idx is None:
             continue
-        moved = dict(word)
-        moved['start'] = _to_original(w_start, splices[idx])
-        moved['end'] = _to_original(w_end, splices[idx])
-        if runs and runs[-1][0] == idx:
-            runs[-1][1].append(moved)
+        if runs and runs[-1]['splice'] == idx:
+            runs[-1]['words'].append(word)
+            runs[-1]['end'] = w_end
         else:
-            runs.append((idx, [moved]))
+            runs.append({'splice': idx, 'words': [word],
+                         'start': w_start, 'end': w_end})
+    return runs
 
+
+def _absorb_seam_orphans(runs, contiguous=TRACK_SEAM_CONTIGUOUS_SEC):
+    """Give a single word stranded past a seam back to the sentence it came from.
+
+    A turn that really does continue in the next region arrives with a pause in
+    front of it and more than one word in it. One word following the last one
+    without a pause is the aligner having drifted across the cut, and moving it
+    tears a question like "О чем он?" into three pieces a quarter-minute apart.
+    """
     out = []
-    for _, run in runs:
-        out.append({
-            'start': run[0]['start'],
-            'end': run[-1]['end'],
-            'text': ' '.join(str(w.get('word', '') or '').strip()
-                             for w in run).strip(),
-            'speaker': seg.get('speaker', ''),
-            'words': run,
-        })
+    for run in runs:
+        prev = out[-1] if out else None
+        if (prev is not None
+                and len(run['words']) == 1
+                and run['start'] - prev['end'] <= contiguous):
+            prev['words'].extend(run['words'])
+            prev['end'] = run['end']
+            continue
+        out.append(run)
     return out
