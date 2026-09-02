@@ -13,6 +13,13 @@ interrupted speaker resumes, the words go back into the block they started in.
 A speaker who was interrupted after finishing a sentence has no claim on the
 floor, and the next thing they say opens a new block.
 
+The claim also expires with silence. A backchannel hands the floor back within
+a beat, so a speaker who resumes on top of the interjection is still finishing
+their sentence; one who comes back after seconds of quiet is starting again,
+whatever the punctuation says. Without that limit a full question asked in a
+gap counted as an interjection, and the answer to it was folded back into the
+sentence above the question -- putting the question after the answer.
+
 This module is the single definition of that rule. ``recording.html`` mirrors it
 in JS for rendering; every server-side consumer — anchor reconstruction,
 find/replace offsets, exports — imports from here, because a block boundary that
@@ -20,6 +27,11 @@ differs between the two is an annotation landing on the wrong words.
 """
 
 import re
+
+# How long the interrupted speaker may stay quiet and still be read as resuming.
+# Measured from the end of their own last words, so it covers the interruption
+# and the pause after it together: that is the silence the reader hears.
+RESUME_MAX_SILENCE = 3.0
 
 # Sentence enders, plus any closing quote or bracket riding along after them.
 _SENTENCE_END = re.compile(r'[.!?…:;]["\'»”’)\]]*$')
@@ -29,6 +41,19 @@ def ends_sentence(text):
     """True if ``text`` closes a sentence — an empty block counts as closed."""
     stripped = (text or '').strip()
     return not stripped or bool(_SENTENCE_END.search(stripped))
+
+
+def _silence_before(block, seg):
+    """Seconds ``block``'s speaker stayed quiet before ``seg``.
+
+    A segment without timings reads as no silence, leaving the decision to the
+    text alone -- what the rule did before it consulted the clock.
+    """
+    start = seg.get('start')
+    end = block.get('end')
+    if start is None or end is None:
+        return 0.0
+    return start - end
 
 
 def merge_speaker_blocks(segments):
@@ -66,9 +91,12 @@ def merge_speaker_blocks(segments):
             append_to(cur, i, seg, txt)
             continue
 
-        # The interrupted speaker resuming, into the block they opened.
+        # The interrupted speaker resuming, into the block they opened -- as
+        # long as they are picking the sentence back up rather than answering
+        # after a silence.
         if (hold >= 0 and (blocks[hold]['speaker'] or '').strip() == spk
-                and not ends_sentence(blocks[hold]['text'])):
+                and not ends_sentence(blocks[hold]['text'])
+                and _silence_before(blocks[hold], seg) <= RESUME_MAX_SILENCE):
             # Whoever just held the floor may themselves have been cut off.
             hold, cur = (cur if not ends_sentence(current['text']) else -1), hold
             append_to(cur, i, seg, txt)

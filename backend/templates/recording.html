@@ -914,9 +914,26 @@ function endsSentence(text) {
  * into the block they started in. A speaker interrupted after finishing a
  * sentence has no claim on the floor — the next thing they say opens a block.
  *
+ * The claim expires with silence too: a backchannel hands the floor back within
+ * a beat, while a speaker who comes back after seconds of quiet is starting
+ * again, whatever the punctuation says.
+ *
  * Mirrored server-side in services/speaker_blocks.py; a boundary that differs
  * between the two is an annotation landing on the wrong words.
  */
+// How long the interrupted speaker may stay quiet and still be read as resuming.
+// Measured from the end of their own last words, so it covers the interruption
+// and the pause after it together: that is the silence the reader hears.
+const RESUME_MAX_SILENCE = 3.0;
+
+// Seconds a block's speaker stayed quiet before `seg`. A segment without
+// timings reads as no silence, leaving the decision to the text alone.
+function silenceBefore(block, seg) {
+  const start = seg.start, end = block.end;
+  if (start == null || end == null) return 0;
+  return start - end;
+}
+
 function mergeSpeakerBlocks(segments) {
   const blocks = [];
   // The block that last took words, which is not always the last one in reading
@@ -947,9 +964,12 @@ function mergeSpeakerBlocks(segments) {
       continue;
     }
 
-    // The interrupted speaker resuming, into the block they opened.
+    // The interrupted speaker resuming, into the block they opened — as long as
+    // they are picking the sentence back up rather than answering after a
+    // silence.
     if (hold >= 0 && (blocks[hold].speaker || '').trim() === spk
-        && !endsSentence(blocks[hold].text)) {
+        && !endsSentence(blocks[hold].text)
+        && silenceBefore(blocks[hold], seg) <= RESUME_MAX_SILENCE) {
       // Whoever just held the floor may themselves have been cut off.
       const resumed = hold;
       hold = endsSentence(current.text) ? -1 : cur;
