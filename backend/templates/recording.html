@@ -2356,7 +2356,7 @@ async function confirmImportTags() {
     if (!res.ok) throw new Error('Server error');
     data.tags = tags;
     renderTagsPane(data.tags, data.annotations?.tag_spans || [], data.transcript?.segments || []);
-    toast(added + ' tag' + (added > 1 ? 's' : '') + ' imported');
+    toast(added + ' code' + (added > 1 ? 's' : '') + ' imported');
     closeImportTags();
   } catch (e) {
     toast('Failed to import codes: ' + e.message, true);

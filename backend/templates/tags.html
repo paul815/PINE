@@ -1360,7 +1360,7 @@ function edTagTheme(id, groupId) { const t = tagById(id); if (!t) return; t.grou
 function edTagColor(id, hex) { const t = tagById(id); if (!t) return; t.color = hex; patchTags(); }
 function edTagDelete(id) {
   const t = tagById(id); if (!t) return;
-  if (!confirm(`Delete tag "${t.name}"? Quotes already tagged with it will no longer be grouped under it.`)) return;
+  if (!confirm(`Delete code "${t.name}"? Quotes already coded with it will no longer be grouped under it.`)) return;
   allData.tags = allData.tags.filter(x => x.id !== id);
   if (activeTagId === id) activeTagId = 'all';
   patchTags();
