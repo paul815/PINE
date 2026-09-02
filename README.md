@@ -6,9 +6,8 @@
 
 **Private Interview & Notes Environment**
 
-Interview transcription and analysis for UX researchers — running entirely on your own machine.
+Interview transcription and analysis for researchers of all kinds — running entirely on your own machine.
 
-[![tests](https://github.com/paul815/pine/actions/workflows/tests.yml/badge.svg)](https://github.com/paul815/pine/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/Python-3.11%E2%80%933.13-3776AB.svg)](https://www.python.org/)
 [![Platform: Windows | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#requirements)
@@ -18,31 +17,34 @@ Interview transcription and analysis for UX researchers — running entirely on 
 
 </div>
 
-<!-- SCREENSHOTS — the images in backend/tools/screenshots/ are from an older build
-     that still carried the previous product name, so nothing is shown here yet.
-     Capture four fresh shots at 1280x800, save them to documentation/screenshots/,
-     and uncomment the block below:
-       1. projects-light.png  — a project with 3-4 recordings, brief filled in
-       2. recording-dark.png  — transcript with coloured codes and a comment open
-       3. codes-light.png     — the Codes screen with themes and quotes
-       4. settings-dark.png   — Backup & Restore section
+Upload an interview, get a speaker-separated transcript, code it, and export something an LLM or a colleague can read. Nothing is uploaded anywhere: the models run on your hardware, and after setup the app works with the network off — for English recordings. The first recording in any other language needs a one-time download of that language's alignment model; after that it too runs offline.
+
+<!-- Screenshots are hosted as GitHub attachments rather than committed, so a
+     clone or a release ZIP carries no image payload. Replacing one means
+     uploading the new PNG to an issue in this repo and swapping the src. -->
 
 <p align="center">
-  <img src="documentation/screenshots/projects-light.png" alt="PINE projects screen" width="49%">
-  <img src="documentation/screenshots/recording-dark.png" alt="PINE recording screen with codes" width="49%">
+  <img src="https://github.com/user-attachments/assets/2d2d8e19-1bb3-4523-9c84-ce980efa024e" alt="PINE Projects screen: the project brief with research questions, participant segments, and the list of recordings" width="49%">
+  <img src="https://github.com/user-attachments/assets/0fabf551-3eea-4f90-aadb-0f4d5a1de15b" alt="PINE Recording screen: a speaker-separated transcript with coloured codes on spans of text and the codes pane beside it" width="49%">
+  <br>
+  <sub><b>Projects</b> — brief, segments, recordings&nbsp; · &nbsp;<b>Recording</b> — transcript, codes, comments</sub>
 </p>
--->
 
-Upload an interview, get a speaker-separated transcript, code it, and export something an LLM or a colleague can read. Nothing is uploaded anywhere: the models run on your hardware, and after setup the app works with the network off.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/9be7ad5d-97b0-4282-a08c-ca2d0ad214ea" alt="PINE Codes screen: every tagged quote grouped by code and theme, with researcher notes" width="49%">
+  <img src="https://github.com/user-attachments/assets/276671de-8e1d-44a3-bdfe-9035b1a58623" alt="PINE Settings: the Backup and Restore section with backup location, schedule and retention" width="49%">
+  <br>
+  <sub><b>Codes</b> — every quote by code and theme&nbsp; · &nbsp;<b>Settings</b> — backups and restore</sub>
+</p>
 
 ---
 
 ## Why PINE
 
-- **Confidential material stays confidential.** No cloud transcription service, no account, no per-minute billing. The kind of research that cannot legally leave the building — NDA interviews, medical, HR, internal strategy — can be transcribed at all.
+- **Confidential material stays confidential.** No cloud transcription service, no account, no per-minute billing. No telemetry as well.
 - **Built around research, not around audio files.** Projects carry an objective, research questions, hypotheses, an interview guide and participant segments. Highlights become *codes*, codes group into *themes*.
 - **Real speaker separation, and a shortcut when you have it.** pyannote diarizes single-file recordings; Zoom per-participant folders and multi-channel files skip diarization entirely, so overlapping speech survives and speaker names come from the filenames.
-- **Exports built for the next step.** Markdown with your codes and comments inline, optionally prefixed with your own LLM prompt, or ODT where codes and comments become real ODF annotations.
+- **Exports built for the next step.** Markdown with your codes and comments inline, optionally prefixed with your own LLM prompt, or ODT where codes and comments become real ODF annotations — the file opens in Microsoft Word, Google Docs, LibreOffice and the rest of the usual software, with the annotations intact.
 - **Telemetry is switched off at the source.** `backend/run.py` disables HuggingFace, pyannote, OpenTelemetry and W&B reporting before the app is even imported.
 
 ---
@@ -57,7 +59,7 @@ Upload an interview, get a speaker-separated transcript, code it, and export som
 - Chunking for long files, crash recovery for interrupted jobs, live progress over WebSocket with a learned ETA
 - Formats: MP3, MP4, M4A, WAV, MKV, WebM, OGG, FLAC
 
-**Analysis**
+**Project management**
 
 - Project brief: objective, research questions, hypotheses, stakeholders, methodology, interview guide — reorderable, edited in place
 - Participant segments with screener questions; assign recordings to a segment and filter by it
@@ -90,7 +92,7 @@ Upload an interview, get a speaker-separated transcript, code it, and export som
 | **Python** | 3.11, 3.12 or 3.13 | The installers find it themselves |
 | **Disk** | 12 GB free | Checked during setup. Models ~3.1 GB, ML packages take the rest |
 | **RAM** | 10 GB recommended | Setup warns below that |
-| **GPU** | Optional | NVIDIA + CUDA is the fast path; 4 GB VRAM or less gets a warning. Apple Silicon uses MLX. No GPU means CPU fallback |
+| **GPU** | Optional, but strongly recommended | Without one transcription is roughly 10x slower. NVIDIA + CUDA is the fast path; 4 GB VRAM or less gets a warning. Apple Silicon uses MLX. No GPU means CPU fallback |
 | **HuggingFace account** | Required | Free. Needed to accept the pyannote licence and download models |
 
 Extra download on demand: PII model +1.8 GB.
@@ -121,12 +123,7 @@ git clone https://github.com/paul815/pine.git
 - **Windows** — double-click **`Setup_WIN.bat`**
 - **macOS** — double-click **`Setup_MAC.command`** (first time: right-click → Open, to get past Gatekeeper)
 
-```bash
-chmod +x Setup_MAC.command
-./Setup_MAC.command
-```
-
-The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab shuts the whole thing down.
+The app opens in your browser — `http://pine.localhost:5000/` on Windows, `http://127.0.0.1:5000/` on macOS, or the next free port if 5000 is taken. Closing the last PINE tab shuts the whole thing down.
 
 <a id="unsigned-launcher"></a>
 
@@ -135,9 +132,8 @@ The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab 
 > could not be verified" prompt, or on machines with Smart App Control a hard block. This is what
 > Windows does with every unsigned script; it says nothing about what is in this one.
 >
-> Two ways past it, best first:
+> Two ways past it:
 >
-> - **Clone instead of downloading.** Files created by git carry no such mark, so nothing is flagged.
 > - **Unblock after unpacking** — right-click `Setup_WIN.bat` → Properties → tick **Unblock**. The
 >   mark sits on every unpacked file, so it is easier to clear the whole folder from PowerShell:
 >
@@ -145,16 +141,46 @@ The app opens at `http://pine.localhost:5000/launch`. Closing the last PINE tab 
 >   Get-ChildItem -Path . -Recurse | Unblock-File
 >   ```
 >
+> - **Clone instead of downloading.** Files created by git carry no such mark, so nothing is flagged.
+>
 > Do **not** switch Smart App Control off to get past this — on Windows 11 it cannot be switched back
-> on without resetting the OS. The launcher is plain batch and does exactly what step 2 describes;
-> read it first if you would rather check than trust.
+> on without resetting the OS.
+
+> **macOS will block it the first time too.** `Setup_MAC.command` is neither signed nor notarised, so
+> Gatekeeper says the file "is from an unidentified developer". Again: that is a statement about a
+> missing $99/year developer certificate, not about the contents.
+>
+> - **Right-click `Setup_MAC.command` → Open**, then **Open** in the dialog. macOS remembers the
+>   choice — every later start is an ordinary double-click.
+> - **No Open button?** Double-click it once so macOS logs the block, then go to **System Settings →
+>   Privacy & Security**, scroll to the bottom, and press **Open Anyway** next to the file name.
+> - **Nothing happens at all?** The executable bit did not survive the download. Open Terminal, drag
+>   the folder in after `cd `, press Return, and run:
+>
+>   ```bash
+>   chmod +x Setup_MAC.command
+>   ./Setup_MAC.command
+>   ```
+
+> **Is it actually safe? Check, don't trust.** PINE is open source under the MIT licence: every line
+> that runs on your machine is in this repository, including the launchers. They are a few hundred
+> lines of plain batch and shell — no compiled binary, no installer, no background service, no
+> registry writes, no auto-update. They create `.venv` next to the app, install the Python packages
+> listed in `backend/requirements.txt`, start the app on `127.0.0.1` and open a browser tab; deleting
+> the folder removes everything.
+>
+> You do not have to take that on faith, and you do not have to read batch files yourself. Upload
+> `Setup_WIN.bat`, `Setup_MAC.command` — or the whole repository — to Claude, ChatGPT or any other
+> assistant and ask for the harshest security review it can give: what it sends over the network,
+> what it writes outside its own folder, whether anything is obfuscated. A second opinion on the
+> source beats a signature from an unknown publisher.
 
 **3. Walk through setup** — five steps, once:
 
 | Step | What happens |
 |---|---|
 | System check | Python, disk, memory, GPU |
-| Modules | Pick the transcription model; optionally add PII removal |
+| Modules | Optionally add PII removal — more modules will be added soon |
 | Storage | Where models and projects live |
 | HuggingFace | Paste a token — needed for the pyannote diarization model |
 | Download | Models and ML packages, several GB, one time |
@@ -196,7 +222,7 @@ Paths for models, projects and backups are chosen during setup and changeable in
 
 ## Privacy and network
 
-Recordings and transcripts never leave your machine. The app does open outbound connections in these situations:
+Recordings and transcripts **never** leave your machine. The app does open outbound connections in these situations:
 
 | Situation | Endpoints | Notes |
 |---|---|---|
@@ -254,7 +280,7 @@ cd backend && pytest --cov=app
 ruff check backend
 ```
 
-38 test modules, using an in-memory SQLite database and temp directories — they never touch real data. Heavy ML packages are not installed in CI, so the tests that need them skip. CI runs on Ubuntu (3.11 / 3.12 / 3.13) and Windows (3.12).
+46 test modules, using an in-memory SQLite database and temp directories — they never touch real data. Heavy ML packages are not installed in CI, so the tests that need them skip. CI runs on Ubuntu (3.11 / 3.12 / 3.13) and Windows (3.12).
 
 **How it fits together**
 
