@@ -107,7 +107,7 @@ MODEL_REGISTRY = {
         'use_pyannote_hub_cache': True,
     },
     'gliner-pii': {
-        'name': 'GLiNER v2 PII removal',
+        'name': 'GLiNER multilingual (PII removal)',
         'function': 'pii',
         'repo_id': 'urchade/gliner_multi_pii-v1',
         'size_bytes': 1_800_000_000,
@@ -355,6 +355,12 @@ def normalize_stt_model_id(stt_model_id):
         return get_default_stt_model()
     return model_id
 
+#: Which registry entries an optional setup module brings with it. The setup
+#: screen sizes its rows from this too, so a module gains a model in one place.
+OPTIONAL_MODULE_MODELS = {
+    'pii': ('gliner-pii',),
+}
+
 def get_models_for_setup(modules, stt_model_id=None):
     """Return list of model IDs to download based on user choices."""
     stt_model = normalize_stt_model_id(stt_model_id) if stt_model_id else get_default_stt_model()
@@ -363,10 +369,42 @@ def get_models_for_setup(modules, stt_model_id=None):
         'pyannote-diarization',
     ]
 
-    if 'pii' in modules:
-        ids.append('gliner-pii')
+    for module in modules:
+        for model_id in OPTIONAL_MODULE_MODELS.get(module, ()):
+            if model_id not in ids:
+                ids.append(model_id)
 
     return ids
+
+def registry_size_bytes(model_ids):
+    """Download size of these registry entries, in bytes. Unknown ids count 0."""
+    return sum((MODEL_REGISTRY.get(model_id) or {}).get('size_bytes') or 0 for model_id in model_ids)
+
+def setup_size_breakdown(stt_model_id=None):
+    """Per-row download sizes for the setup Modules step, from the registry.
+
+    The screen used to carry its own constants, which drifted: diarization was
+    printed as 1 GB and PII as 500 MB against a registry saying 63 MB and 1.8 GB.
+    Serving the numbers from here keeps the estimate and the download in step.
+
+    Diarization sums every entry with that function rather than the ids in
+    ``get_models_for_setup``: the download list names the community-1 entrypoint
+    alone, but the warm-up that follows resolves the pipeline's sub-components
+    and fetches the WeSpeaker checkpoint as well, so the user pays for both.
+    """
+    stt_id = normalize_stt_model_id(stt_model_id) if stt_model_id else get_default_stt_model()
+    diarization_ids = [
+        model_id for model_id, info in MODEL_REGISTRY.items()
+        if info.get('function') == 'diarization' and _model_for_platform(info)
+    ]
+    return {
+        'stt_bytes': registry_size_bytes([stt_id]),
+        'diarization_bytes': registry_size_bytes(diarization_ids),
+        'modules': {
+            module: registry_size_bytes(model_ids)
+            for module, model_ids in OPTIONAL_MODULE_MODELS.items()
+        },
+    }
 
 def remove_model(model_id, models_path):
     """Remove a model from disk and reset its DB status."""

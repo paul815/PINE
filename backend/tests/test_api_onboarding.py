@@ -85,3 +85,13 @@ class TestOnboardingAPI:
         ids = [m['id'] for m in data['stt_models']]
         assert get_default_stt_model() in ids
         assert all(m['size_bytes'] > 0 for m in data['stt_models'])
+
+    def test_onboarding_status_carries_setup_sizes(self, client):
+        """The Modules step reads every size from here, so /status must serve them."""
+        from app.services.model_manager import setup_size_breakdown
+
+        data = client.get('/api/onboarding/status').get_json()
+        assert data['setup_sizes'] == setup_size_breakdown(data['stt_model_id'])
+        assert data['setup_sizes']['stt_bytes'] > 0
+        assert data['setup_sizes']['diarization_bytes'] > 0
+        assert data['setup_sizes']['modules']['pii'] > 0

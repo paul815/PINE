@@ -615,20 +615,20 @@ body { font-size: inherit; }
             <div class="stt-choice" id="sttChoice"></div>
             <div class="mod-desc" id="baseModDesc"></div>
           </div>
-          <div class="setup-size-meta" id="baseSizeLabel">~4 GB</div>
+          <div class="setup-size-meta" id="baseSizeLabel">&hellip;</div>
         </div>
-        <div class="mod-item" id="mod-pii" onclick="toggleMod(this,'pii',500)">
+        <div class="mod-item" id="mod-pii" onclick="toggleMod(this,'pii')">
           <div class="chk"><svg viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 4-4" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="mod-info">
             <div class="mod-name">PII removal</div>
-            <div class="mod-desc">GLiNER v2 multilingual &mdash; removes names, addresses, emails before export</div>
+            <div class="mod-desc">GLiNER multilingual &mdash; (optionally) removes names, addresses, emails before export</div>
           </div>
-          <div class="setup-size-meta">~500 MB</div>
+          <div class="setup-size-meta" id="piiSizeLabel">&hellip;</div>
         </div>
       </div>
       <div class="total-row">
         Total download:
-        <span class="total-val" id="totalSize">~4.1 GB</span>
+        <span class="total-val" id="totalSize">&hellip;</span>
       </div>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="goStep(0)">
@@ -816,8 +816,10 @@ function esc(s) {
 }
 
 let currentStep = 0;
-const modSizes = { pii: 500 };
-const baseMB = 4000;
+// Download sizes for the Modules step, in bytes, from /status. Never guessed
+// here: a constant in this file is how the screen came to promise 4 GB for a
+// 3.1 GB bundle and 500 MB for a 1.8 GB model.
+let setupSizes = null;
 let checkedMods = new Set();
 let downloadModelIds = [];
 let socket = null;
@@ -1014,6 +1016,7 @@ async function loadSystemCheck() {
     isMac = !!st.is_mac;
     sttModels = st.stt_models || [];
     sttModelId = st.stt_model_id || (sttModels[0] || {}).id || '';
+    setupSizes = st.setup_sizes || null;
   } catch(_){}
   const data = await api('/system-check');
   const iconOk = '<svg viewBox="0 0 11 11" fill="none"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1102,22 +1105,34 @@ async function loadSystemCheck() {
 }
 
 /* ============ Step 1: Modules ============ */
-function toggleMod(el, key, sizeMB) {
+function toggleMod(el, key) {
   if (el.classList.contains('locked')) return;
   const isChecked = el.classList.toggle('checked');
   if (isChecked) checkedMods.add(key); else checkedMods.delete(key);
   updateTotal();
 }
 
+function fmtSetupSize(bytes) {
+  bytes = bytes || 0;
+  return bytes >= 1e9
+    ? '~' + (bytes / 1e9).toFixed(1) + ' GB'
+    : '~' + Math.round(bytes / 1e6) + ' MB';
+}
+
 function updateTotal() {
-  const chosen = (sttModels || []).find(m => m.id === sttModelId);
-  const sttMB = chosen ? chosen.size_bytes / 1e6 : 3000;
-  const diarMB = 1000;
-  let total = sttMB + diarMB;
-  checkedMods.forEach(k => { total += modSizes[k] || 0; });
-  document.getElementById('totalSize').textContent = '~' + (total / 1000).toFixed(1) + ' GB';
+  // Nothing to print until /status has answered; the labels stay on their
+  // placeholder rather than showing an invented figure.
+  if (!setupSizes) return;
+  const modBytes = setupSizes.modules || {};
+  const base = (setupSizes.stt_bytes || 0) + (setupSizes.diarization_bytes || 0);
+  let total = base;
+  checkedMods.forEach(k => { total += modBytes[k] || 0; });
+
   const baseEl = document.getElementById('baseSizeLabel');
-  if (baseEl) baseEl.textContent = '~' + ((sttMB + diarMB) / 1000).toFixed(1) + ' GB';
+  if (baseEl) baseEl.textContent = fmtSetupSize(base);
+  const piiEl = document.getElementById('piiSizeLabel');
+  if (piiEl) piiEl.textContent = fmtSetupSize(modBytes.pii);
+  document.getElementById('totalSize').textContent = fmtSetupSize(total);
 }
 let isMac = false;         // set from /status API
 let sttModels = [];        // what this platform offers, from /status

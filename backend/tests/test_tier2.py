@@ -83,6 +83,28 @@ class TestModelRegistry:
         ids = get_models_for_setup(['transcription', 'pii'])
         assert 'gliner-pii' in ids
 
+    def test_setup_size_breakdown_matches_registry(self):
+        """The Modules step must quote registry sizes, not its own constants."""
+        from app.services.model_manager import (
+            MODEL_REGISTRY,
+            get_default_stt_model,
+            setup_size_breakdown,
+        )
+
+        sizes = setup_size_breakdown()
+        assert sizes['stt_bytes'] == MODEL_REGISTRY[get_default_stt_model()]['size_bytes']
+        assert sizes['modules']['pii'] == MODEL_REGISTRY['gliner-pii']['size_bytes']
+
+    def test_setup_size_breakdown_counts_every_diarization_repo(self):
+        """Warm-up pulls the WeSpeaker checkpoint too, so it has to be counted."""
+        from app.services.model_manager import MODEL_REGISTRY, setup_size_breakdown
+
+        expected = sum(
+            info['size_bytes'] for info in MODEL_REGISTRY.values()
+            if info.get('function') == 'diarization'
+        )
+        assert setup_size_breakdown()['diarization_bytes'] == expected
+
     def test_reconcile_statuses_downloading_reset(self, app, temp_dir):
         """Model stuck in 'downloading' should be reset to 'not_downloaded'."""
         with app.app_context():

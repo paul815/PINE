@@ -563,7 +563,7 @@ input[type="range"] { font-size: 1rem; }
       <!-- PII MODEL -->
       <div class="section" id="sec-pii">
         <div class="sec-title">PII removal <span class="save-status" role="status" aria-live="polite">Saved</span></div>
-        <div class="sec-sub sec-note">GLiNER v2 multilingual model — removes names, addresses, emails before export.</div>
+        <div class="sec-sub sec-note">GLiNER multilingual model — (optionally) removes names, addresses, emails before export.</div>
         <div class="card">
           <div class="row">
             <div>
@@ -571,7 +571,7 @@ input[type="range"] { font-size: 1rem; }
               <div class="row-sub" id="piiStatus">Checking...</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <div class="model-size" id="piiSize">~900 MB</div>
+              <div class="model-size" id="piiSize">&hellip;</div>
               <button class="btn-outline" id="piiBtn" onclick="togglePiiModel()" style="display:none">Install</button>
             </div>
           </div>
@@ -1245,6 +1245,9 @@ function updatePiiUI() {
   const btn = document.getElementById('piiBtn');
   const status = document.getElementById('piiStatus');
   if (!piiModel) { status.textContent = 'Model not found in registry'; return; }
+  // Size comes from the registry row, like the transcription models above it.
+  const size = document.getElementById('piiSize');
+  if (size) size.textContent = fmtBytes(piiModel.size_bytes || 0);
   _piiInstalled = piiModel.status === 'ready';
   status.textContent = _piiInstalled ? 'Installed' : 'Not installed';
   status.style.color = _piiInstalled ? 'var(--accent)' : 'var(--muted-fg)';

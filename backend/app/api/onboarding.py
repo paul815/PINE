@@ -22,6 +22,7 @@ from ..services.model_manager import (
     get_models_for_setup,
     normalize_stt_model_id,
     play_install_complete_sound,
+    setup_size_breakdown,
     supported_stt_models,
     validate_hf_token,
 )
@@ -123,6 +124,8 @@ def status():
             'name': MODEL_REGISTRY.get(model_id, {}).get('name', model_id),
             'size_bytes': MODEL_REGISTRY.get(model_id, {}).get('size_bytes', 0),
         } for model_id in supported_stt_models()],
+        # Every size the Modules step prints, so the template holds none itself.
+        'setup_sizes': setup_size_breakdown(stt_model_id),
         'is_mac': IS_MAC,
         'models_path': Setting.get('models_path', current_app.config['DEFAULT_MODELS_PATH']),
         'projects_path': Setting.get('projects_path', current_app.config['DEFAULT_PROJECTS_PATH']),
