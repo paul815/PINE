@@ -137,25 +137,14 @@ if "%NEED_SETUP%"=="1" (
         exit /b 1
     )
 
-    REM Move dev/GitHub files out of root for end-users. .gitattributes is NOT in
-    REM this list on purpose: it carries "*.bat text eol=crlf", and cmd.exe cannot
-    REM find labels in an LF batch file -- this very launcher dies at
-    REM "call :open_browser" and the window closes with no browser. Move it away and
-    REM the next git checkout rewrites the installers as LF.
-    if not exist "%PINE_ROOT_DIR%documentation\dev-config\" mkdir "%PINE_ROOT_DIR%documentation\dev-config\"
-    for %%F in (LICENSE .editorconfig .gitignore) do (
-        if exist "%PINE_ROOT_DIR%%%F" move "%PINE_ROOT_DIR%%%F" "%PINE_ROOT_DIR%documentation\dev-config\%%F" >nul 2>&1
-    )
-
     echo.
     echo   First setup step complete!
     echo.
 
-    REM Tidy the repo root now that the install finished.
-    call :finalize_install_layout
+    REM Store the installers where a reset can find them, and stop there. The
+    REM root is rearranged only when the user presses Launch PINE.
+    call :seed_backend_installers
 )
-
-call :ensure_local_launcher_shortcut
 
 REM --- Launch via Python launcher ----------------------------------------
 call "%VENV_DIR%\Scripts\activate.bat"
@@ -166,13 +155,6 @@ REM background instance, wait until the browser is up, then let this window clos
 if /I "%PINE_HIDDEN_LAUNCH%"=="1" goto :hidden_main
 call :relaunch_hidden
 call :wait_for_background_launch_and_open
-REM Remove the root installer copy only now, as this window's very last act.
-REM cmd reads a batch file lazily and never locks it, so deleting the file any
-REM earlier (the old schedule_self_delete helper) killed this very process at
-REM its next line read -- the window vanished before it could poll the backend
-REM or open the browser. "(goto) 2>nul" ends batch processing for this
-REM already-parsed line, so the del runs with the file no longer needed.
-if defined PINE_CLEANUP_ROOT_INSTALLER ((goto) 2>nul & del /f /q "%PINE_CLEANUP_ROOT_INSTALLER%")
 exit /b 0
 
 :hidden_main
@@ -194,27 +176,10 @@ python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request(
 if not errorlevel 1 goto keep_alive_loop
 endlocal & exit /b 0
 
-:ensure_local_launcher_shortcut
-set "PINE_ROOT_DIR=%~dp0"
-if not exist "%PINE_ROOT_DIR%backend\" (
-    for %%D in ("%~dp0..") do set "PINE_ROOT_DIR=%%~fD\"
-)
-set "PINE_SHORTCUT_PATH=%PINE_ROOT_DIR%Launch Pine.lnk"
-set "PINE_SHORTCUT_TARGET=%PINE_ROOT_DIR%backend\Launch Pine.bat"
-if not exist "%PINE_SHORTCUT_TARGET%" set "PINE_SHORTCUT_TARGET=%PINE_ROOT_DIR%backend\Setup_WIN.bat"
-set "PINE_SHORTCUT_ICON=%PINE_ROOT_DIR%backend\app\static\icons\pine.ico"
-if not exist "%PINE_SHORTCUT_TARGET%" goto :eof
-if not exist "%PINE_SHORTCUT_ICON%" set "PINE_SHORTCUT_ICON=%WINDIR%\System32\shell32.dll,220"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut($env:PINE_SHORTCUT_PATH); $sc.TargetPath = $env:PINE_SHORTCUT_TARGET; $sc.WorkingDirectory = $env:PINE_ROOT_DIR.TrimEnd('\'); $sc.Description = 'Launch Pine'; $sc.IconLocation = $env:PINE_SHORTCUT_ICON; $sc.Save()" >>"%LAUNCHER_LOG%" 2>&1
-if exist "%PINE_SHORTCUT_PATH%" goto :eof
-echo   Warning: could not create Launch Pine.lnk in the repo root.
-echo   Target was "%PINE_SHORTCUT_TARGET%".
-goto :eof
-
 :relaunch_hidden
 echo   Starting PINE in the background...
-REM Prefer the canonical backend\ copy: the root copy may be scheduled for
-REM deletion right after a first install, and running it would keep it locked.
+REM Prefer the canonical backend\ copy: the root one is the way back into an
+REM install that never finished, so leave it free rather than run from it.
 set "PINE_HIDDEN_TARGET=%~f0"
 if exist "%BACKEND_DIR%Setup_WIN.bat" set "PINE_HIDDEN_TARGET=%BACKEND_DIR%Setup_WIN.bat"
 REM Route the command through a helper .cmd instead of passing it inline, so the
@@ -385,64 +350,20 @@ if exist "%VENV_DIR%" (
 )
 goto :eof
 
-:finalize_install_layout
-REM Tidy the repo root after a fresh install: keep only "Launch Pine.lnk" plus the
-REM backend\ and documentation\ folders. Canonical installer copies live in backend\.
-set "DOC_DIR=%PINE_ROOT_DIR%documentation"
-set "DEVCFG_DIR=%DOC_DIR%\dev-config"
-if not exist "%DOC_DIR%\" mkdir "%DOC_DIR%" >nul 2>nul
-if not exist "%DEVCFG_DIR%\" mkdir "%DEVCFG_DIR%" >nul 2>nul
-
-REM Docs -> documentation\ . The root CLAUDE.md holds context-mode routing rules,
-REM not project documentation, so park it under a name that says so. It is
-REM gitignored at both ends. The root AGENTS.md is the agent guide and STAYS in
-REM the root -- agent tools only look for it there.
-call :relocate_root_file "DESIGN.md" "%DOC_DIR%\DESIGN.md"
-call :relocate_root_file "CLAUDE.md" "%DOC_DIR%\CLAUDE.context-mode.md"
-REM .gitattributes deliberately stays in the root -- see the note above the
-REM dev-config move list. Losing it makes every .bat check out as LF.
-call :relocate_root_file ".gitignore" "%DEVCFG_DIR%\.gitignore"
-
-REM Seed the canonical installer copies in backend\ BEFORE dropping the root ones.
+:seed_backend_installers
+REM Store the canonical installer copies in backend\ after a fresh install.
 REM reset_win.bat and reset.command rebuild the clean-install root from exactly
 REM these copies, so skipping this step means a reset can never restore the
 REM installers -- they would be gone for good.
+REM
+REM Nothing else happens to the root here. Its installers, dev files and
+REM shortcut are finalize_root_layout_after_onboarding's business, and that
+REM runs when the user presses Launch PINE: until the install is known to have
+REM succeeded, this installer is the only way back into it.
 if exist "%PINE_ROOT_DIR%Setup_MAC.command" if not exist "%BACKEND_DIR%Setup_MAC.command" (
     copy /y "%PINE_ROOT_DIR%Setup_MAC.command" "%BACKEND_DIR%Setup_MAC.command" >nul 2>nul
 )
 if exist "%PINE_ROOT_DIR%Setup_WIN.bat" if not exist "%BACKEND_DIR%Setup_WIN.bat" (
     copy /y "%PINE_ROOT_DIR%Setup_WIN.bat" "%BACKEND_DIR%Setup_WIN.bat" >nul 2>nul
-)
-
-REM Drop the macOS installer from the root -- only once its backend\ copy exists.
-if exist "%BACKEND_DIR%Setup_MAC.command" if exist "%PINE_ROOT_DIR%Setup_MAC.command" (
-    del /f /q "%PINE_ROOT_DIR%Setup_MAC.command" >nul 2>nul
-)
-
-REM Drop the Windows installer from the root. If this running script *is* the root
-REM copy, deleting it now would kill this cmd mid-run (batch files are read
-REM lazily, not locked), so only flag it here; the main flow removes it as the
-REM window's final act, after the browser is open.
-set "ROOT_WIN_INSTALL=%PINE_ROOT_DIR%Setup_WIN.bat"
-if not exist "%BACKEND_DIR%Setup_WIN.bat" goto :eof
-if exist "%ROOT_WIN_INSTALL%" (
-    if /I "%~f0"=="%ROOT_WIN_INSTALL%" (
-        set "PINE_CLEANUP_ROOT_INSTALLER=%ROOT_WIN_INSTALL%"
-    ) else (
-        del /f /q "%ROOT_WIN_INSTALL%" >nul 2>nul
-    )
-)
-goto :eof
-
-:relocate_root_file
-REM %1 = file name in PINE_ROOT_DIR, %2 = destination full path.
-REM Moves the file if the destination is free; otherwise just drops the root copy.
-set "RELO_SRC=%PINE_ROOT_DIR%%~1"
-set "RELO_DEST=%~2"
-if not exist "%RELO_SRC%" goto :eof
-if exist "%RELO_DEST%" (
-    del /f /q "%RELO_SRC%" >nul 2>nul
-) else (
-    move /y "%RELO_SRC%" "%RELO_DEST%" >nul 2>nul
 )
 goto :eof
