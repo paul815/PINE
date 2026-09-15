@@ -8,6 +8,7 @@ PINE has always written.
 """
 
 import logging
+import re
 import sys
 import threading
 import time
@@ -15,7 +16,14 @@ from dataclasses import dataclass, replace
 
 from . import compat
 from .audio import get_duration_secs
-from .constants import PARALLEL_STAGES, PROGRESS_SCALE_KEY, SPEAKER_LABELS
+from .constants import (
+    HALLUCINATION_PHRASES,
+    HALLUCINATION_SIGNATURES,
+    HALLUCINATION_STRETCH_SEC_PER_WORD,
+    PARALLEL_STAGES,
+    PROGRESS_SCALE_KEY,
+    SPEAKER_LABELS,
+)
 from .diarize import Diarizer, detect_diarize_device
 from .engines import TranscribeContext, create_engine, engine_kind_for_model
 from .errors import TranscriptionCancelled
@@ -142,6 +150,35 @@ def map_speakers(raw_segments, names=None):
     return mapping
 
 
+_SIGNATURE_RES = tuple(re.compile(p) for p in HALLUCINATION_SIGNATURES)
+
+
+def _normalize_phrase(text):
+    """Lowercase, ё→е, punctuation to spaces, whitespace collapsed."""
+    text = str(text or '').lower().replace('ё', 'е')
+    return ' '.join(re.sub(r'[^\w\s]', ' ', text).split())
+
+
+def is_whisper_hallucination(seg):
+    """True for a subtitle credit Whisper wrote over non-speech.
+
+    See HALLUCINATION_SIGNATURES in constants.py for how these arise and why a
+    phrase someone could really say needs a second sign before it is dropped.
+    """
+    phrase = _normalize_phrase(seg.get('text'))
+    if not phrase:
+        return False
+    if any(r.fullmatch(phrase) for r in _SIGNATURE_RES):
+        return True
+    if phrase not in HALLUCINATION_PHRASES:
+        return False
+    if not seg.get('speaker'):
+        return True
+    duration = float(seg.get('end', 0) or 0) - float(seg.get('start', 0) or 0)
+    n_words = len(seg.get('words') or []) or len(phrase.split())
+    return duration / n_words > HALLUCINATION_STRETCH_SEC_PER_WORD
+
+
 def clean_transcript_segments(segments):
     """Drop empty/degenerate segments and words before persisting transcript JSON."""
     clean_segments = []
@@ -180,6 +217,10 @@ def clean_transcript_segments(segments):
         }
         if words_out:
             clean_seg['words'] = words_out
+        if is_whisper_hallucination(clean_seg):
+            log.info('Dropped Whisper hallucination at %.1f-%.1fs: %r',
+                     start, end, text)
+            continue
         clean_segments.append(clean_seg)
     return clean_segments
 

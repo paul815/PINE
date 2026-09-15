@@ -195,6 +195,41 @@ MLX_VAD_MIN_FLATNESS = float(os.environ.get('PINE_MLX_VAD_MIN_FLATNESS', '0.001'
 # whole ring pattern through. Half a second is ~30 frames, plenty of spectrum to
 # read, and still above the back-channel — "угу", "да" — worth protecting.
 MLX_VAD_TONE_MIN_SEC = float(os.environ.get('PINE_MLX_VAD_TONE_MIN_SEC', '0.5'))
+
+# ── Dropping what Whisper wrote over non-speech (see pipeline.py) ──
+#
+# Whisper learned from YouTube subtitles, and those end on a credit over the
+# closing silence. So where a recording holds a pause, noise or speech too
+# garbled to read, the model sometimes writes the credit down. One whisperx
+# interview came back with "Субтитры создавал DimaTorzok" in a five-minute gap
+# no speaker was found in, and "Продолжение следует." twice — once stretched
+# over 20s, once over the 7s the moderator then said had been inaudible. The
+# VAD passes noise as speech, so neither engine is spared.
+#
+# Matched against the whole segment, after lowercasing, ё→е and stripping
+# punctuation — never as a substring, so an answer that quotes one survives.
+#
+# Credits: nobody says these outside a subtitle file, so they always go.
+HALLUCINATION_SIGNATURES = (
+    r'субтитры (создавал|создал|сделал|делал|подготовил|подогнал)\b.*',
+    r'(редактор|корректор) субтитров\b.*',
+    r'субтитры (by|от)\b.*',
+    r'.*\b(amara org|dimatorzok)\b.*',
+)
+# Phrases a person can actually say. These go only with a second sign that
+# nobody said them: no speaker found under them, or words stretched over the
+# silence — see HALLUCINATION_STRETCH_SEC_PER_WORD.
+HALLUCINATION_PHRASES = frozenset({
+    'продолжение следует',
+    'спасибо за просмотр',
+    'подписывайтесь на канал',
+    'звук колокола',
+    'thanks for watching',
+})
+# Speech runs ~0.3s a word. The two stretched credits above ran 10 and 3.6s;
+# five times normal pace is far from both.
+HALLUCINATION_STRETCH_SEC_PER_WORD = float(
+    os.environ.get('PINE_HALLUCINATION_STRETCH', '1.5'))
 # How far into the file to look for speech to identify the language on. The probe
 # used to read the first 30s whatever was there, which on a phone call is the
 # ringback — hence `p(en)=0.29` on a Russian interview, and a needless question to

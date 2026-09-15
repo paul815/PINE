@@ -325,6 +325,51 @@ class TestCleanTranscriptSegments:
             ],
         }]
 
+    @staticmethod
+    def _seg(text, start, end, speaker='Participant 1'):
+        words = text.split()
+        step = (end - start) / len(words)
+        return {
+            'start': start, 'end': end, 'text': text, 'speaker': speaker,
+            'words': [{'word': w, 'start': start + i * step,
+                       'end': start + (i + 1) * step}
+                      for i, w in enumerate(words)],
+        }
+
+    def test_drops_the_credits_whisper_wrote_over_silence(self):
+        # The three found in one real whisperx interview.
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [
+            self._seg('Продолжение следует.', 308.962, 329.515),
+            self._seg('Продолжение следует...', 794.759, 802.015),
+            self._seg('Субтитры создавал DimaTorzok', 1988.092, 1989.307,
+                      speaker=''),
+        ]
+        assert clean_transcript_segments(segs) == []
+
+    def test_a_credit_is_dropped_whoever_it_is_attributed_to(self):
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [self._seg('Редактор субтитров А.Семкин', 10.0, 11.0)]
+        assert clean_transcript_segments(segs) == []
+
+    def test_keeps_a_common_phrase_said_at_normal_pace(self):
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [self._seg('Продолжение следует.', 10.0, 11.0)]
+        assert len(clean_transcript_segments(segs)) == 1
+
+    def test_keeps_a_phrase_quoted_inside_a_longer_answer(self):
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [
+            self._seg('А в конце было написано субтитры создавал кто-то', 10.0, 14.0),
+            self._seg('Ну и продолжение следует, как говорится', 20.0, 50.0),
+        ]
+        assert len(clean_transcript_segments(segs)) == 2
+
+    def test_keeps_ordinary_speech_with_no_speaker(self):
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [self._seg('Да, я согласен.', 10.0, 11.0, speaker='')]
+        assert len(clean_transcript_segments(segs)) == 1
+
 
 # ---------------------------------------------------------------------------
 # 1. assign_speakers_simple
