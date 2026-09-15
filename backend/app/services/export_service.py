@@ -6,74 +6,118 @@ from datetime import datetime
 
 from .file_utils import atomic_read_json
 
-DEFAULT_EXPORT_PROMPT = """Prompt for Full Project Export (Multiple Interviews)
-You will receive a research project export that may include:
-- Project metadata (Description, Research Objective, Research Questions, Hypotheses, Stakeholders, Methodology, Other notes)
-- Information about user segments (Name, Recruitment Criteria)
+# How PINE's own markdown reads (see _render_transcript_blocks and
+# _build_project_header). Both prompts carry it, so a change to the export
+# format has one place to update here.
+_EXPORT_READING_GUIDE = """--- HOW TO READ THE EXPORT ---
+
+- The export comes after these instructions. It starts with "# <project name>", followed by the project details, if included.
+- Each transcript starts with a heading "# <interview name> (Transcript)", optionally followed by "## Segment" (segment name, with recruitment criteria in parentheses) and "## Additional details" (the researcher's notes about the participant).
+- Each speaker turn starts with the speaker's name in bold on its own line (e.g. **Anna**, **SPEAKER_01**, **Speaker**), followed by what was said.
+- A tagged passage looks like **passage** [Tag name]. Several tags on the same passage: **passage** [Tag A] [Tag B]. A tag inside a longer tagged passage: text **inner passage** [Inner tag] more text [Outer tag].
+- A researcher comment on a passage looks like **passage** [Comment: comment text]. A comment on a whole turn is a line starting with > *Comment:*
+- Tags and comments are the researcher's annotations, not words spoken in the interview. Comments are the researcher's interpretations: use them as hints, never as evidence of what a participant said or did.
+- [REDACTED] marks removed personal information. Do not guess or reconstruct it.
+- Key findings, Recommendations, Results and recommendations, and Further steps in the project details are the researcher's earlier conclusions. Treat them as claims to check against the transcripts, not as evidence.
+- Transcripts come from automatic speech recognition, and speaker names from automatic speaker detection. Words may be misheard, and turns may be attributed to the wrong speaker."""
+
+_EXPORT_SPEAKER_STEP = """   - Use the Interview Guide (if present) and the flow of questions and answers to tell the interviewer from the participant
+   - Only the participant's words are evidence; the interviewer's questions, suggestions and paraphrases are not
+   - If a turn is clearly attributed to the wrong speaker, rely on its content and mention the issue"""
+
+_EXPORT_LANGUAGE_AND_QUOTE_RULES = """- Respond in the language of the user's request that accompanies this export; if there is no request, respond in the language of the interviews
+- Keep quotes in their original language; if it differs from the response language, add a translation in brackets after the quote
+- Quote only the spoken words: leave out the ** markers, tag names in [ ] and comments
+- Quote the transcript as written, even where recognition is imperfect; do not build conclusions on words that look misheard, and mark such passages as unclear"""
+
+DEFAULT_EXPORT_PROMPT = """You will receive a research project export that may include:
+- Project details: Description, Research objective, Research questions, Hypotheses, Stakeholders, Methodology, Interview Guide, and the researcher's earlier Key findings, Recommendations, Results and recommendations, Further steps
 - Multiple interview transcripts
-- Optional tags or coded segments created by the researcher
+- For each interview: the participant's user segment (name and recruitment criteria) and additional details
+- Optional tags and comments added by the researcher
 
 Your task is to produce a structured synthesis of the research.
+
+""" + _EXPORT_READING_GUIDE + """
 
 --- PROCESS ---
 
 1. Understand the research context:
-   - Extract and restate the Research Objective and key Research Questions
-   - Identify assumptions or hypotheses if present
+   - Extract and restate the Research objective and Research questions
+   - Note hypotheses and the researcher's earlier conclusions, if present
 
-2. Assess available data:
-   - If tags/codes are present → use them as a primary signal
+2. Identify the speakers in each interview:
+""" + _EXPORT_SPEAKER_STEP + """
+
+3. Assess available data:
+   - If tags are present → use them as a primary signal
    - If tags are missing → perform bottom-up thematic analysis across transcripts
 
-3. Analyze interviews:
+4. Analyze interviews:
    - Identify patterns, recurring themes, and contradictions
+   - Count how many interviews support each pattern
    - Highlight notable quotes where useful
    - Compare across user segments (if provided)
 
-4. Synthesize insights:
+5. Synthesize insights:
    - Move from observations → patterns → insights (why it matters)
-   - Validate or challenge hypotheses (if provided)
+   - Answer each research question
+   - Validate or challenge each hypothesis and earlier conclusion
 
-5. Generate actionable output
+6. Generate actionable output
 
 --- OUTPUT FORMAT ---
 
 ## 1. Research Summary
 - Objective
-- Key Questions
 - Methodology (brief)
+- Number of interviews analyzed and user segments covered
 
-## 2. Key Themes
+## 2. Answers to Research Questions
+For each research question:
+- Answer based on the data, or "insufficient data"
+- Supporting evidence
+- Strength of evidence (strong / moderate / weak)
+
+## 3. Hypotheses (if provided)
+For each hypothesis:
+- Verdict: supported / refuted / mixed / insufficient data
+- Supporting evidence
+
+## 4. Key Themes
 For each theme:
 - Theme name
 - Description
+- Prevalence (e.g. "5 of 8 interviews")
 - Supporting evidence (quotes or paraphrased patterns)
 - Affected user segments
 
-## 3. Insights
+## 5. Insights
 - Insight statement (clear, non-obvious, decision-relevant)
 - Supporting reasoning
-- Related themes
+- Related themes and research questions
 
-## 4. Opportunities / Recommendations
+## 6. Opportunities / Recommendations
 - Actionable product or research recommendations
 - Prioritize (High / Medium / Low impact)
 
-## 5. Segment Differences (if applicable)
+## 7. Segment Differences (if applicable)
 - Key differences between user groups
 
-## 6. Open Questions / Gaps
+## 8. Open Questions / Gaps
 - What remains unclear
+- Earlier researcher conclusions that the transcripts do not support
 - What should be researched next
 
 --- IMPORTANT RULES ---
 
-- Use ONLY the information explicitly present in the provided data
-- Do NOT invent quotes, insights, behaviors, or patterns
-- If something is not supported by the data, do not include it
+""" + _EXPORT_LANGUAGE_AND_QUOTE_RULES + """
+- After each quote, name its source: (<interview name>, <speaker>)
+- Every observation, pattern and quote must come from the provided data; do NOT invent quotes, behaviors, or patterns
+- Insights and recommendations are interpretations: they are welcome, but each must be traceable to specific evidence and clearly distinguishable from observations
 - Clearly signal uncertainty or weak evidence
+- State prevalence as counts ("3 of 7 interviews"), not as "many" or "most"; with only a few interviews, say that the findings are indicative
 - Do not summarize interview-by-interview; focus on cross-interview synthesis
-- Tie insights back to research questions whenever possible
 
 --- FINAL VALIDATION ---
 
@@ -81,39 +125,44 @@ For each theme:
 - Ensure each quote exists verbatim in the provided transcripts
 - Remove or correct any quote that cannot be directly verified"""
 
-DEFAULT_EXPORT_PROMPT_RECORDING = """Prompt for Single Interview Export
-You will receive a single interview export that may include:
-- Project metadata (Description, Research Objective, Research Questions, etc.)
-- Information about the user segment
+DEFAULT_EXPORT_PROMPT_RECORDING = """You will receive a single interview export that may include:
+- Project details: Description, Research objective, Research questions, Hypotheses, Stakeholders, Methodology, Interview Guide, and the researcher's earlier Key findings, Recommendations, Results and recommendations, Further steps
+- The participant's user segment (name and recruitment criteria) and additional details
 - A full transcript
-- Optional tags or coded excerpts
+- Optional tags and comments added by the researcher
 
 Your task is to:
 1) Analyze the interview
 2) Extract structured insights
 3) Connect findings to the research context
 
+""" + _EXPORT_READING_GUIDE + """
+
 --- PROCESS ---
 
 1. Understand context:
-   - Identify Research Objective and key questions
-   - Note the user segment (if provided)
+   - Identify the Research objective and Research questions
+   - Note the user segment and additional details (if provided)
 
-2. Analyze the transcript:
+2. Identify the speakers:
+""" + _EXPORT_SPEAKER_STEP + """
+
+3. Analyze the transcript:
    - If tags are present → organize findings around them
    - If no tags → perform open coding (identify themes from scratch)
 
-3. Structure findings:
+4. Structure findings:
    - Key topics discussed
    - Pain points, needs, behaviors, motivations
    - Notable quotes
 
-4. Interpret:
+5. Interpret:
    - Translate observations into insights
    - Indicate strength of evidence (strong / moderate / weak)
 
-5. Connect to broader research:
-   - How this interview informs or challenges research questions or hypotheses
+6. Connect to broader research:
+   - How this interview informs or challenges each research question and hypothesis
+   - Whether it supports or contradicts the researcher's earlier conclusions
 
 --- OUTPUT FORMAT ---
 
@@ -139,16 +188,22 @@ For each finding:
 - Problems mentioned
 - Underlying needs
 
-## 6. Signals for Synthesis
+## 6. Research Questions & Hypotheses
+- For each research question: what this interview contributes, or "not covered"
+- For each hypothesis: supports / contradicts / not addressed, with evidence
+
+## 7. Signals for Synthesis
 - What should be compared across other interviews
-- Hypotheses to validate
+- New hypotheses to validate
 
 --- IMPORTANT RULES ---
 
-- Use ONLY the information explicitly present in the provided transcript
-- Do NOT invent quotes, insights, or behaviors
-- Do not generalize beyond this single interview
+""" + _EXPORT_LANGUAGE_AND_QUOTE_RULES + """
+- After each quote, name the speaker
+- Every observation and quote must come from the provided transcript; do NOT invent quotes or behaviors
+- Insights are interpretations: they are welcome, but each must be traceable to specific evidence
 - Clearly separate observations from interpretations
+- Do not generalize beyond this single interview
 - Explicitly note uncertainty where evidence is limited
 
 --- FINAL VALIDATION ---

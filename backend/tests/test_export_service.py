@@ -327,7 +327,9 @@ class TestExportRecordingMarkdown:
         assert err is None
         assert content is not None
         # Order must be: Participant 1 (merged), Moderator, Participant 1
-        transcript_section = content.split('(Transcript)')[1].split('---')[0]
+        # The default LLM prompt above the export quotes the heading format, so
+        # split on this recording's heading rather than the first "(Transcript)".
+        transcript_section = content.split('# m.mp3 (Transcript)')[1].split('---')[0]
         assert '**Participant 1**' in transcript_section
         assert '**Moderator**' in transcript_section
         assert 'Hello. How are you?' in transcript_section
