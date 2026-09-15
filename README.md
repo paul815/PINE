@@ -11,7 +11,7 @@ Interview transcription and analysis for researchers of all kinds — running en
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11–3.13](https://img.shields.io/badge/Python-3.11%E2%80%933.13-3776AB.svg)](https://www.python.org/)
 [![Platform: Windows | macOS](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey.svg)](#requirements)
-[![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/paul815/pine/releases)
+[![Version 1.0.0](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/paul815/PINE/releases)
 
 [Install](#install) · [Requirements](#requirements) · [Privacy](#privacy-and-network) · [Docs](#documentation)
 
@@ -112,10 +112,10 @@ Extra download on demand: PII model +1.8 GB.
 
 ## Install
 
-**1. Get the files.** Download the latest [release ZIP](https://github.com/paul815/pine/releases) and unpack it somewhere permanent — the app lives where you unpack it, so not a temp folder. Or clone it:
+**1. Get the files.** Download the latest [release ZIP](https://github.com/paul815/PINE/releases) and unpack it somewhere permanent — the app lives where you unpack it, so not a temp folder. Or clone it:
 
 ```bash
-git clone https://github.com/paul815/pine.git
+git clone https://github.com/paul815/PINE.git
 ```
 
 **2. Run the launcher for your OS.** The same file does first-time setup and every later launch: it creates `.venv`, installs base dependencies, starts the app and opens the browser.
@@ -258,7 +258,7 @@ Filing an issue? Attach the relevant file from `backend/logs/` and the System ch
 ## Development
 
 ```bash
-git clone https://github.com/paul815/pine.git
+git clone https://github.com/paul815/PINE.git
 cd pine
 python -m venv .venv
 source .venv/bin/activate
@@ -330,7 +330,7 @@ Stated plainly, so nothing is a surprise:
 
 ## Contributing
 
-Bug reports are welcome, and reports from researchers using this on real interviews are the most useful kind. Start with [CONTRIBUTING.md](.github/CONTRIBUTING.md) and open an [issue](https://github.com/paul815/pine/issues).
+Bug reports are welcome, and reports from researchers using this on real interviews are the most useful kind. Start with [CONTRIBUTING.md](.github/CONTRIBUTING.md) and open an [issue](https://github.com/paul815/PINE/issues).
 
 ## License
 

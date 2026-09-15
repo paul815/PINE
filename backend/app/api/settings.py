@@ -34,7 +34,7 @@ from ..services.model_manager import (
     supported_stt_models,
 )
 
-GITHUB_REPO = "paul815/pine"
+GITHUB_REPO = "paul815/PINE"
 
 settings_bp = Blueprint('settings', __name__)
 

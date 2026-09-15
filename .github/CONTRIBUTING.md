@@ -16,7 +16,7 @@ onboarding.
 ## Setting up
 
 ```bash
-git clone https://github.com/paul815/pine.git
+git clone https://github.com/paul815/PINE.git
 cd pine
 python -m venv .venv
 source .venv/bin/activate          # Windows: .\.venv\Scripts\activate

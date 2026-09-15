@@ -16,7 +16,7 @@ Settings → About compares your version against the latest GitHub release.
 **Please do not open a public issue.**
 
 Use GitHub's private reporting: go to the
-[Security tab](https://github.com/paul815/pine/security/advisories/new) and open
+[Security tab](https://github.com/paul815/PINE/security/advisories/new) and open
 a draft advisory. It is visible only to the maintainers until a fix ships.
 
 Useful things to include: what an attacker can reach, the steps to reproduce,
