@@ -53,7 +53,7 @@ Upload an interview, get a speaker-separated transcript, code it, and export som
 
 **Transcription**
 
-- Whisper large-v3 (GPU / Apple Neural Engine), with the language set by hand or auto-detected
+- Whisper large-v3 (NVIDIA GPU, or Apple Silicon via MLX), with the language set by hand or auto-detected
 - pyannote speaker diarization, running in parallel with transcription rather than after it
 - Per-speaker tracks for Zoom meeting folders and multi-channel files — no diarization needed
 - Chunking for long files, crash recovery for interrupted jobs, live progress over WebSocket with a learned ETA
@@ -103,7 +103,7 @@ Extra download on demand: PII model +1.8 GB.
 |---|---|
 | Windows + NVIDIA GPU | Supported — primary target |
 | Windows, no GPU | Supported — CPU fallback, roughly 10x slower |
-| macOS, Apple Silicon | Supported — Whisper via MLX on the Neural Engine |
+| macOS, Apple Silicon | Supported — Whisper via MLX on the Metal GPU |
 | macOS, Intel | Works, CPU only |
 | Windows + AMD GPU | Falls back to CPU (ROCm not wired up) |
 | Linux | Experimental — `Setup_MAC.command` sets it up, but it opens the browser with the macOS `open` command; start the app by hand |
@@ -234,7 +234,7 @@ Recordings and transcripts **never** leave your machine. The app does open outbo
 
 Set `PINE_ALLOW_HF_NETWORK=1` to skip Hub offline mode entirely. Not needed for normal use.
 
-**Threat model.** PINE is a single-user local application. The backend binds to `127.0.0.1` (port 5000 by default, or the next free one) and CORS is limited to `127.0.0.1` and `pine.localhost` on that port — but the backend has **no authentication**, so treat it like any other local dev server and do not expose the port to a network you do not control. The supervisor's control API on port 5001 does require a per-run token. Known gaps are listed under [Limitations](#limitations); to report a vulnerability see [SECURITY.md](.github/SECURITY.md).
+**Threat model.** PINE is a single-user local application. The backend binds to `127.0.0.1` (port 5000 by default, or the next free one) and CORS is limited to `127.0.0.1` and `pine.localhost` on that port — but the backend has **no authentication**, so treat it like any other local dev server and do not expose the port to a network you do not control. The supervisor's control API on port 5001 requires a per-run token for everything except its `/status` probe. Known gaps are listed under [Limitations](#limitations); to report a vulnerability see [SECURITY.md](.github/SECURITY.md).
 
 ---
 
@@ -259,7 +259,7 @@ Filing an issue? Attach the relevant file from `backend/logs/` and the System ch
 
 ```bash
 git clone https://github.com/paul815/PINE.git
-cd pine
+cd PINE
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
@@ -291,12 +291,12 @@ flowchart LR
     BR["Browser tab<br/>pine.localhost"] <-->|HTTP + WebSocket| B
     B --> DB[("SQLite<br/>pine.db")]
     B --> FS["projects/<br/>transcripts + annotations JSON"]
-    B <-->|JSON over a pipe| W["ml_worker process<br/>torch lives only here"]
+    B <-->|JSON over a pipe| W["ml_worker process<br/>models load only here"]
     W --> ASR["WhisperX / MLX"]
     W --> DIA["pyannote diarization"]
 ```
 
-The ML process is separate on purpose: a CUDA crash or an out-of-memory kill takes down the worker, not the app. The web process imports no ML libraries at all.
+The ML process is separate on purpose: a CUDA crash or an out-of-memory kill takes down the worker, not the app. The web process never loads a model — it imports torch only to report which GPU it found.
 
 ---
 
