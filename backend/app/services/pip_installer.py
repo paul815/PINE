@@ -369,14 +369,18 @@ def _install_log_path():
     """Return a per-session install log path under the same tree as app logs.
 
     Mirrors the convention in backend/app/__init__.py (log_dir = PINE_LOG_DIR or
-    <backend>/logs, daily subdir YYYYMMDD). File name: install-{stamp}-{pid}.log.
+    <backend>/logs, daily subdir YYYY-MM-DD). File name: install-{stamp}-{pid}.log.
+
+    The dashes matter: the supervisor prunes daily folders by parsing their name
+    as %Y-%m-%d and skips whatever does not match, so the undashed spelling this
+    used to write sat beside the real log folders and was never cleaned up.
     """
     base = os.environ.get('PINE_LOG_DIR')
     if not base:
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         base = os.path.join(backend_dir, 'logs')
     now = datetime.now()
-    daily = os.path.join(base, now.strftime('%Y%m%d'))
+    daily = os.path.join(base, now.strftime('%Y-%m-%d'))
     try:
         os.makedirs(daily, exist_ok=True)
     except Exception:
@@ -447,7 +451,7 @@ def _run_pip(packages, extra_args=None):
 
 def install_pip_packages():
     """Install required pip packages if missing. Streams output via SocketIO and to
-    a per-session install log file (``backend/logs/YYYYMMDD/install-{stamp}-{pid}.log``)."""
+    a per-session install log file (``backend/logs/YYYY-MM-DD/install-{stamp}-{pid}.log``)."""
     global _INSTALL_LOG_FH
 
     status = _check_packages()

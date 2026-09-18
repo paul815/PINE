@@ -184,6 +184,24 @@ def enqueue(recording_id):
     _emit_queue_positions()
 
 
+def busy_snapshot():
+    """What the worker is doing right now, for callers outside this module.
+
+    The supervisor reads this over ``/api/health`` before it acts on an expired
+    browser lease. A backgrounded tab stops heartbeating within seconds, and a
+    long recording outlives the grace that follows — killing the backend there
+    throws away however much of the transcription had already run.
+    """
+    with _queue_lock:
+        queued = len(_queued_ids)
+    recording_id = _current_recording_id
+    return {
+        'busy': recording_id is not None or queued > 0,
+        'recording_id': recording_id,
+        'queued': queued,
+    }
+
+
 def _worker_loop(app, generation):
     """Background thread that processes transcription jobs one at a time.
 

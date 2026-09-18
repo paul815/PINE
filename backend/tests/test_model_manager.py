@@ -249,7 +249,7 @@ def test_install_emit_without_session_only_socketio(monkeypatch):
 
 def _today_stamp():
     from datetime import datetime as _dt
-    return _dt.now().strftime('%Y%m%d')
+    return _dt.now().strftime('%Y-%m-%d')
 
 
 def test_relocate_dev_files_clears_the_root_but_keeps_gitattributes(tmp_path):

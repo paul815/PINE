@@ -579,6 +579,16 @@ def _warmup_pyannote_community1(models_path, hf_token=None):
         import inspect
 
         import torch
+
+        # The worker applies these before it touches pyannote (ml_worker/diarize.py);
+        # this warm-up imports the same stack inside Flask and needs them just as
+        # much. Without the is_offline_mode shim the import itself raises and
+        # onboarding silently skips the warm-up it just told the user it was doing.
+        from ml_worker import compat
+        compat.patch_hf_hub_is_offline_mode()
+        compat.patch_torchaudio_for_pyannote()
+        compat.patch_hf_hub_legacy_use_auth_token()
+
         from pyannote.audio import Pipeline
 
         pyc = pyannote_hub_cache_root(models_path)
@@ -595,15 +605,21 @@ def _warmup_pyannote_community1(models_path, hf_token=None):
         if 'cache_dir' in sig.parameters:
             kwargs['cache_dir'] = pyc
 
-        pipeline = Pipeline.from_pretrained('pyannote/speaker-diarization-community-1', **kwargs)
-        pipeline.to(torch.device('cpu'))
+        # torch 2.6+ refuses to unpickle the custom types pyannote checkpoints
+        # carry. The worker relaxes torch.load for good; Flask borrows it for
+        # this one read of a model the user just downloaded and hands it back.
+        with compat.trusted_torch_load():
+            pipeline = Pipeline.from_pretrained(
+                'pyannote/speaker-diarization-community-1', **kwargs)
+            pipeline.to(torch.device('cpu'))
 
-        # Tiny dry-run to force lazy sub-component resolution during onboarding.
-        waveform = torch.zeros((1, 16000 * 3), dtype=torch.float32)
-        try:
-            pipeline({'waveform': waveform, 'sample_rate': 16000}, min_speakers=1, max_speakers=2)
-        except Exception as run_exc:
-            log.info('pyannote warm-up inference skipped/partial: %s', run_exc)
+            # Tiny dry-run to force lazy sub-component resolution during
+            # onboarding — which reads more checkpoints, so it stays inside.
+            waveform = torch.zeros((1, 16000 * 3), dtype=torch.float32)
+            try:
+                pipeline({'waveform': waveform, 'sample_rate': 16000}, min_speakers=1, max_speakers=2)
+            except Exception as run_exc:
+                log.info('pyannote warm-up inference skipped/partial: %s', run_exc)
 
         _install_emit('pyannote community-1 is warmed up and cached.')
     except Exception as exc:

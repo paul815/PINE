@@ -825,6 +825,24 @@ class TestStubTorchcodec:
         assert spec is not None
         assert spec.name == 'torchcodec'
 
+    def test_stub_exposes_the_name_pyannote_imports(self):
+        """pyannote.audio.core.io does ``from torchcodec import AudioSamples``.
+
+        When that fails it warns that decoding is broken and falls back — which
+        is what our own shim used to look like from the outside.
+        """
+        from ml_worker import compat
+        self._clean()
+        compat.stub_torchcodec()
+        try:
+            from torchcodec import AudioSamples
+            from torchcodec.decoders import AudioDecoder
+            fields = AudioSamples._fields
+        finally:
+            self._clean()
+        assert fields == ('data', 'pts_seconds', 'sample_rate')
+        assert AudioDecoder is not None
+
     def test_stub_idempotent(self):
         from ml_worker import compat
         self._clean()
@@ -1155,3 +1173,120 @@ class TestModelPreflight:
         self._ready(app, get_default_stt_model(), models_path)
 
         assert _preflight_stt_model(app) == get_default_stt_model()
+
+
+class TestHfHubOfflineShim:
+    """compat.patch_hf_hub_is_offline_mode — what broke onboarding's warm-up.
+
+    Fake modules rather than the real huggingface_hub: the shim has to behave
+    the same whether or not the interpreter running the suite has the ML stack.
+    """
+
+    def _fake_hub(self, monkeypatch, *, with_helper=False, offline=False):
+        import sys
+        import types
+
+        constants = types.ModuleType('huggingface_hub.constants')
+        constants.HF_HUB_OFFLINE = offline
+        hub = types.ModuleType('huggingface_hub')
+        hub.constants = constants
+        if with_helper:
+            hub.is_offline_mode = lambda: 'the original'
+        monkeypatch.setitem(sys.modules, 'huggingface_hub', hub)
+        monkeypatch.setitem(sys.modules, 'huggingface_hub.constants', constants)
+        return hub, constants
+
+    def _unpatched(self, monkeypatch):
+        from ml_worker import compat
+        monkeypatch.setattr(compat, '_HF_HUB_OFFLINE_MODE_PATCHED', False)
+        return compat
+
+    def test_restores_the_helper_the_package_dropped(self, monkeypatch):
+        compat = self._unpatched(monkeypatch)
+        hub, _ = self._fake_hub(monkeypatch, offline=True)
+
+        compat.patch_hf_hub_is_offline_mode()
+
+        assert hub.is_offline_mode() is True
+
+    def test_reads_the_flag_each_call_rather_than_snapshotting_it(self, monkeypatch):
+        """apply_hf_offline flips the constant at runtime and must stay in charge."""
+        compat = self._unpatched(monkeypatch)
+        hub, constants = self._fake_hub(monkeypatch, offline=False)
+
+        compat.patch_hf_hub_is_offline_mode()
+        assert hub.is_offline_mode() is False
+
+        constants.HF_HUB_OFFLINE = True
+        assert hub.is_offline_mode() is True
+
+    def test_leaves_a_real_helper_alone(self, monkeypatch):
+        compat = self._unpatched(monkeypatch)
+        hub, _ = self._fake_hub(monkeypatch, with_helper=True)
+
+        compat.patch_hf_hub_is_offline_mode()
+
+        assert hub.is_offline_mode() == 'the original'
+
+
+class TestTrustedTorchLoad:
+    """compat.trusted_torch_load — the scoped loan the Flask warm-up takes."""
+
+    def _fake_torch(self, monkeypatch, calls):
+        import sys
+        import types
+
+        torch = types.ModuleType('torch')
+
+        def load(*args, **kwargs):
+            calls.append(kwargs.get('weights_only', 'unset'))
+            return 'checkpoint'
+
+        torch.load = load
+        monkeypatch.setitem(sys.modules, 'torch', torch)
+        return torch, load
+
+    def test_relaxes_the_loader_and_hands_it_back(self, monkeypatch):
+        from ml_worker import compat
+        calls = []
+        torch, original = self._fake_torch(monkeypatch, calls)
+
+        with compat.trusted_torch_load():
+            torch.load('model.bin')
+        torch.load('model.bin')
+
+        assert calls == [False, 'unset']
+        assert torch.load is original
+
+    def test_hands_it_back_after_a_failed_load(self, monkeypatch):
+        from ml_worker import compat
+        torch, original = self._fake_torch(monkeypatch, [])
+
+        with pytest.raises(RuntimeError):
+            with compat.trusted_torch_load():
+                raise RuntimeError('checkpoint is corrupt')
+
+        assert torch.load is original
+
+    def test_steps_aside_when_the_worker_already_patched_torch(self, monkeypatch):
+        from ml_worker import compat
+        calls = []
+        torch, original = self._fake_torch(monkeypatch, calls)
+        original._pine_trusted_checkpoint_wrap = True
+
+        with compat.trusted_torch_load():
+            assert torch.load is original
+
+        assert torch.load is original
+
+    def test_honours_the_strict_weights_only_override(self, monkeypatch):
+        from ml_worker import compat
+        calls = []
+        torch, original = self._fake_torch(monkeypatch, calls)
+        monkeypatch.setenv('PINE_TORCH_STRICT_WEIGHTS_ONLY', '1')
+
+        with compat.trusted_torch_load():
+            torch.load('model.bin')
+
+        assert calls == ['unset']
+        assert torch.load is original

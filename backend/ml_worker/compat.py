@@ -4,6 +4,11 @@ Every patch here mutates process-global state (env vars, ``sys.modules``,
 ``torch.load``). That is exactly why the ML pipeline runs in its own worker
 process: these shims never leak into the Flask backend.
 
+The exception is onboarding's pyannote warm-up, which imports the same stack
+inside Flask (``app.services.model_manager``). It borrows the attribute-level
+shims — the ones that only add back an API a dependency dropped — and the
+scoped ``trusted_torch_load`` below, never the permanent ``torch.load`` patch.
+
 All patches are defensive no-ops when the condition they guard against is
 absent, so they are safe to keep across dependency upgrades.
 """
@@ -118,6 +123,45 @@ def patch_hf_hub_legacy_use_auth_token():
     log.debug('Patched hf_hub_download for legacy use_auth_token kwarg')
 
 
+_HF_HUB_OFFLINE_MODE_PATCHED = False
+
+
+def patch_hf_hub_is_offline_mode():
+    """Restore ``huggingface_hub.is_offline_mode`` for callers that still import it.
+
+    huggingface_hub moved the flag to ``constants.HF_HUB_OFFLINE`` and dropped the
+    helper from the package namespace. Parts of the pyannote/speechbrain stack
+    still do ``from huggingface_hub import is_offline_mode`` at import time, and
+    that ImportError takes down the whole import — it is what made onboarding's
+    diarization warm-up fail on macOS while the worker, which never hits that
+    path, went on transcribing.
+
+    Reads the constant on every call rather than snapshotting it, so
+    ``apply_hf_offline`` and ``allow_hf_network_for_align`` stay authoritative.
+    """
+    global _HF_HUB_OFFLINE_MODE_PATCHED
+    if _HF_HUB_OFFLINE_MODE_PATCHED:
+        return
+    try:
+        import huggingface_hub
+    except ImportError:
+        return
+    if hasattr(huggingface_hub, 'is_offline_mode'):
+        _HF_HUB_OFFLINE_MODE_PATCHED = True
+        return
+
+    def is_offline_mode():
+        try:
+            import huggingface_hub.constants as _const
+            return bool(getattr(_const, 'HF_HUB_OFFLINE', False))
+        except Exception:
+            return bool(os.environ.get('HF_HUB_OFFLINE', '').strip())
+
+    huggingface_hub.is_offline_mode = is_offline_mode  # type: ignore[attr-defined]
+    _HF_HUB_OFFLINE_MODE_PATCHED = True
+    log.debug('Restored huggingface_hub.is_offline_mode for legacy importers')
+
+
 _TORCH_LOAD_TRUST_PATCHED = False
 
 
@@ -154,6 +198,45 @@ def patch_torch_load_for_trusted_checkpoints():
     torch.load = _load
     _TORCH_LOAD_TRUST_PATCHED = True
     log.debug('torch.load → weights_only=False for trusted onboarding checkpoints')
+
+
+@contextmanager
+def trusted_torch_load():
+    """Relax ``torch.load`` for one checkpoint read, then put it back.
+
+    Same reasoning as the permanent patch above, but for the Flask process,
+    which loads a pyannote checkpoint exactly once — during the onboarding
+    warm-up — and keeps the strict default for everything else it ever
+    unpickles. A no-op when the permanent patch is already in place.
+    """
+    try:
+        import torch
+    except ImportError:
+        yield
+        return
+
+    if os.environ.get('PINE_TORCH_STRICT_WEIGHTS_ONLY', '').strip() == '1':
+        yield
+        return
+
+    orig = torch.load
+    if getattr(orig, '_pine_trusted_checkpoint_wrap', False):
+        yield
+        return
+
+    import functools
+
+    @functools.wraps(orig)
+    def _load(*args, **kwargs):
+        kwargs['weights_only'] = False
+        return orig(*args, **kwargs)
+
+    _load._pine_trusted_checkpoint_wrap = True
+    torch.load = _load
+    try:
+        yield
+    finally:
+        torch.load = orig
 
 
 def stub_torchcodec():
@@ -327,6 +410,13 @@ def stub_torchcodec():
     decoders._pine_stub = True
 
     decoders.AudioDecoder = AudioDecoder
+    # pyannote.audio.core.io does ``from torchcodec import AudioSamples`` at
+    # import time and, when that fails, warns that built-in decoding is broken
+    # and falls back. The shim decodes fine; it was only missing the name the
+    # real package exports next to the decoder, so pyannote read our stub as a
+    # broken install. Same namedtuple the decoder returns, so isinstance holds.
+    root.AudioSamples = _AudioSamples
+    decoders.AudioSamples = _AudioSamples
     root.decoders = decoders
     root._core = core
     core.ops = ops

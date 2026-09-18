@@ -533,8 +533,20 @@ def create_app(config_class=Config):
 
     @app.route('/api/health')
     def health():
-        """Lightweight readiness probe for the local supervisor/launcher."""
-        return {'ok': True, 'version': __version__}
+        """Lightweight readiness probe for the local supervisor/launcher.
+
+        Also reports whether a transcription is in flight: the supervisor asks
+        before it shuts the backend down over an expired browser lease. The
+        probe must never fail — a 500 here reads as "backend gone" and costs
+        the user the job — so the queue lookup is best-effort.
+        """
+        payload = {'ok': True, 'version': __version__, 'busy': False}
+        try:
+            from .services.transcription import busy_snapshot
+            payload.update(busy_snapshot())
+        except Exception:
+            pass
+        return payload
 
     @app.route('/project/<int:project_id>/tags')
     def tags_page(project_id):

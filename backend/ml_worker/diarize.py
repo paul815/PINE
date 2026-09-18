@@ -397,8 +397,12 @@ class Diarizer:
             return
         compat.patch_torchaudio_for_pyannote()
         compat.patch_hf_hub_legacy_use_auth_token()
+        compat.patch_hf_hub_is_offline_mode()
         import warnings
-        warnings.filterwarnings('ignore', message='torchcodec')
+        # ``message`` is matched against the start of the warning text, and
+        # pyannote's begins with a newline — so the old bare 'torchcodec'
+        # pattern never matched and the notice reached every log.
+        warnings.filterwarnings('ignore', message=r'(?s).*torchcodec')
         if sys.platform == 'darwin':
             compat.stub_torchcodec()
         if self.device is None:

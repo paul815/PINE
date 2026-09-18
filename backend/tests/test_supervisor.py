@@ -5,6 +5,7 @@ import shutil
 import threading
 import time
 import urllib.request
+from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -155,6 +156,9 @@ def test_monitor_loop_shuts_down_when_no_leases_remain_after_grace(monkeypatch):
 
     monkeypatch.setattr(sup, "request_shutdown", _request_shutdown)
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    # Otherwise the probe reaches whatever is really listening on the backend
+    # port — a PINE the developer left running answers for it.
+    monkeypatch.setattr(sup, "_backend_busy", lambda: False)
     sup._lease_grace_until = time.time() - 1
     sup._leases.clear()
 
@@ -199,6 +203,122 @@ def test_release_lease_shortens_grace_when_last_tab_closes():
     assert count == 0
     remaining = sup._lease_grace_until - before
     assert 0 < remaining <= supervisor.LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS + 0.5
+
+
+def test_release_lease_keeps_the_startup_grace_after_a_restart():
+    """A page unloading because the backend under it restarted is not a quit.
+
+    Its release lands on the supervisor while the /api/quit beside it dies with
+    the old backend, so two seconds later the supervisor would shut down the
+    backend the reloading page is about to look for.
+    """
+    sup = BackendSupervisor()
+    before = time.time()
+    sup._restart_grace_until = before + supervisor.STARTUP_LEASE_GRACE_SECONDS
+
+    sup.heartbeat_lease("tab-1")
+    sup.release_lease("tab-1")
+
+    remaining = sup._lease_grace_until - before
+    assert remaining > supervisor.LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS
+    assert remaining <= supervisor.STARTUP_LEASE_GRACE_SECONDS + 0.5
+
+
+def test_monitor_loop_holds_on_while_the_backend_is_still_transcribing(monkeypatch):
+    """A backgrounded tab stops heartbeating long before a long job finishes."""
+    sup = BackendSupervisor()
+    shutdown_attempts = {"count": 0}
+    sleep_calls = {"count": 0}
+    before = time.time()
+
+    sup._leases.clear()
+    sup._lease_grace_until = before - 1
+
+    monkeypatch.setattr(sup, "_backend_busy", lambda: True)
+    monkeypatch.setattr(
+        sup,
+        "request_shutdown",
+        lambda **_kwargs: shutdown_attempts.__setitem__("count", shutdown_attempts["count"] + 1),
+    )
+
+    def _sleep_twice(_seconds):
+        sleep_calls["count"] += 1
+        if sleep_calls["count"] > 1:
+            sup._shutdown_requested = True
+
+    monkeypatch.setattr(time, "sleep", _sleep_twice)
+
+    sup.monitor_loop()
+
+    assert shutdown_attempts["count"] == 0
+    held_for = sup._lease_grace_until - before
+    assert held_for >= supervisor.BUSY_BACKEND_RECHECK_SECONDS - 1
+
+
+def test_monitor_loop_shuts_down_once_the_backend_reports_itself_idle(monkeypatch):
+    sup = BackendSupervisor()
+    shutdown_attempts = {"count": 0}
+
+    def _request_shutdown(**_kwargs):
+        shutdown_attempts["count"] += 1
+        sup._shutdown_requested = True
+
+    monkeypatch.setattr(sup, "request_shutdown", _request_shutdown)
+    monkeypatch.setattr(sup, "_backend_busy", lambda: False)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    sup._leases.clear()
+    sup._lease_grace_until = time.time() - 1
+
+    sup.monitor_loop()
+
+    assert shutdown_attempts["count"] == 1
+
+
+def test_backend_busy_reads_the_health_payload(monkeypatch):
+    sup = BackendSupervisor()
+
+    monkeypatch.setattr(sup, "_probe_backend_health", lambda: {"ok": True, "busy": True})
+    assert sup._backend_busy() is True
+
+    monkeypatch.setattr(sup, "_probe_backend_health", lambda: {"ok": True, "busy": False})
+    assert sup._backend_busy() is False
+
+
+def test_backend_that_never_answers_is_not_busy(monkeypatch):
+    """Unreachable is gone, not working — the shutdown it blocked goes ahead."""
+    sup = BackendSupervisor()
+    monkeypatch.setattr(sup, "_probe_backend_health", lambda: None)
+    assert sup._backend_busy() is False
+    assert sup._probe_backend_http() is False
+
+
+def test_backend_health_without_a_busy_field_is_not_busy(monkeypatch):
+    """An older backend answers the probe but knows nothing about jobs."""
+    sup = BackendSupervisor()
+    monkeypatch.setattr(sup, "_probe_backend_health", lambda: {"ok": True})
+    assert sup._backend_busy() is False
+    assert sup._probe_backend_http() is True
+
+
+def test_cleanup_sweeps_the_undashed_install_log_folders(monkeypatch, tmp_path):
+    from datetime import timedelta
+
+    monkeypatch.setenv("PINE_LOG_DIR", str(tmp_path))
+    old = datetime.now() - timedelta(days=30)
+    recent = datetime.now() - timedelta(days=1)
+    stale_legacy = tmp_path / old.strftime("%Y%m%d")
+    stale_dashed = tmp_path / old.strftime("%Y-%m-%d")
+    fresh_legacy = tmp_path / recent.strftime("%Y%m%d")
+    not_a_date = tmp_path / "archive"
+    for folder in (stale_legacy, stale_dashed, fresh_legacy, not_a_date):
+        folder.mkdir()
+
+    supervisor._cleanup_old_log_folders(max_age_days=7)
+
+    assert not stale_legacy.exists()
+    assert not stale_dashed.exists()
+    assert fresh_legacy.is_dir()
+    assert not_a_date.is_dir()
 
 
 def test_restart_endpoint_and_status_and_shutdown():
@@ -610,3 +730,55 @@ def test_the_port_file_goes_away_with_the_supervisor(tmp_path, monkeypatch):
     supervisor._remove_port_file()
 
     assert not (tmp_path / "supervisor.port").exists()
+
+
+# ── the other half of the busy probe: what /api/health actually reports ──
+
+def test_health_reports_the_running_job_to_the_supervisor(client):
+    from app.services import transcription
+
+    before = client.get("/api/health").get_json()
+    assert before["ok"] is True
+    assert before["busy"] is False
+    assert before["recording_id"] is None
+
+    transcription._current_recording_id = 7
+    try:
+        during = client.get("/api/health").get_json()
+    finally:
+        transcription._current_recording_id = None
+
+    assert during["busy"] is True
+    assert during["recording_id"] == 7
+
+
+def test_health_counts_a_queued_recording_as_busy(client):
+    """The queue is work too — shutting down here loses the jobs waiting in it."""
+    from app.services import transcription
+
+    with transcription._queue_lock:
+        transcription._queued_ids.append(11)
+    try:
+        payload = client.get("/api/health").get_json()
+    finally:
+        with transcription._queue_lock:
+            transcription._queued_ids.remove(11)
+
+    assert payload["busy"] is True
+    assert payload["queued"] == 1
+
+
+def test_health_still_answers_when_the_queue_cannot_be_read(client, monkeypatch):
+    """A 500 here reads as a dead backend, and the supervisor kills it."""
+    from app.services import transcription
+
+    def _boom():
+        raise RuntimeError("queue is on fire")
+
+    monkeypatch.setattr(transcription, "busy_snapshot", _boom)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    assert response.get_json()["busy"] is False

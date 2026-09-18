@@ -39,6 +39,11 @@ LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS = 2.0
 EXPIRED_LEASE_SHUTDOWN_GRACE_SECONDS = float(
     os.environ.get("PINE_EXPIRED_LEASE_SHUTDOWN_GRACE_SECONDS") or (5.0 * 60.0)
 )
+# How long to hold off after finding the backend mid-transcription. The grace
+# above is a fixed budget; a recording is not, and an hour of audio outlasts
+# five minutes of it several times over. So the wait is re-armed for as long as
+# the work lasts, one probe per interval rather than one per second.
+BUSY_BACKEND_RECHECK_SECONDS = 60.0
 LOG = logging.getLogger(__name__)
 
 _DATA_DIR = Path(os.environ.get("PINE_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -152,9 +157,17 @@ def _cleanup_old_log_folders(max_age_days: int = 7) -> None:
     for entry in log_dir.iterdir():
         if not entry.is_dir():
             continue
-        try:
-            folder_date = datetime.strptime(entry.name, "%Y-%m-%d").date()
-        except ValueError:
+        folder_date = None
+        # "%Y%m%d" is the spelling install logs used to land in. Nothing writes
+        # it any more, but the folders it left behind are still on disk and were
+        # skipped by every sweep until now.
+        for pattern in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                folder_date = datetime.strptime(entry.name, pattern).date()
+                break
+            except ValueError:
+                continue
+        if folder_date is None:
             continue
         if folder_date < cutoff:
             shutil.rmtree(entry, ignore_errors=True)
@@ -212,6 +225,9 @@ class BackendSupervisor:
         self._backend_ready_event = threading.Event()
         self._leases: dict[str, float] = {}
         self._lease_grace_until = time.time() + STARTUP_LEASE_GRACE_SECONDS
+        # Floor under the grace while a freshly spawned backend finds its page
+        # again; see release_lease.
+        self._restart_grace_until = 0.0
         self._supervisor_port = supervisor_port
         self._backend_port = backend_port
         self._cwd = str(Path(__file__).resolve().parent)
@@ -292,6 +308,7 @@ class BackendSupervisor:
             kwargs["start_new_session"] = True
             kwargs["close_fds"] = True
         self._proc = subprocess.Popen(self._cmd, **kwargs)
+        self._restart_grace_until = time.time() + STARTUP_LEASE_GRACE_SECONDS
         LOG.info("Spawned backend pid=%s", getattr(self._proc, "pid", None))
 
     def restart_backend(self) -> None:
@@ -358,7 +375,17 @@ class BackendSupervisor:
             self._leases.pop(lease_id, None)
             count = len(self._leases)
             if count == 0:
-                self._lease_grace_until = now + LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS
+                # Two seconds is right for a tab the user closed: the page also
+                # posts /api/quit and the supervisor should not outlive it. It
+                # is wrong for the page unloading because the backend under it
+                # restarted — that release lands on a live supervisor while the
+                # quit dies with the old backend, and the reloading page finds
+                # nothing left to reconnect to. Inside the startup window the
+                # restart's own grace wins.
+                self._lease_grace_until = max(
+                    now + LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS,
+                    self._restart_grace_until,
+                )
             return count
 
     def lease_count(self) -> int:
@@ -372,7 +399,7 @@ class BackendSupervisor:
     def monitor_loop(self) -> None:
         while True:
             time.sleep(1.0)
-            should_shutdown = False
+            grace_elapsed = False
             with self._lock:
                 if self._shutdown_requested:
                     return
@@ -405,9 +432,35 @@ class BackendSupervisor:
                             STARTUP_LEASE_GRACE_SECONDS,
                         )
                     else:
-                        should_shutdown = True
-                        self._shutdown_requested = True
-                        LOG.info("No active browser leases remain; shutting down supervisor")
+                        grace_elapsed = True
+            if not grace_elapsed:
+                continue
+
+            # Outside the lock on purpose: the probe blocks for up to a second,
+            # and holding the lock through it would stall the heartbeat route —
+            # expiring the very lease that would have called this off.
+            if self._backend_busy():
+                with self._lock:
+                    self._lease_grace_until = max(
+                        self._lease_grace_until,
+                        time.time() + BUSY_BACKEND_RECHECK_SECONDS,
+                    )
+                LOG.info(
+                    "No browser leases, but the backend is still working; "
+                    "holding for another %.0fs",
+                    BUSY_BACKEND_RECHECK_SECONDS,
+                )
+                continue
+
+            should_shutdown = False
+            with self._lock:
+                if self._shutdown_requested:
+                    return
+                # A tab can come back while the probe above is in flight.
+                if not self._leases and time.time() >= self._lease_grace_until:
+                    should_shutdown = True
+                    self._shutdown_requested = True
+                    LOG.info("No active browser leases remain; shutting down supervisor")
             if should_shutdown:
                 stop_server_event = self._stop_server_event
                 LOG.info("No active browser leases remain; stopping supervisor server")
@@ -420,15 +473,33 @@ class BackendSupervisor:
                 )
                 return
 
-    def _probe_backend_http(self) -> bool:
+    def _probe_backend_health(self) -> dict | None:
+        """Health payload, or None when the backend did not answer."""
         try:
-            urllib.request.urlopen(
+            with urllib.request.urlopen(
                 f'http://{HOST}:{self._backend_port}{BACKEND_HEALTH_PATH}',
                 timeout=0.8,
-            )
-            return True
+            ) as response:
+                body = response.read(4096)
         except Exception:
-            return False
+            return None
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _probe_backend_http(self) -> bool:
+        return self._probe_backend_health() is not None
+
+    def _backend_busy(self) -> bool:
+        """True while the backend reports a transcription queued or running.
+
+        A backend that cannot be reached is not busy — it is gone, and the
+        shutdown it was blocking should go ahead.
+        """
+        payload = self._probe_backend_health()
+        return bool(payload and payload.get("busy"))
 
     def _terminate_locked(self, timeout: float) -> None:
         if self._proc is None or self._proc.poll() is not None:
