@@ -621,6 +621,11 @@ def _warmup_pyannote_community1(models_path, hf_token=None):
             except Exception as run_exc:
                 log.info('pyannote warm-up inference skipped/partial: %s', run_exc)
 
+        # To the app log as well as the install stream: by the time the warm-up
+        # runs, the pip log it would otherwise land in has been closed, and only
+        # the failure had a line of its own. A silent success and a warm-up that
+        # never ran read the same in the log afterwards.
+        log.info('pyannote community-1 warm-up complete')
         _install_emit('pyannote community-1 is warmed up and cached.')
     except Exception as exc:
         log.warning('pyannote community-1 warm-up failed: %s', exc)

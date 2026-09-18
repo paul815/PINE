@@ -727,9 +727,63 @@ def test_the_port_file_goes_away_with_the_supervisor(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor, "PORT_FILE_PATH", tmp_path / "supervisor.port")
     supervisor._write_port_file(5101, 5100)
 
-    supervisor._remove_port_file()
+    supervisor._remove_port_file(5101)
 
     assert not (tmp_path / "supervisor.port").exists()
+
+
+def test_a_leaving_supervisor_keeps_its_successors_port_file(tmp_path, monkeypatch):
+    """Two supervisors overlap when the second finds the first one's port busy.
+
+    It moves to the next port and rewrites both files with its own details. The
+    first one leaving must not take them with it: reset_win.bat kills by the pid
+    in there and both launchers resolve the ports from it, so the live
+    supervisor would go unreachable.
+    """
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", tmp_path / "supervisor.port")
+
+    supervisor._write_port_file(5101, 5100)      # the first supervisor
+    supervisor._write_port_file(5102, 5103)      # the second one takes over
+
+    supervisor._remove_port_file(5101)           # ...and then the first exits
+
+    published = json.loads((tmp_path / "supervisor.port").read_text(encoding="utf-8"))
+    assert published["supervisor_port"] == 5102
+    assert published["backend_port"] == 5103
+
+
+def test_a_leaving_supervisor_keeps_its_successors_pid_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    pid_file = tmp_path / "supervisor.pid"
+    monkeypatch.setattr(supervisor, "PID_FILE_PATH", pid_file)
+    pid_file.write_text(str(os.getpid() + 1), encoding="utf-8")
+
+    supervisor._remove_pid_file()
+
+    assert pid_file.read_text(encoding="utf-8") == str(os.getpid() + 1)
+
+
+def test_a_supervisor_still_removes_its_own_pid_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    monkeypatch.setattr(supervisor, "PID_FILE_PATH", tmp_path / "supervisor.pid")
+
+    supervisor._write_pid_file()
+    supervisor._remove_pid_file()
+
+    assert not (tmp_path / "supervisor.pid").exists()
+
+
+def test_an_unreadable_port_file_is_still_cleaned_up(tmp_path, monkeypatch):
+    """Garbage in there names no owner, so the credential goes."""
+    monkeypatch.setattr(supervisor, "_DATA_DIR", tmp_path)
+    port_file = tmp_path / "supervisor.port"
+    monkeypatch.setattr(supervisor, "PORT_FILE_PATH", port_file)
+    port_file.write_text("not json at all", encoding="utf-8")
+
+    supervisor._remove_port_file(5101)
+
+    assert not port_file.exists()
 
 
 # ── the other half of the busy probe: what /api/health actually reports ──

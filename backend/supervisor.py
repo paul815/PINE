@@ -57,6 +57,18 @@ def _write_pid_file() -> None:
 
 
 def _remove_pid_file() -> None:
+    """Drop the PID file, unless a later supervisor has taken it over.
+
+    Two supervisors can overlap: the second one finds 5001 busy, moves to 5002
+    and rewrites both files with its own details. When the first then exits it
+    used to delete them anyway, leaving the live supervisor invisible — and
+    these files are how reset_win.bat finds the process to kill and how both
+    launchers resolve the ports to talk to.
+    """
+    owner = _read_stale_pid()
+    if owner is not None and owner != os.getpid():
+        LOG.info("PID file now belongs to pid=%s; leaving it in place", owner)
+        return
     try:
         PID_FILE_PATH.unlink(missing_ok=True)
         LOG.info("PID file removed: %s", PID_FILE_PATH)
@@ -134,7 +146,28 @@ def _write_port_file(supervisor_port: int, backend_port: int) -> None:
     LOG.info("Port file written: %s", PORT_FILE_PATH)
 
 
-def _remove_port_file() -> None:
+def _port_file_supervisor_port() -> int | None:
+    """Which supervisor the port file currently points at, if it can be read."""
+    try:
+        payload = json.loads(PORT_FILE_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+    port = payload.get("supervisor_port") if isinstance(payload, dict) else None
+    return port if isinstance(port, int) else None
+
+
+def _remove_port_file(supervisor_port: int | None = None) -> None:
+    """Drop the port file, unless a later supervisor has taken it over.
+
+    Same ownership question as the PID file above, answered with the port
+    rather than the pid: the token in there can be inherited from the
+    environment by both processes, the listening port cannot.
+    """
+    if supervisor_port is not None:
+        owner = _port_file_supervisor_port()
+        if owner is not None and owner != supervisor_port:
+            LOG.info("Port file now points at port %s; leaving it in place", owner)
+            return
     try:
         PORT_FILE_PATH.unlink(missing_ok=True)
     except OSError:
@@ -757,7 +790,7 @@ def main() -> int:
         return 0
     finally:
         _remove_pid_file()
-        _remove_port_file()
+        _remove_port_file(supervisor_port)
 
 
 if __name__ == "__main__":
