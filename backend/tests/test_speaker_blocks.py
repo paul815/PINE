@@ -20,7 +20,11 @@ from pathlib import Path
 import pytest
 
 from app.services import speaker_blocks
-from app.services.speaker_blocks import block_offsets, merge_speaker_blocks
+from app.services.speaker_blocks import (
+    block_offsets,
+    block_text,
+    merge_speaker_blocks,
+)
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'templates' / 'recording.html'
 
@@ -52,10 +56,28 @@ LONG_HANDOVER = [
     seg(115.5, 130.0, 'B', 'Спасибо. И расскажите, пожалуйста, что дальше?'),
 ]
 
+# An edit that ran across a segment boundary leaves the segments it swallowed
+# with no text. They keep their place in the list so annotation indices stay
+# valid, which means the offsets have to step over them.
+BLANKED = [
+    seg(0.0, 3.0, 'A', 'Первая часть реплики,'),
+    seg(3.0, 6.0, 'A', ''),
+    seg(6.0, 9.0, 'A', 'и её продолжение.'),
+]
+
+# The same, where the blank is the first thing in the block: nothing precedes
+# the words, so they start the block rather than sitting one space into it.
+BLANKED_HEAD = [
+    seg(0.0, 3.0, 'A', ''),
+    seg(3.0, 6.0, 'A', 'Реплика целиком здесь.'),
+]
+
 CASES = {
     'backchannel': BACKCHANNEL,
     'exchange': EXCHANGE,
     'long_handover': LONG_HANDOVER,
+    'blanked': BLANKED,
+    'blanked_head': BLANKED_HEAD,
     'untimed': [
         {'speaker': 'A', 'text': 'первая половина вопроса'},
         {'speaker': 'B', 'text': 'Угу.'},
@@ -118,6 +140,58 @@ def test_block_offsets_follow_the_new_boundaries():
     assert block_offsets(BACKCHANNEL)[2] == len(BACKCHANNEL[0]['text']) + 1
 
 
+def test_an_emptied_segment_takes_no_room_in_the_block():
+    """A segment an edit blanked adds no text, so it must add no offset either.
+
+    The merge joins what is left with single spaces and never writes the blank,
+    so counting a separator for it pushes every later anchor one char right --
+    a tag highlighting the last word of the block lands past the end of it.
+    """
+    block = merge_speaker_blocks(BLANKED)[0]
+    offsets = block_offsets(BLANKED)
+
+    assert block['text'] == 'Первая часть реплики, и её продолжение.'
+    assert block['text'][offsets[2]:] == BLANKED[2]['text']
+    # The blank sits at the seam it was edited out of, not past the next words.
+    assert offsets[1] == len(BLANKED[0]['text'])
+
+
+def test_a_block_that_opens_with_a_blank_starts_at_zero():
+    """No words precede the text, so there is no separator to count."""
+    block = merge_speaker_blocks(BLANKED_HEAD)[0]
+    offsets = block_offsets(BLANKED_HEAD)
+
+    assert block['text'] == BLANKED_HEAD[1]['text']
+    assert offsets == {0: 0, 1: 0}
+
+
+@pytest.mark.parametrize('name', sorted(CASES))
+def test_block_text_is_the_text_the_merge_built(name):
+    """One definition of a block's text -- the offsets are measured into it."""
+    segments = CASES[name]
+
+    for block in merge_speaker_blocks(segments):
+        assert block_text(segments, block['indices']) == block['text']
+
+
+@pytest.mark.parametrize('name', sorted(CASES))
+def test_every_offset_lands_on_its_own_words(name):
+    """Slice the block at a segment's offset and its own text is what is there.
+
+    This is what an annotation anchor means, so it has to hold for every
+    fixture rather than the hand-checked ones.
+    """
+    segments = CASES[name]
+    offsets = block_offsets(segments)
+
+    for block in merge_speaker_blocks(segments):
+        for idx in block['indices']:
+            text = (segments[idx].get('text') or '').strip()
+            if not text:
+                continue
+            assert block['text'][offsets[idx]:offsets[idx] + len(text)] == text
+
+
 def _js_source():
     """The mirrored rule, lifted out of the template to run on its own."""
     source = TEMPLATE.read_text(encoding='utf-8')
@@ -163,4 +237,43 @@ def test_js_and_python_draw_the_same_boundaries(tmp_path):
     for name, segments in CASES.items():
         expected = [{'speaker': b['speaker'], 'text': b['text'], 'indices': b['indices']}
                     for b in merge_speaker_blocks(segments)]
+        assert from_js[name] == expected, name
+
+
+@pytest.mark.skipif(not shutil.which('node'), reason='node is not installed')
+def test_js_and_python_measure_the_same_offsets(tmp_path):
+    """Anchor offsets from both copies -- a drift here misplaces a highlight.
+
+    The template computes these while rendering; the server computes them when
+    an edit shifts the text underneath them. The two have to agree char for
+    char or a tag saved by one is drawn on the wrong words by the other.
+    """
+    script = tmp_path / 'offsets.js'
+    script.write_text(
+        _js_source()
+        + '\nconst cases = ' + json.dumps(CASES, ensure_ascii=False) + ';'
+        + '\nconst out = {};'
+        + '\nfor (const k of Object.keys(cases)) {'
+        + '\n  const segs = cases[k];'
+        + '\n  const acc = {};'
+        + '\n  for (const b of mergeSpeakerBlocks(segs)) {'
+        + '\n    const r = blockTextAndOffsets(segs, b.indices);'
+        + '\n    if (r.text !== b.text) {'
+        + '\n      throw new Error("block text drift in " + k + ": " + r.text);'
+        + '\n    }'
+        + '\n    Object.assign(acc, r.offsets);'
+        + '\n  }'
+        + '\n  out[k] = acc;'
+        + '\n}'
+        + '\nprocess.stdout.write(JSON.stringify(out));',
+        encoding='utf-8')
+
+    result = subprocess.run([shutil.which('node'), str(script)], capture_output=True,
+                            text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 0, result.stderr
+
+    from_js = json.loads(result.stdout)
+    for name, segments in CASES.items():
+        # JSON object keys are strings on the way back from node.
+        expected = {str(k): v for k, v in block_offsets(segments).items()}
         assert from_js[name] == expected, name

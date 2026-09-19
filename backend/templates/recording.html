@@ -994,6 +994,24 @@ function mergeSpeakerBlocks(segments) {
   return blocks;
 }
 
+// Mirrors services/speaker_blocks.block_text_and_offsets. A segment with no
+// text writes nothing into the block, so it is charged no separator either --
+// editing across a segment boundary leaves such blanks behind, and counting a
+// space for each of them walks every later tag anchor off its own words.
+function blockTextAndOffsets(segments, indices) {
+  const parts = [];
+  const offsets = {};
+  let off = 0;
+  for (const idx of indices) {
+    const text = (segments[idx]?.text || '').trim();
+    if (!text) { offsets[idx] = off; continue; }
+    offsets[idx] = off + (off ? 1 : 0);
+    off = offsets[idx] + text.length;
+    parts.push(text);
+  }
+  return { text: parts.join(' '), offsets };
+}
+
 function seedSpeakerColors(speakers) {
   // `speakers` maps the pipeline's raw ids to display labels, in speaker order.
   // Names that came off a Zoom filename match none of the rules in
@@ -1238,12 +1256,7 @@ function renderTranscript(segments, tagSpans, comments) {
       const endSeg = c.end_segment_idx ?? c.segment_idx;
       return indices.some(idx => idx >= c.segment_idx && idx <= endSeg);
     });
-    const offsetByIdx = {};
-    let off = 0;
-    indices.forEach(idx => {
-      offsetByIdx[idx] = off;
-      off += (segments[idx]?.text || '').trim().length + 1;
-    });
+    const offsetByIdx = blockTextAndOffsets(segments, indices).offsets;
     const mergedWords = [];
     indices.forEach(idx => {
       const seg = segments[idx];

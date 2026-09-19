@@ -118,16 +118,43 @@ def merge_speaker_blocks(segments):
     return blocks
 
 
+def block_text_and_offsets(segments, indices):
+    """The text ``indices`` read as, and where each segment sits inside it.
+
+    The single definition of how segment texts join into what a reader sees:
+    the non-empty ones, separated by one space -- exactly what ``append_to``
+    builds above. A segment with no text writes nothing, so it must not be
+    charged for a separator either; it takes the offset of the seam it sits
+    on. Editing across a segment boundary leaves such blanks behind (the
+    segments stay in the list so annotation indices keep pointing at the same
+    things), and counting a space for each of them walks every later anchor off
+    its own words.
+    """
+    parts = []
+    offsets = {}
+    off = 0
+    for i in indices:
+        text = (segments[i].get('text') or '').strip()
+        if not text:
+            offsets[i] = off
+            continue
+        offsets[i] = off + (1 if off else 0)
+        off = offsets[i] + len(text)
+        parts.append(text)
+    return ' '.join(parts), offsets
+
+
+def block_text(segments, indices):
+    """The text the block spanning ``indices`` reads as."""
+    return block_text_and_offsets(segments, indices)[0]
+
+
 def block_offsets(segments):
     """Char offset of each segment within its merged block's text.
 
-    Keyed by index into ``segments``; mirrors the single space
-    ``merge_speaker_blocks`` joins with.
+    Keyed by index into ``segments``.
     """
     offsets = {}
     for block in merge_speaker_blocks(segments):
-        running = 0
-        for i in block['indices']:
-            offsets[i] = running
-            running += len((segments[i].get('text') or '').strip()) + 1
+        offsets.update(block_text_and_offsets(segments, block['indices'])[1])
     return offsets
