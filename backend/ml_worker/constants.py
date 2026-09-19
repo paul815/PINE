@@ -196,6 +196,29 @@ MLX_VAD_MIN_FLATNESS = float(os.environ.get('PINE_MLX_VAD_MIN_FLATNESS', '0.001'
 # read, and still above the back-channel — "угу", "да" — worth protecting.
 MLX_VAD_TONE_MIN_SEC = float(os.environ.get('PINE_MLX_VAD_TONE_MIN_SEC', '0.5'))
 
+# ── Carrying the prompt between windows (mlx only; see mlx_engine.py) ──
+#
+# Whisper's only memory across its 30 s windows is the prompt, and the prompt is
+# what its punctuation and casing are built on. mlx-whisper will chain it for us,
+# but chains a mistake just as faithfully, and there is no way in from outside to
+# stop one. So the chain is cut into windows we hand it ourselves: each window is
+# decoded with the tail of the last accepted one as its prompt, and a window that
+# comes back looping is thrown away and re-decoded with no prompt at all.
+#
+# The window length trades the two against each other. Longer carries context
+# further and costs fewer calls; shorter bounds what one bad prompt can take with
+# it. Two minutes is ~4 of Whisper's own windows — long enough for the prompt to
+# earn its keep, short enough that the worst case is two minutes re-decoded.
+MLX_PROMPT_WINDOW_SEC = float(os.environ.get('PINE_MLX_PROMPT_WINDOW_SEC', '120.0'))
+# How much of the previous window's text is handed on. Whisper truncates the
+# prompt to half its context on its own; this keeps what we send to the part that
+# still describes how the speaker is writing.
+MLX_PROMPT_CHARS = int(os.environ.get('PINE_MLX_PROMPT_CHARS', '200'))
+# Identical segments in a row that mean the decoder is looping rather than
+# transcribing. Three is still reachable by someone saying "да. да. да."; the
+# runaway this catches ran for minutes.
+MLX_PROMPT_REPEAT_LIMIT = int(os.environ.get('PINE_MLX_PROMPT_REPEAT_LIMIT', '4'))
+
 # ── Dropping what Whisper wrote over non-speech (see pipeline.py) ──
 #
 # Whisper learned from YouTube subtitles, and those end on a credit over the

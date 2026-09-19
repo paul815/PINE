@@ -238,6 +238,157 @@ class TestGateSpeechForMlx:
         assert gated is audio
 
 
+class _FakeMlx:
+    """Stands in for mlx_whisper: records each call's arguments, replies to order."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def transcribe(self, path, **kw):
+        self.calls.append(kw)
+        if self.replies:
+            return self.replies.pop(0)
+        return {'segments': [], 'language': 'ru'}
+
+
+def _said(text, start=0.0, end=2.0):
+    return {'start': start, 'end': end, 'text': text}
+
+
+class TestPlanWindows:
+    """Where the prompt chain is cut. A boundary in silence costs nothing; one
+    through a word costs the word, so silence is looked for first."""
+
+    def test_a_short_take_is_one_window(self):
+        from ml_worker.engines.mlx_engine import plan_windows
+        assert plan_windows(_voice(30), max_sec=120.0) == [(0.0, 30.0)]
+
+    def test_windows_tile_the_take_without_losing_audio(self):
+        import numpy as np
+        from ml_worker.engines.mlx_engine import plan_windows
+        audio = np.concatenate([_voice(100),
+                                np.zeros(4 * 16000, dtype=np.float32),
+                                _voice(100)])
+        windows = plan_windows(audio, max_sec=60.0)
+
+        assert windows[0][0] == 0.0
+        assert windows[-1][1] == pytest.approx(len(audio) / 16000)
+        for before, after in zip(windows, windows[1:], strict=False):
+            assert before[1] == after[0], 'a window boundary dropped audio'
+
+    def test_the_cut_lands_in_the_silence_between_two_turns(self):
+        import numpy as np
+        from ml_worker.engines.mlx_engine import plan_windows
+        audio = np.concatenate([_voice(50),
+                                np.zeros(6 * 16000, dtype=np.float32),
+                                _voice(50)])
+        windows = plan_windows(audio, max_sec=70.0)
+
+        assert len(windows) == 2
+        cut = windows[0][1]
+        assert 50.0 <= cut <= 56.0, f'cut at {cut:.1f}s is not in the silence'
+
+    def test_a_take_with_no_gap_is_cut_on_length(self):
+        from ml_worker.engines.mlx_engine import plan_windows
+        windows = plan_windows(_tone(200), max_sec=60.0)
+        assert [round(start) for start, _ in windows] == [0, 60, 120, 180]
+
+
+class TestRunawayDetector:
+    """What tells a looping window from a person repeating themselves."""
+
+    def test_a_line_repeated_past_the_limit_is_a_runaway(self):
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert is_runaway([_said('Звук колокола.')] * 4)
+
+    def test_someone_saying_da_three_times_is_not(self):
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert not is_runaway([_said('Да.'), _said('да'), _said('Да!')])
+
+    def test_a_window_that_reads_its_prompt_back_is_a_runaway(self):
+        """The first step of the failure: the window stops hearing the audio and
+        starts copying what it was handed."""
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert is_runaway([_said('Звук колокола.'), _said('Звук колокола')],
+                          prompt='…а потом звук колокола.')
+
+    def test_one_short_answer_inside_a_long_prompt_is_not(self):
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert not is_runaway([_said('Да.')],
+                              prompt='Да, мы понимаем, что люди адаптируются.')
+
+    def test_the_tail_handed_on_is_cut_on_a_word(self):
+        from ml_worker.engines.mlx_engine import prompt_tail
+        assert prompt_tail('раз два три четыре пять', limit=10) == 'пять'
+        assert prompt_tail('раз два', limit=10) == 'раз два'
+
+
+class TestDecodeWindows:
+    """The chain PINE holds in place of the one mlx-whisper would hold itself."""
+
+    def _engine(self):
+        from ml_worker.engines import mlx_engine
+        engine = mlx_engine.MlxWhisperEngine(env=None)
+        engine._model_path = 'fake-model'
+        return engine
+
+    def _run(self, monkeypatch, replies, windows):
+        import sys
+
+        import numpy as np
+        from ml_worker.engines import mlx_engine
+        fake = _FakeMlx(replies)
+        monkeypatch.setitem(sys.modules, 'mlx_whisper', fake)
+        monkeypatch.setattr(mlx_engine, 'plan_windows',
+                            lambda samples, **kw: windows)
+        samples = np.zeros(int(windows[-1][1] * 16000), dtype=np.float32)
+        segments, lang = self._engine()._decode_windows(samples)
+        return fake, segments, lang
+
+    def test_each_window_is_seeded_with_the_last_one(self, monkeypatch):
+        fake, segments, lang = self._run(
+            monkeypatch,
+            [{'segments': [_said(' Мы ушли в создание нового сайта.')], 'language': 'ru'},
+             {'segments': [_said(' Блокировок там нет.')], 'language': 'ru'}],
+            [(0.0, 1.0), (1.0, 2.0)])
+
+        assert lang == 'ru'
+        assert fake.calls[0].get('initial_prompt') is None, 'nothing to carry yet'
+        assert fake.calls[0]['condition_on_previous_text'] is True
+        assert fake.calls[1]['initial_prompt'] == 'Мы ушли в создание нового сайта.'
+        # Settled on the first window rather than re-detected on every one.
+        assert fake.calls[1]['language'] == 'ru'
+        assert [seg['start'] for seg in segments] == [0.0, 1.0]
+
+    def test_a_looping_window_is_decoded_again_with_nothing_carried_in(self, monkeypatch):
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [{'segments': [_said(' Звук колокола.')], 'language': 'ru'},
+             {'segments': [_said('Звук колокола.')] * 5, 'language': 'ru'},
+             {'segments': [_said(' Люди адаптируются.')], 'language': 'ru'},
+             {'segments': [_said(' Сайт работает без VPN.')], 'language': 'ru'}],
+            [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)])
+
+        assert len(fake.calls) == 4, 'expected the middle window to be decoded twice'
+        assert fake.calls[2].get('initial_prompt') is None
+        assert fake.calls[2]['condition_on_previous_text'] is False
+        # And the text that set the loop off is not handed to the next window.
+        assert fake.calls[3].get('initial_prompt') is None
+        assert [seg['text'].strip() for seg in segments] == [
+            'Звук колокола.', 'Люди адаптируются.', 'Сайт работает без VPN.']
+
+    def test_a_window_that_comes_back_empty_keeps_the_prompt(self, monkeypatch):
+        fake, _, _ = self._run(
+            monkeypatch,
+            [{'segments': [_said(' Люди адаптируются.')], 'language': 'ru'},
+             {'segments': [], 'language': 'ru'},
+             {'segments': [_said(' Сайт работает.')], 'language': 'ru'}],
+            [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)])
+
+        assert fake.calls[2]['initial_prompt'] == 'Люди адаптируются.'
+
+
 class TestMlxLanguageProbeWindow:
     """Where the language probe listens. Reading the first 30 s of a phone call
     means reading ringback, which is how a Russian interview came back as English
