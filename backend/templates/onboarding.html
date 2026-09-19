@@ -10,30 +10,22 @@
 <style>html{font-size:{{ init_font_size }}px !important;}</style>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script src="{{ url_for('static', filename='js/theme.js') }}"
+        data-theme="{{ init_theme }}"
+        data-font-size="{{ init_font_size }}"
+        data-font-family="{{ init_font_family }}"></script>
+<script src="{{ url_for('static', filename='js/dom.js') }}"></script>
 <script>
-var _fontStacks = {
-  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  inter: "'Inter',sans-serif",
-  'source-sans-3': "'Source Sans 3',sans-serif",
-  'open-sans': "'Open Sans',sans-serif",
-  roboto: "'Roboto',sans-serif",
-};
-function _applyTheme(t) {
-  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', t);
-}
-_applyTheme('{{ init_theme }}');
-document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
-document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks.inter);
-if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
 fetch('/api/settings').then(r => r.json()).then(s => {
-  const t = s.theme || 'system';
-  _applyTheme(t);
-  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
-  const ff = s.font_family || 'inter';
-  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks.inter);
+  applyAppearance(s);
 }).catch(() => { _applyTheme('system'); });
 </script>
+<script src="{{ url_for('static', filename='js/lease.js') }}"
+        data-supervisor-port="{{ supervisor_port }}"
+        data-supervisor-token="{{ supervisor_token }}"
+        data-source="onboarding_page"
+        data-quit-on-unload="false"
+        data-prompt-on-unload="false"></script>
 <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
 <style>
 
@@ -811,9 +803,6 @@ const API = '/api/onboarding';
 // The same helper the other four templates carry. This file was the one without
 // it, and the one place it builds HTML by hand drops a HuggingFace account name
 // straight into the page.
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
 
 let currentStep = 0;
 // Download sizes for the Modules step, in bytes, from /status. Never guessed
@@ -847,58 +836,7 @@ async function apiPost(path, body) {
 
 let SUPERVISOR_API = 'http://pine.localhost:{{ supervisor_port }}';
 let SUPERVISOR_TOKEN = '{{ supervisor_token }}';
-const ONBOARDING_LEASE_KEY = 'pine_tab_lease_id';
 const HANDOFF_BACKEND_READY_TIMEOUT_MS = 150000;
-const ONBOARDING_LEASE_ID = (() => {
-  try {
-    let existing = sessionStorage.getItem(ONBOARDING_LEASE_KEY) || '';
-    if (!existing) {
-      existing = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
-      sessionStorage.setItem(ONBOARDING_LEASE_KEY, existing);
-    }
-    return existing;
-  } catch (_) {
-    return 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  }
-})();
-let _onboardingLeaseWorker = null;
-
-async function postSupervisor(path, body, keepalive = false) {
-  await fetch(SUPERVISOR_API + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
-    body: JSON.stringify(body),
-    keepalive,
-  });
-}
-
-function sendOnboardingLeaseHeartbeat() {
-  postSupervisor('/lease/heartbeat', { lease_id: ONBOARDING_LEASE_ID }).catch(() => {});
-}
-
-function startOnboardingLeaseHeartbeat() {
-  sendOnboardingLeaseHeartbeat();
-  // Use a Web Worker so the heartbeat timer is never throttled by Chrome
-  // when the tab is in the background (e.g. during the long install step).
-  if (_onboardingLeaseWorker) _onboardingLeaseWorker.terminate();
-  try {
-    const blob = new Blob(
-      ['setInterval(() => postMessage("hb"), 5000);'],
-      { type: 'application/javascript' }
-    );
-    _onboardingLeaseWorker = new Worker(URL.createObjectURL(blob));
-    _onboardingLeaseWorker.onmessage = () => sendOnboardingLeaseHeartbeat();
-  } catch (_) {
-    // Worker not supported — fall back to setInterval
-    _onboardingLeaseWorker = { _timer: setInterval(sendOnboardingLeaseHeartbeat, 5000) };
-    _onboardingLeaseWorker.terminate = () => clearInterval(_onboardingLeaseWorker._timer);
-  }
-}
-
-function releaseOnboardingLease() {
-  if (_onboardingLeaseWorker) { try { _onboardingLeaseWorker.terminate(); } catch (_) {} _onboardingLeaseWorker = null; }
-  try { postSupervisor('/lease/release', { lease_id: ONBOARDING_LEASE_ID }, true); } catch (_) {}
-}
 
 async function getSupervisorStatus() {
   const res = await fetch(SUPERVISOR_API + '/status', { cache: 'no-store' });
@@ -963,11 +901,13 @@ async function beginOnboardingHandoff() {
 
     if (prep.supervisor_port) SUPERVISOR_API = 'http://pine.localhost:' + prep.supervisor_port;
     if (prep.supervisor_token) SUPERVISOR_TOKEN = prep.supervisor_token;
+    // The lease has to follow: from here on it is the new supervisor's.
+    PineLease.setSupervisor(SUPERVISOR_API, SUPERVISOR_TOKEN);
     const restartRes = await fetch(SUPERVISOR_API + '/restart', { method: 'POST', headers: { 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN } });
     if (!restartRes.ok) throw new Error('Supervisor restart request failed.');
 
     await waitForSupervisedBackend();
-    releaseOnboardingLease();
+    PineLease.release();
     try { socket?.disconnect(); } catch (_) {}
     window.location.replace(prep.main_url || '/');
   } catch (err) {
@@ -1470,13 +1410,6 @@ fetch('/api/settings').then(r => r.json()).then(s => {
 
 /* ============ Init ============ */
 updateTotal();
-startOnboardingLeaseHeartbeat();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') sendOnboardingLeaseHeartbeat();
-});
-window.addEventListener('pagehide', () => {
-  releaseOnboardingLease();
-});
 goStep(0);
 </script>
 </body>

@@ -231,6 +231,177 @@ def save_annotations(project_dir, recording_stored_name, data):
         _atomic_write_json(path, data)
 
 
+# ── anchors ──────────────────────────────────────────────────────────────────
+#
+# A tag or comment is anchored by position: a segment index and character
+# offsets inside it, plus the cached offsets of the merged speaker block it
+# reads in. Positions are what the highlight is drawn from, and positions are
+# also what an edit to the transcript can quietly invalidate.
+#
+# ``anchor_text`` is the words the anchor pointed at when it was made. It was
+# only ever a fallback — used when the offsets failed to resolve at all — which
+# is the one case where it cannot help: offsets that resolve to the *wrong*
+# words resolve perfectly well. So the snapshot said one thing, the offsets said
+# another, and nothing compared them.
+#
+# Here it becomes the check instead. ``refresh_anchor_text`` rewrites the
+# snapshot whenever an edit has just moved the offsets, so it is never stale,
+# and ``mark_anchor_drift`` compares the two on the way out so a quote that no
+# longer matches what it was taken from can be shown as needing a look, rather
+# than shown confidently wrong.
+
+
+def anchor_text_from_span(span, segments, blocks=None):
+    """The words ``span``'s offsets currently point at.
+
+    Mirrors the client's ``anchorTextFromAnnotationSpan``: a span may run past
+    its own segment, and even past its own speaker block, so the text is
+    reconstructed from the merged blocks rather than from one segment's text.
+    ``blocks`` may be prebuilt to keep a whole recording's spans from rebuilding
+    them each time. Offsets are tested with ``is not None`` — an offset of 0 is
+    a real offset, and the client's ``??`` treats it as one too.
+    """
+    from .speaker_blocks import merge_speaker_blocks
+
+    seg_idx = span.get('segment_idx')
+    if seg_idx is None or not segments:
+        return ''
+    if blocks is None:
+        blocks = merge_speaker_blocks(segments)
+
+    def find_block(idx):
+        for block in blocks:
+            if idx in block['indices']:
+                return block
+        return None
+
+    start_block = find_block(seg_idx)
+    if not start_block:
+        return ''
+    mt = start_block['text']
+
+    merged_start = span.get('merged_start')
+    merged_end = span.get('merged_end')
+
+    end_seg_idx = span.get('end_segment_idx')
+    if end_seg_idx is not None:
+        end_block = find_block(end_seg_idx)
+        if not end_block:
+            return ''
+        end_off = span.get('end_merged_end')
+        if end_off is None:
+            end_off = span.get('end_seg_end_char')
+        ms = merged_start if merged_start is not None else 0
+        if start_block is end_block:
+            if end_off is not None:
+                me = end_off
+            elif merged_end is not None:
+                me = merged_end
+            else:
+                me = len(mt)
+            return mt[max(0, ms):min(len(mt), me)]
+        # Different blocks — the whole blocks BETWEEN start and end come along,
+        # otherwise a selection spanning three or more of them silently drops
+        # everything in the middle.
+        me_first = merged_end if merged_end is not None else len(mt)
+        first = mt[max(0, ms):min(len(mt), me_first)]
+        et = end_block['text']
+        ec = end_off if end_off is not None else 0
+        second = et[:min(len(et), ec)]
+        si = next((i for i, b in enumerate(blocks) if b is start_block), -1)
+        ei = next((i for i, b in enumerate(blocks) if b is end_block), -1)
+        middle = [b['text'] for b in blocks[si + 1:ei]] if 0 <= si < ei else []
+        return re.sub(r'\s+', ' ', ' '.join([first, *middle, second])).strip()
+
+    if merged_start is not None and merged_end is not None:
+        return mt[max(0, merged_start):min(len(mt), merged_end)]
+
+    seg = segments[seg_idx] if 0 <= seg_idx < len(segments) else None
+    if not seg:
+        return ''
+    st = (seg.get('text') or '').strip()
+    sc = span.get('start_char')
+    sc = sc if sc is not None else 0
+    ec = span.get('end_char')
+    ec = ec if ec is not None else len(st)
+    return st[max(0, sc):min(len(st), ec)]
+
+
+def _comparable(text):
+    """Whitespace is not what an anchor is about; a run of it is one space."""
+    return ' '.join((text or '').split())
+
+
+def annotation_spans(annotations):
+    """Every tag span and comment in ``annotations``, in one pass."""
+    for key in ('tag_spans', 'comments'):
+        for span in annotations.get(key) or []:
+            if isinstance(span, dict):
+                yield span
+
+
+def refresh_anchor_text(annotations, segments):
+    """Re-take every anchor's snapshot from where its offsets now point.
+
+    Call this straight after migrating offsets through an edit, while the two
+    still agree by construction. Mutates ``annotations`` in place; returns the
+    number of snapshots that changed, which is how many quotes the edit reworded.
+    """
+    from .speaker_blocks import merge_speaker_blocks
+
+    blocks = merge_speaker_blocks(segments)
+    changed = 0
+    for span in annotation_spans(annotations):
+        if span.get('segment_idx') is None:
+            continue
+        current = anchor_text_from_span(span, segments, blocks)
+        if not current:
+            # Nothing resolvable to snapshot: leave whatever is there, so a span
+            # that cannot be placed keeps the words it remembers.
+            continue
+        if _comparable(span.get('anchor_text')) != _comparable(current):
+            changed += 1
+        span['anchor_text'] = current
+    return changed
+
+
+def mark_anchor_drift(annotations, segments):
+    """A copy of ``annotations`` where anchors that moved say so.
+
+    A span carries ``anchor_drifted`` when it remembers words that its offsets
+    no longer point at — the transcript was edited by something that did not
+    migrate them, or an import brought anchors from a different revision of the
+    text. The flag is advisory: the span is still returned, still placed where
+    its offsets say, and the reader is told not to trust it.
+
+    Spans with no snapshot are left alone. There is nothing to compare them
+    against, and a warning nobody can act on is worse than silence.
+    """
+    from .speaker_blocks import merge_speaker_blocks
+
+    if not segments:
+        return annotations
+    blocks = merge_speaker_blocks(segments)
+    out = dict(annotations)
+    for key in ('tag_spans', 'comments'):
+        source = annotations.get(key) or []
+        marked = []
+        for span in source:
+            if not isinstance(span, dict):
+                marked.append(span)
+                continue
+            remembered = span.get('anchor_text')
+            if not remembered or span.get('segment_idx') is None:
+                marked.append(span)
+                continue
+            current = anchor_text_from_span(span, segments, blocks)
+            if current and _comparable(current) != _comparable(remembered):
+                span = dict(span, anchor_drifted=True, anchor_text_now=current)
+            marked.append(span)
+        out[key] = marked
+    return out
+
+
 def update_annotations(project_dir, recording_stored_name, updates):
     """Atomically read, merge updates, and write annotations.
 

@@ -10,142 +10,22 @@
 <style>html{font-size:{{ init_font_size }}px !important;}</style>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script src="{{ url_for('static', filename='js/theme.js') }}"
+        data-theme="{{ init_theme }}"
+        data-font-size="{{ init_font_size }}"
+        data-font-family="{{ init_font_family }}"></script>
+<script src="{{ url_for('static', filename='js/dom.js') }}"></script>
 <script>
-var _fontStacks = {
-  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  inter: "'Inter',sans-serif",
-  'source-sans-3': "'Source Sans 3',sans-serif",
-  'open-sans': "'Open Sans',sans-serif",
-  roboto: "'Roboto',sans-serif",
-};
-function _applyTheme(t) {
-  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', t);
-}
-_applyTheme('{{ init_theme }}');
-document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
-document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks['inter']);
-if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
 let _appSettings = {};
 fetch('/api/settings').then(r => r.json()).then(s => {
   _appSettings = s;
-  const t = s.theme || 'system';
-  _applyTheme(t);
-  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
-  const ff = s.font_family || 'inter';
-  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks['inter']);
+  applyAppearance(s);
 }).catch(() => { _applyTheme('system'); });
 </script>
-<script>
-(function () {
-  const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
-  const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
-  const LEASE_KEY = 'pine_tab_lease_id';
-  let internalNavigation = false;
-  let suppressUnloadPrompt = false;
-  let timer = null;
-  let quitLifecycleStarted = false;
-  let leaseId = '';
-  try {
-    leaseId = sessionStorage.getItem(LEASE_KEY) || '';
-    if (!leaseId) {
-      leaseId = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
-      sessionStorage.setItem(LEASE_KEY, leaseId);
-    }
-  } catch (e) {
-    leaseId = 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  }
-  function postSupervisor(path, payload, keepalive) {
-    return fetch(SUPERVISOR_URL + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
-      body: JSON.stringify(payload || {}),
-      keepalive: !!keepalive,
-      mode: keepalive ? 'no-cors' : 'cors',
-    });
-  }
-  function heartbeat() {
-    postSupervisor('/lease/heartbeat', { lease_id: leaseId }, false).catch(() => {});
-  }
-  function shutdownPayload(reason) {
-    return {
-      reason: reason || 'unknown',
-      source: 'tags_page',
-      lease_id: leaseId,
-    };
-  }
-  function releaseAndQuit() {
-    if (quitLifecycleStarted) return;
-    quitLifecycleStarted = true;
-    const payload = shutdownPayload('tab_or_page_closed');
-    try { postSupervisor('/lease/release', { lease_id: leaseId }, true); } catch (e) {}
-    try {
-      const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      navigator.sendBeacon('/api/quit', quitBody);
-    } catch (e) {}
-    try {
-      fetch('/api/quit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true,
-        mode: 'no-cors',
-      });
-    } catch (e) {}
-    try {
-      postSupervisor('/shutdown', payload, true);
-    } catch (e) {}
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') heartbeat();
-  });
-  function markInternalNavigation() {
-    internalNavigation = true;
-    setTimeout(() => { internalNavigation = false; }, 2000);
-  }
-  function resolveEventElement(event) {
-    const raw = event && event.target;
-    if (!raw) return null;
-    if (raw instanceof Element) return raw;
-    return raw.parentElement instanceof Element ? raw.parentElement : null;
-  }
-  document.addEventListener('click', (event) => {
-    const target = resolveEventElement(event);
-    if (!target) return;
-    const link = target.closest('a[href]');
-    if (link) {
-      const href = link.getAttribute('href') || '';
-      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-        markInternalNavigation();
-      }
-      return;
-    }
-    const withOnclick = target.closest('[onclick]');
-    if (!withOnclick) return;
-    const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
-    if (handlerText.includes('window.location')) {
-      markInternalNavigation();
-    }
-    if (handlerText.includes('fetch(\'/api/quit') || handlerText.includes('fetch("/api/quit')) {
-      suppressUnloadPrompt = true;
-    }
-  }, true);
-  window.addEventListener('beforeunload', (event) => {
-    if (suppressUnloadPrompt || internalNavigation) return;
-    const msg = 'Close PINE tab and stop all background processing?';
-    event.preventDefault();
-    event.returnValue = msg;
-    return msg;
-  });
-  window.addEventListener('pagehide', () => {
-    if (internalNavigation) return;
-    releaseAndQuit();
-  });
-  heartbeat();
-  clearInterval(timer);
-  timer = setInterval(heartbeat, 3000);
-})();
-</script>
+<script src="{{ url_for('static', filename='js/lease.js') }}"
+        data-supervisor-port="{{ supervisor_port }}"
+        data-supervisor-token="{{ supervisor_token }}"
+        data-source="tags_page"></script>
 <style>
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -629,21 +509,7 @@ let _colorPopCloseHandler = null;
 // TAG_PALETTE and tagColor() come from js/palette.js
 // toast() and showSaveStatus() come from js/save-status.js
 
-function esc(s) {
-  // Attribute-safe: also escapes quotes so values placed in HTML attributes
-  // cannot break out and inject markup/handlers.
-  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
 
-function escJsAttr(s) {
-  // For a value that lands in JavaScript that lands in an HTML attribute — two
-  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
-  // parser; esc() closes off the attribute for the HTML parser, which unwraps
-  // its layer first and hands the JS parser exactly the literal we wrote.
-  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
-  // gives the apostrophe back before the JS parser ever sees the string.
-  return esc(JSON.stringify(String(s ?? '')));
-}
 // Defense-in-depth: never interpolate an arbitrary string into a style attr.
 function safeHex(c) {
   return (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c)) ? c : '#a0a0b8';

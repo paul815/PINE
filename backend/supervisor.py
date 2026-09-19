@@ -33,9 +33,24 @@ PORT = 5001
 BACKEND_PORT = 5000
 BACKEND_SCRIPT = "run.py"
 BACKEND_HEALTH_PATH = "/api/health"
-LEASE_TIMEOUT_SECONDS = 10.0
+# How long a lease survives without a heartbeat. The page renews every 5s from a
+# Worker (static/js/lease.js), so this is twelve missed beats — deliberately far
+# more than a page under load could lose by accident.
+#
+# It was 10s against a 3s heartbeat, which sounds like the same ratio and was
+# not: the heartbeat then came from setInterval, and a browser throttles a
+# background tab's timers to about once a minute. Three beats were skipped by
+# design, the lease expired, and a tab that was open the whole time was read as
+# closed. The Worker timer is what makes a tight timeout safe; this number is
+# what makes it unnecessary.
+LEASE_TIMEOUT_SECONDS = 60.0
 STARTUP_LEASE_GRACE_SECONDS = 45.0
 LEASE_RELEASE_SHUTDOWN_GRACE_SECONDS = 2.0
+# A lease that expired instead of being released means nobody said goodbye: the
+# tab crashed, the browser froze it outright, or the machine slept with PINE
+# open. Timing out is the *guess*, and this is how long the guess is given to be
+# wrong before anything is stopped. A page that closes properly does not come
+# here — it releases, and the two-second grace above applies.
 EXPIRED_LEASE_SHUTDOWN_GRACE_SECONDS = float(
     os.environ.get("PINE_EXPIRED_LEASE_SHUTDOWN_GRACE_SECONDS") or (5.0 * 60.0)
 )
@@ -626,10 +641,24 @@ def make_supervisor_handler(
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Pine-Supervisor-Token")
             self.end_headers()
 
-        def _check_token(self) -> bool:
-            """Validate supervisor auth token. Returns True if valid."""
+        def _check_token(self, body: dict) -> bool:
+            """Validate the supervisor token, from the header or from the body.
+
+            The header is the normal path. It cannot be the only one: a page
+            being closed sends its release with ``keepalive``, which has to go
+            out in no-cors mode to survive the unload, and no-cors silently
+            drops every header that is not CORS-safelisted -- the token with
+            them. Those requests arrived here unauthenticated and were refused,
+            invisibly, because an opaque response has no status to read. So the
+            release never landed and the lease sat there until it timed out.
+
+            The body is the same secret in a different envelope: a page that
+            does not know the token still cannot produce one.
+            """
             token = self.headers.get("X-Pine-Supervisor-Token", "")
             if token != SUPERVISOR_TOKEN:
+                token = body.get("token") if isinstance(body.get("token"), str) else ""
+            if not secrets.compare_digest(token, SUPERVISOR_TOKEN):
                 self._write_json({"ok": False, "error": "unauthorized"}, code=403)
                 return False
             return True
@@ -680,7 +709,10 @@ def make_supervisor_handler(
             self._write_json({"ok": False, "error": "not found"}, code=404)
 
         def do_POST(self) -> None:  # noqa: N802
-            if not self._check_token():
+            # Read once: the body may carry the token, and rfile gives it up
+            # only the first time.
+            body = self._read_json()
+            if not self._check_token(body):
                 return
             if self.path == "/backend-ready":
                 supervisor.signal_backend_ready()
@@ -691,7 +723,6 @@ def make_supervisor_handler(
                 self._write_json({"ok": True, "action": "restart"})
                 return
             if self.path == "/lease/heartbeat":
-                body = self._read_json()
                 lease_id = str(body.get("lease_id", "")).strip()
                 if not lease_id:
                     self._write_json({"ok": False, "error": "lease_id required"}, code=400)
@@ -700,7 +731,6 @@ def make_supervisor_handler(
                 self._write_json({"ok": True, "action": "lease_heartbeat", "lease_count": count})
                 return
             if self.path == "/lease/release":
-                body = self._read_json()
                 lease_id = str(body.get("lease_id", "")).strip()
                 if not lease_id:
                     self._write_json({"ok": False, "error": "lease_id required"}, code=400)
@@ -709,7 +739,6 @@ def make_supervisor_handler(
                 self._write_json({"ok": True, "action": "lease_release", "lease_count": count})
                 return
             if self.path == "/shutdown":
-                body = self._read_json()
                 reason, source, lease_id = self._shutdown_context_from_body(body)
                 LOG.info(
                     "Shutdown HTTP request received reason=%s source=%s lease_id=%s",

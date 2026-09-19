@@ -18,8 +18,10 @@ from ...services.annotations import (
     get_annotations,
     get_project_tags,
     get_project_themes,
+    mark_anchor_drift,
     save_annotations,
 )
+from ...services.speaker_blocks import with_speaker_blocks
 from ...services.file_utils import (
     atomic_read_json,
     atomic_write_text,
@@ -356,12 +358,16 @@ def get_recording(project_id, recording_id):
     if recording.transcription_status == 'transcribed' and recording.transcript_path:
         transcript_file = os.path.join(project_dir, recording.transcript_path)
         if os.path.isfile(transcript_file):
-            data['transcript'] = atomic_read_json(transcript_file)
+            data['transcript'] = with_speaker_blocks(atomic_read_json(transcript_file))
 
     data['tags'] = get_project_tags(project_dir)
     data['themes'] = get_project_themes(project_dir)
     ann = get_annotations(project_dir, annotation_recording_ref(recording))
-    data['annotations'] = ann
+    # Every anchor is checked against the words it was taken from on the way
+    # out: a highlight whose offsets no longer cover its quote is reported
+    # rather than drawn as though nothing had happened.
+    data['annotations'] = mark_anchor_drift(
+        ann, (data.get('transcript') or {}).get('segments') or [])
 
     # Include segment info if assigned
     if recording.segment_id:
@@ -449,7 +455,7 @@ def get_transcript(project_id, recording_id):
     if not os.path.isfile(transcript_file):
         return jsonify({'error': 'Transcript file missing'}), 404
 
-    return jsonify(atomic_read_json(transcript_file))
+    return jsonify(with_speaker_blocks(atomic_read_json(transcript_file)))
 
 @projects_bp.route('/<int:project_id>/recordings/<int:recording_id>/transcript/replace', methods=['POST'])
 def replace_transcript_text(project_id, recording_id):
@@ -495,7 +501,8 @@ def replace_transcript_text(project_id, recording_id):
         _touch_project(project)
         db.session.commit()
 
-    return jsonify({'count': count, 'transcript': transcript, 'annotations': annotations})
+    return jsonify({'count': count, 'transcript': with_speaker_blocks(transcript),
+                    'annotations': annotations})
 
 # Said when the transcript on disk no longer matches what the editor started
 # from -- another tab, or another window of the same one, got there first.
@@ -562,7 +569,7 @@ def edit_transcript_block(project_id, recording_id):
 
     return jsonify({
         'changed': changed,
-        'transcript': transcript,
+        'transcript': with_speaker_blocks(transcript),
         'annotations': annotations,
         'indices': raw_indices,
         'block_text': block_text(segments, raw_indices),

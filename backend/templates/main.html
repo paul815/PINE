@@ -10,32 +10,22 @@
 <style>html{font-size:{{ init_font_size }}px !important;}</style>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script src="{{ url_for('static', filename='js/theme.js') }}"
+        data-theme="{{ init_theme }}"
+        data-font-size="{{ init_font_size }}"
+        data-font-family="{{ init_font_family }}"></script>
+<script src="{{ url_for('static', filename='js/dom.js') }}"></script>
 <script>
-var _fontStacks = {
-  system: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  inter: "'Inter',sans-serif",
-  'source-sans-3': "'Source Sans 3',sans-serif",
-  'open-sans': "'Open Sans',sans-serif",
-  roboto: "'Roboto',sans-serif",
-};
-function _applyTheme(t) {
-  if (t === 'system') t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', t);
-}
-_applyTheme('{{ init_theme }}');
-document.documentElement.style.setProperty('font-size', '{{ init_font_size }}' + 'px', 'important');
-document.documentElement.style.setProperty('--font-body', _fontStacks['{{ init_font_family }}'] || _fontStacks['inter']);
-if ('{{ init_theme }}' === 'system') window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => _applyTheme('system'));
 let _appSettings = {};
 fetch('/api/settings').then(r => r.json()).then(s => {
   _appSettings = s;
-  const t = s.theme || 'system';
-  _applyTheme(t);
-  if (s.font_size) document.documentElement.style.setProperty('font-size', s.font_size + 'px', 'important');
-  const ff = s.font_family || 'inter';
-  document.documentElement.style.setProperty('--font-body', _fontStacks[ff] || _fontStacks['inter']);
+  applyAppearance(s);
 }).catch(() => { _applyTheme('system'); });
 </script>
+<script src="{{ url_for('static', filename='js/lease.js') }}"
+        data-supervisor-port="{{ supervisor_port }}"
+        data-supervisor-token="{{ supervisor_token }}"
+        data-source="main_page"></script>
 <style>
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1211,20 +1201,6 @@ function findProject(id) {
   return projects.active.find(p => p.id === id) || projects.archived.find(p => p.id === id);
 }
 
-function esc(s) {
-  // Attribute-safe, matching recording.html / tags.html / manage_tags.html. The
-  // old textContent→innerHTML trick escaped & < > but left both quote
-  // characters alone, so any value placed in an attribute could close it.
-  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-function escJsAttr(s) {
-  // For a value that lands in JavaScript that lands in an HTML attribute —
-  // two parsers, two escapes. JSON closes off quotes and backslashes for the JS
-  // parser; esc() closes off the attribute for the HTML parser, which unwraps
-  // its layer first and hands the JS parser exactly the literal we wrote.
-  return esc(JSON.stringify(String(s ?? '')));
-}
 
 // ── Section block builders (for dynamic insert) ──
 const SECTION_ORDER_KEYS = ['objective', 'questions', 'hypotheses', 'stakeholders', 'methodology', 'interview_guide'];
@@ -3035,12 +3011,8 @@ document.getElementById('emptyNewProjectBtn').addEventListener('click', createPr
 // ── Quit ──
 document.getElementById('quitBtn').addEventListener('click', async () => {
   if (!confirm('Stop PINE? Any transcription or download in progress will be interrupted.')) return;
-  _suppressUnloadPrompt = true;
-  const quitPayload = {
-    reason: 'user_quit_action',
-    source: 'main_page',
-    lease_id: TAB_LEASE_ID,
-  };
+  PineLease.suppressUnloadPrompt();
+  const quitPayload = PineLease.shutdownPayload('user_quit_action');
 
   try {
     await fetch('/api/quit', {
@@ -3088,84 +3060,13 @@ document.getElementById('quitBtn').addEventListener('click', async () => {
 // ── SocketIO live updates ──
 let _pythonLinkPollTimer = null;
 let _lastSocketDisconnectReason = '';
-const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
-const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
-const TAB_LEASE_KEY = 'pine_tab_lease_id';
-const TAB_LEASE_ID = (() => {
-  try {
-    const existing = sessionStorage.getItem(TAB_LEASE_KEY);
-    if (existing) return existing;
-    const next = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
-    sessionStorage.setItem(TAB_LEASE_KEY, next);
-    return next;
-  } catch (e) {
-    return 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  }
-})();
-let _leaseHeartbeatTimer = null;
-let _internalNavigationInProgress = false;
-let _suppressUnloadPrompt = false;
-let _quitLifecycleStarted = false;
+// The lease that keeps this backend alive is static/js/lease.js, loaded in
+// the head: it holds the id, the heartbeat and the unload handling for every
+// page. These two read the same config, for the /status and /restart calls
+// below.
+const SUPERVISOR_URL = PineLease.url;
+const SUPERVISOR_TOKEN = PineLease.token;
 let _pythonRestartInFlight = false;
-
-function _shutdownPayload(reason, source = 'main_page') {
-  return {
-    reason: reason || 'unknown',
-    source,
-    lease_id: TAB_LEASE_ID,
-  };
-}
-
-function _postSupervisorJson(path, payload, keepalive = false) {
-  return fetch(SUPERVISOR_URL + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
-    body: JSON.stringify(payload || {}),
-    keepalive: !!keepalive,
-    mode: keepalive ? 'no-cors' : 'cors',
-  });
-}
-
-function sendLeaseHeartbeat() {
-  _postSupervisorJson('/lease/heartbeat', { lease_id: TAB_LEASE_ID }).catch(() => {});
-}
-
-function startLeaseHeartbeat() {
-  sendLeaseHeartbeat();
-  clearInterval(_leaseHeartbeatTimer);
-  _leaseHeartbeatTimer = setInterval(sendLeaseHeartbeat, 3000);
-}
-
-function releaseLeaseOnly() {
-  try {
-    _postSupervisorJson('/lease/release', { lease_id: TAB_LEASE_ID }, true);
-  } catch (e) {}
-}
-
-function releaseLeaseAndQuit() {
-  if (_quitLifecycleStarted) return;
-  _quitLifecycleStarted = true;
-  releaseLeaseOnly();
-  const payload = _shutdownPayload('tab_or_page_closed');
-  try {
-    const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-    navigator.sendBeacon('/api/quit', quitBody);
-  } catch (e) {}
-  try {
-    fetch('/api/quit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      keepalive: true,
-      mode: 'no-cors',
-    });
-  } catch (e) {}
-  try {
-    _postSupervisorJson('/shutdown', payload, true);
-  } catch (e) {}
-}
-
-
 function setPythonLinkState(state, details = '') {
   const el = document.getElementById('pyLinkStatus');
   if (!el) return;
@@ -3322,53 +3223,19 @@ socket.on('disconnect', (reason) => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     probePythonLinkStatus();
-    sendLeaseHeartbeat();
   }
 });
-function _markInternalNavigation() {
-  _internalNavigationInProgress = true;
-  setTimeout(() => { _internalNavigationInProgress = false; }, 2000);
-}
-function _resolveEventElement(event) {
-  const raw = event && event.target;
-  if (!raw) return null;
-  if (raw instanceof Element) return raw;
-  return raw.parentElement instanceof Element ? raw.parentElement : null;
-}
+// A recording row navigates on click without being a link, so lease.js has no
+// way to read it off the markup: tell it.
 document.addEventListener('click', (event) => {
-  const target = _resolveEventElement(event);
+  const raw = event && event.target;
+  const target = raw instanceof Element ? raw
+    : (raw && raw.parentElement instanceof Element ? raw.parentElement : null);
   if (!target) return;
-  const clickableRec = target.closest('.recording-row.clickable, .single-tx-item[onclick]');
-  if (clickableRec) {
-    _markInternalNavigation();
-    return;
-  }
-  const link = target.closest('a[href]');
-  if (link) {
-    const href = link.getAttribute('href') || '';
-    if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-      _markInternalNavigation();
-    }
-    return;
-  }
-  const withOnclick = target.closest('[onclick]');
-  if (!withOnclick) return;
-  const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
-  if (handlerText.includes('window.location')) {
-    _markInternalNavigation();
+  if (target.closest('.recording-row.clickable, .single-tx-item[onclick]')) {
+    PineLease.markInternalNavigation();
   }
 }, true);
-window.addEventListener('beforeunload', (event) => {
-  if (_suppressUnloadPrompt || _internalNavigationInProgress) return;
-  const msg = 'Close PINE tab and stop all background processing?';
-  event.preventDefault();
-  event.returnValue = msg;
-  return msg;
-});
-window.addEventListener('pagehide', () => {
-  if (_internalNavigationInProgress) return;
-  releaseLeaseAndQuit();
-});
 socket.on('transcription:status', data => {
   const { recording_id, status, stage, message } = data;
   if (status === 'awaiting_language') {
@@ -3834,7 +3701,6 @@ function dismissLaunchPromptForGood() {
     if (!isNaN(n)) projectId = n;
   }
   startPythonLinkMonitor();
-  startLeaseHeartbeat();
   loadProjects(projectId);
   initLaunchPrompt();
 })();

@@ -6,15 +6,14 @@ who comes back seconds later is answering, not finishing a sentence, and
 folding those words back into the block above the interruption prints the
 answer before the question that prompted it.
 
-The rule lives in services/speaker_blocks.py and is mirrored in JS in
-recording.html. A boundary that differs between the two is an annotation
-landing on the wrong words, so the fixtures below are run through both.
+The rule lives in services/speaker_blocks.py, and it used to be mirrored in JS
+in recording.html so the browser could draw the transcript. A boundary that
+differed between the two was an annotation landing on the wrong words, so the
+fixtures below were run through both — they agreed, and the JS copy was then
+deleted rather than kept in step forever: the page is served its blocks now.
+The tests at the bottom of this file are what holds that arrangement in place.
 """
 
-import json
-import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -24,6 +23,7 @@ from app.services.speaker_blocks import (
     block_offsets,
     block_text,
     merge_speaker_blocks,
+    with_speaker_blocks,
 )
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'templates' / 'recording.html'
@@ -88,6 +88,31 @@ CASES = {
         seg(4.1, 4.9, 'B', 'Угу.'),
         seg(5.2, 9.0, 'A', 'Теперь другое.'),
     ],
+    # A closing quote rides along after the full stop; the sentence is still over.
+    'quoted_ender': [
+        seg(0.0, 2.0, 'A', 'Он сказал «всё готово».'),
+        seg(2.0, 2.3, 'B', 'ага'),
+        seg(2.3, 4.0, 'A', 'И ушёл.'),
+    ],
+    # A colon and an ellipsis end a sentence as far as the reader is concerned.
+    'colon_and_ellipsis': [
+        seg(0.0, 2.0, 'A', 'Смотрите:'),
+        seg(2.0, 2.3, 'B', 'да'),
+        seg(2.3, 4.0, 'A', 'вот так…'),
+    ],
+    # Two people cut in one after the other: only one claim on the floor is
+    # held, so the first speaker's sentence does not get it back.
+    'stacked_interruptions': [
+        seg(0.0, 2.0, 'A', 'Я хотел сказать что'),
+        seg(2.0, 2.3, 'B', 'извините'),
+        seg(2.3, 2.6, 'C', 'секунду'),
+        seg(2.6, 4.0, 'A', 'это уже не важно.'),
+    ],
+    # Diarisation found nobody: every segment reads as the same speaker.
+    'unlabelled': [
+        seg(0.0, 2.0, '', 'Первое предложение'),
+        seg(2.0, 4.0, '', 'и второе.'),
+    ],
     'empty': [],
 }
 
@@ -132,6 +157,21 @@ def test_segments_without_timings_fall_back_to_the_text():
 
 def test_a_finished_sentence_has_no_claim_on_the_floor():
     assert indices(CASES['finished_sentence']) == [[0], [1], [2]]
+    assert indices(CASES['quoted_ender']) == [[0], [1], [2]]
+    assert indices(CASES['colon_and_ellipsis']) == [[0], [1], [2]]
+
+
+def test_only_one_speaker_at_a_time_can_hold_the_floor():
+    """Two interruptions in a row, and the first speaker's sentence is let go.
+
+    Recorded rather than argued for: one slot is what the rule has, and a
+    transcript that reads oddly here reads oddly the same way in both panes.
+    """
+    assert indices(CASES['stacked_interruptions']) == [[0], [1], [2], [3]]
+
+
+def test_an_unlabelled_transcript_is_one_speaker():
+    assert indices(CASES['unlabelled']) == [[0, 1]]
 
 
 def test_block_offsets_follow_the_new_boundaries():
@@ -192,88 +232,71 @@ def test_every_offset_lands_on_its_own_words(name):
             assert block['text'][offsets[idx]:offsets[idx] + len(text)] == text
 
 
-def _js_source():
-    """The mirrored rule, lifted out of the template to run on its own."""
-    source = TEMPLATE.read_text(encoding='utf-8')
-    start = source.index('const SENTENCE_END_RE')
-    end = source.index('function seedSpeakerColors')
-    return source[start:end]
+# ── one implementation, and the arrangement that keeps it that way ──────────
 
 
-def test_the_template_still_carries_the_rule():
-    js = _js_source()
+def test_a_served_transcript_carries_its_blocks_and_their_offsets():
+    """What the page draws from, answered once, by the rule above."""
+    transcript = {'segments': BACKCHANNEL}
 
-    assert 'RESUME_MAX_SILENCE' in js
-    assert 'function mergeSpeakerBlocks' in js
+    served = with_speaker_blocks(transcript)
 
-
-def test_the_two_copies_agree_on_the_silence_limit():
-    match = re.search(r'const RESUME_MAX_SILENCE = ([\d.]+);', _js_source())
-
-    assert match, 'the template lost its RESUME_MAX_SILENCE'
-    assert float(match.group(1)) == speaker_blocks.RESUME_MAX_SILENCE
-
-
-@pytest.mark.skipif(not shutil.which('node'), reason='node is not installed')
-def test_js_and_python_draw_the_same_boundaries(tmp_path):
-    """Every fixture, folded by both copies of the rule, block for block."""
-    script = tmp_path / 'blocks.js'
-    script.write_text(
-        _js_source()
-        + '\nconst cases = ' + json.dumps(CASES, ensure_ascii=False) + ';'
-        + '\nconst out = {};'
-        + '\nfor (const k of Object.keys(cases)) {'
-        + '\n  out[k] = mergeSpeakerBlocks(cases[k]).map('
-        + '\n    b => ({speaker: b.speaker, text: b.text, indices: b.indices}));'
-        + '\n}'
-        + '\nprocess.stdout.write(JSON.stringify(out));',
-        encoding='utf-8')
-
-    result = subprocess.run([shutil.which('node'), str(script)], capture_output=True,
-                            text=True, encoding='utf-8', timeout=30)
-    assert result.returncode == 0, result.stderr
-
-    from_js = json.loads(result.stdout)
-    for name, segments in CASES.items():
-        expected = [{'speaker': b['speaker'], 'text': b['text'], 'indices': b['indices']}
-                    for b in merge_speaker_blocks(segments)]
-        assert from_js[name] == expected, name
+    assert [b['indices'] for b in served['blocks']] == [[0, 2], [1]]
+    # A block's offsets cover its own segments, measured into its own text.
+    first = served['blocks'][0]
+    assert sorted(first['offsets']) == first['indices']
+    for idx, offset in first['offsets'].items():
+        text = BACKCHANNEL[idx]['text']
+        assert first['text'][offset:offset + len(text)] == text
+    # The copy on disk stays as it was: segments, no blocks.
+    assert 'blocks' not in transcript
 
 
-@pytest.mark.skipif(not shutil.which('node'), reason='node is not installed')
-def test_js_and_python_measure_the_same_offsets(tmp_path):
-    """Anchor offsets from both copies -- a drift here misplaces a highlight.
+def test_the_browser_does_not_fold_blocks_of_its_own():
+    """The JS mirror is gone; it must not come back unnoticed.
 
-    The template computes these while rendering; the server computes them when
-    an edit shifts the text underneath them. The two have to agree char for
-    char or a tag saved by one is drawn on the wrong words by the other.
+    A page that folds for itself is a page whose boundaries can disagree with
+    the offsets its annotations are already stored against — and the two copies
+    were only ever kept in step by somebody remembering to.
     """
-    script = tmp_path / 'offsets.js'
-    script.write_text(
-        _js_source()
-        + '\nconst cases = ' + json.dumps(CASES, ensure_ascii=False) + ';'
-        + '\nconst out = {};'
-        + '\nfor (const k of Object.keys(cases)) {'
-        + '\n  const segs = cases[k];'
-        + '\n  const acc = {};'
-        + '\n  for (const b of mergeSpeakerBlocks(segs)) {'
-        + '\n    const r = blockTextAndOffsets(segs, b.indices);'
-        + '\n    if (r.text !== b.text) {'
-        + '\n      throw new Error("block text drift in " + k + ": " + r.text);'
-        + '\n    }'
-        + '\n    Object.assign(acc, r.offsets);'
-        + '\n  }'
-        + '\n  out[k] = acc;'
-        + '\n}'
-        + '\nprocess.stdout.write(JSON.stringify(out));',
-        encoding='utf-8')
+    source = TEMPLATE.read_text(encoding='utf-8')
 
-    result = subprocess.run([shutil.which('node'), str(script)], capture_output=True,
-                            text=True, encoding='utf-8', timeout=30)
-    assert result.returncode == 0, result.stderr
+    for gone in ('function mergeSpeakerBlocks', 'function blockTextAndOffsets',
+                 'RESUME_MAX_SILENCE'):
+        assert gone not in source, f'recording.html is deciding {gone} for itself again'
+    assert 'function speakerBlocks()' in source, \
+        'the page has to read its turns from the transcript it was served'
 
-    from_js = json.loads(result.stdout)
-    for name, segments in CASES.items():
-        # JSON object keys are strings on the way back from node.
-        expected = {str(k): v for k, v in block_offsets(segments).items()}
-        assert from_js[name] == expected, name
+
+def test_every_endpoint_that_returns_a_transcript_includes_blocks(client, project_with_recording):
+    """The page renders nothing without them, so no response may leave them out."""
+    project_id, recording_id, _ = project_with_recording(
+        transcript_data={'segments': BACKCHANNEL})
+    base = f'/api/projects/{project_id}/recordings/{recording_id}'
+
+    detail = client.get(base).get_json()
+    transcript = client.get(f'{base}/transcript').get_json()
+    replaced = client.post(f'{base}/transcript/replace',
+                           json={'find': 'Угу.', 'replace': 'Ага.'}).get_json()
+
+    assert detail['transcript']['blocks']
+    assert transcript['blocks']
+    assert replaced['count'] == 1
+    assert replaced['transcript']['blocks'], 'an edit must hand back fresh turns'
+
+
+def test_a_block_edit_hands_back_fresh_turns(client, project_with_recording):
+    """The editor re-reads the block it just wrote from this response."""
+    project_id, recording_id, _ = project_with_recording(
+        transcript_data={'segments': BACKCHANNEL})
+    base = f'/api/projects/{project_id}/recordings/{recording_id}'
+    typed = 'Тут просто есть еще, смотря по проекту, и желание инфлюенсера.'
+
+    body = client.post(f'{base}/transcript/block', json={
+        'indices': [0, 2],
+        'original_text': block_text(BACKCHANNEL, [0, 2]),
+        'new_text': typed,
+    }).get_json()
+
+    assert body['transcript']['blocks'][0]['text'] == typed
+    assert body['transcript']['blocks'][0]['offsets']

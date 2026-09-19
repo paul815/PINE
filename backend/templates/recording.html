@@ -10,135 +10,21 @@
 <style>html{font-size:{{ init_font_size }}px !important;}</style>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}" />
+<script src="{{ url_for('static', filename='js/theme.js') }}"
+        data-theme="{{ init_theme }}"
+        data-font-size="{{ init_font_size }}"
+        data-font-family="{{ init_font_family }}"></script>
+<script src="{{ url_for('static', filename='js/dom.js') }}"></script>
 <script>
-var _fontStacks={system:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",inter:"'Inter',sans-serif",'source-sans-3':"'Source Sans 3',sans-serif",'open-sans':"'Open Sans',sans-serif",roboto:"'Roboto',sans-serif"};
-function _applyTheme(t){
-  if(t==='system')t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);
-}
-_applyTheme('{{ init_theme }}');
-document.documentElement.style.setProperty('font-size','{{ init_font_size }}'+'px','important');
-document.documentElement.style.setProperty('--font-body',_fontStacks['{{ init_font_family }}']||_fontStacks.inter);
-if('{{ init_theme }}'==='system')window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>_applyTheme('system'));
-fetch('/api/settings').then(r=>r.json()).then(s=>{
-  window.appSettings=s||{};
-  const t=s.theme||'system';
-  _applyTheme(t);
-  if(s.font_size)document.documentElement.style.setProperty('font-size',s.font_size+'px','important');
-  const ff=s.font_family||'system';
-  document.documentElement.style.setProperty('--font-body',_fontStacks[ff]||_fontStacks.inter);
-}).catch(()=>{window.appSettings={};_applyTheme('system');});
+fetch('/api/settings').then(r => r.json()).then(s => {
+  window.appSettings = s || {};
+  applyAppearance(s);
+}).catch(() => { window.appSettings = {}; _applyTheme('system'); });
 </script>
-<script>
-(function () {
-  const SUPERVISOR_URL = 'http://pine.localhost:{{ supervisor_port }}';
-  const SUPERVISOR_TOKEN = '{{ supervisor_token }}';
-  const LEASE_KEY = 'pine_tab_lease_id';
-  let internalNavigation = false;
-  let suppressUnloadPrompt = false;
-  let timer = null;
-  let quitLifecycleStarted = false;
-  let leaseId = '';
-  try {
-    leaseId = sessionStorage.getItem(LEASE_KEY) || '';
-    if (!leaseId) {
-      leaseId = (crypto?.randomUUID?.() || ('lease-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
-      sessionStorage.setItem(LEASE_KEY, leaseId);
-    }
-  } catch (e) {
-    leaseId = 'lease-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  }
-  function postSupervisor(path, payload, keepalive) {
-    return fetch(SUPERVISOR_URL + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Pine-Supervisor-Token': SUPERVISOR_TOKEN },
-      body: JSON.stringify(payload || {}),
-      keepalive: !!keepalive,
-      mode: keepalive ? 'no-cors' : 'cors',
-    });
-  }
-  function heartbeat() {
-    postSupervisor('/lease/heartbeat', { lease_id: leaseId }, false).catch(() => {});
-  }
-  function shutdownPayload(reason) {
-    return {
-      reason: reason || 'unknown',
-      source: 'recording_page',
-      lease_id: leaseId,
-    };
-  }
-  function releaseAndQuit() {
-    if (quitLifecycleStarted) return;
-    quitLifecycleStarted = true;
-    const payload = shutdownPayload('tab_or_page_closed');
-    try { postSupervisor('/lease/release', { lease_id: leaseId }, true); } catch (e) {}
-    try {
-      const quitBody = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      navigator.sendBeacon('/api/quit', quitBody);
-    } catch (e) {}
-    try {
-      fetch('/api/quit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true,
-        mode: 'no-cors',
-      });
-    } catch (e) {}
-    try {
-      postSupervisor('/shutdown', payload, true);
-    } catch (e) {}
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') heartbeat();
-  });
-  function markInternalNavigation() {
-    internalNavigation = true;
-    setTimeout(() => { internalNavigation = false; }, 2000);
-  }
-  function resolveEventElement(event) {
-    const raw = event && event.target;
-    if (!raw) return null;
-    if (raw instanceof Element) return raw;
-    return raw.parentElement instanceof Element ? raw.parentElement : null;
-  }
-  document.addEventListener('click', (event) => {
-    const target = resolveEventElement(event);
-    if (!target) return;
-    const link = target.closest('a[href]');
-    if (link) {
-      const href = link.getAttribute('href') || '';
-      if (href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-        markInternalNavigation();
-      }
-      return;
-    }
-    const withOnclick = target.closest('[onclick]');
-    if (!withOnclick) return;
-    const handlerText = (withOnclick.getAttribute('onclick') || '').toLowerCase();
-    if (handlerText.includes('window.location')) {
-      markInternalNavigation();
-    }
-    if (handlerText.includes('fetch(\'/api/quit') || handlerText.includes('fetch("/api/quit')) {
-      suppressUnloadPrompt = true;
-    }
-  }, true);
-  window.addEventListener('beforeunload', (event) => {
-    if (suppressUnloadPrompt || internalNavigation) return;
-    const msg = 'Close PINE tab and stop all background processing?';
-    event.preventDefault();
-    event.returnValue = msg;
-    return msg;
-  });
-  window.addEventListener('pagehide', () => {
-    if (internalNavigation) return;
-    releaseAndQuit();
-  });
-  heartbeat();
-  clearInterval(timer);
-  timer = setInterval(heartbeat, 3000);
-})();
-</script>
+<script src="{{ url_for('static', filename='js/lease.js') }}"
+        data-supervisor-port="{{ supervisor_port }}"
+        data-supervisor-token="{{ supervisor_token }}"
+        data-source="recording_page"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -275,6 +161,11 @@ body { font-size: inherit; }
 .q-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px;
   margin-bottom: 7px; cursor: pointer; display: flex; align-items: flex-start; gap: 8px; }
 .q-card:hover { border-color: var(--border); }
+/* The transcript moved under this quote: its offsets still resolve, but not to
+   the words that were coded. Marked, not hidden — only a person can tell
+   whether the code still belongs. */
+.q-card-drifted { border-color: var(--warn-bd); background: var(--warn-dim); }
+.q-drift { color: var(--warn-on-dim); }
 .q-card-content { flex: 1; min-width: 0; }
 .chip-clickable { cursor: pointer; }
 .q-text { font-size: 0.923rem; color: var(--muted-fg); line-height: 1.55; margin-bottom: 6px; }
@@ -456,13 +347,6 @@ body { font-size: inherit; }
 .utt-spk[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: var(--accent-dim); }
 .utt-text { font-size: 1.077rem; color: var(--fg); line-height: 1.65; user-select: text; }
 .utt-text .word { cursor: pointer; }
-/* The pencil stays out of the way until the paragraph is pointed at, and comes
-   back for the keyboard. .icon-btn already rests at 0.6, so hovering the
-   paragraph returns it there rather than lighting it up. */
-.utt .utt-edit { opacity: 0; margin-left: 6px; padding: 0 4px; line-height: 1; vertical-align: middle; }
-.utt:hover .utt-edit { opacity: 0.6; }
-.utt .utt-edit:focus-visible { opacity: 1; }
-.utt .utt-edit svg { width: 10px; height: 10px; display: block; }
 .utt-text[contenteditable] {
   outline: 1px solid var(--accent);
   border-radius: 3px;
@@ -843,7 +727,7 @@ mark.pending-selection-highlight {
           </div>
         </div>
         <div class="resize-handle" id="resizeHandle"><div class="resize-grip"></div></div>
-        <div class="transcript-panel" id="txPanel" onpointerup="onTextSelect(event)" onmouseup="onTextSelect(event)" onclick="onTranscriptClick(event)"></div>
+        <div class="transcript-panel" id="txPanel" onpointerdown="onTranscriptPointerDown(event)" onpointerup="onTextSelect(event)" onmouseup="onTextSelect(event)" onclick="onTranscriptClick(event)" ondblclick="onTranscriptDblClick(event)"></div>
       </div>
       <div class="right">
         <div class="rtab-bar">
@@ -909,124 +793,25 @@ function fmtTimeLong(secs) {
 const _SPK_CLASSES = ['p1', 'p2', 'p3', 'p4', 'mod'];
 let _speakerClassMap = {};
 
-// Sentence enders, plus any closing quote or bracket riding along after them.
-const SENTENCE_END_RE = /[.!?…:;]["'»”’)\]]*$/;
-
-function endsSentence(text) {
-  const t = (text || '').trim();
-  return !t || SENTENCE_END_RE.test(t);
-}
-
 /**
- * Fold segments into the speaker turns the transcript is read as.
+ * The speaker turns this transcript reads as, folded by the server.
  *
- * Two people talking take the floor from each other mid-sentence, and per-track
- * transcription surfaces every bit of that: a "хорошо" dropped into a question
- * arrives as its own segment, timestamped inside the question it interrupted.
- * Breaking on every speaker change would cut that question in half, which is
- * what the reader notices first and what nobody says happened.
- *
- * So a speaker cut off *mid-sentence* keeps the floor: the interjection becomes
- * its own block, and when the interrupted speaker resumes, the words go back
- * into the block they started in. A speaker interrupted after finishing a
- * sentence has no claim on the floor — the next thing they say opens a block.
- *
- * The claim expires with silence too: a backchannel hands the floor back within
- * a beat, while a speaker who comes back after seconds of quiet is starting
- * again, whatever the punctuation says.
- *
- * Mirrored server-side in services/speaker_blocks.py; a boundary that differs
- * between the two is an annotation landing on the wrong words.
+ * This page used to fold them itself, from the rule in
+ * services/speaker_blocks.py written out a second time in JavaScript. An
+ * annotation is anchored by character offsets *inside* a folded block, so the
+ * two copies had to agree to the character — and every change to the rule had
+ * to be made twice, in two languages, with nothing checking that it had been.
+ * The turns now travel with the transcript (see `with_speaker_blocks`), and
+ * every response that replaces `data.transcript` brings fresh ones.
  */
-// How long the interrupted speaker may stay quiet and still be read as resuming.
-// Measured from the end of their own last words, so it covers the interruption
-// and the pause after it together: that is the silence the reader hears.
-const RESUME_MAX_SILENCE = 3.0;
-
-// Seconds a block's speaker stayed quiet before `seg`. A segment without
-// timings reads as no silence, leaving the decision to the text alone.
-function silenceBefore(block, seg) {
-  const start = seg.start, end = block.end;
-  if (start == null || end == null) return 0;
-  return start - end;
+function speakerBlocks() {
+  return data.transcript?.blocks || [];
 }
 
-function mergeSpeakerBlocks(segments) {
-  const blocks = [];
-  // The block that last took words, which is not always the last one in reading
-  // order: an interrupted turn resumes above the interruption.
-  let cur = -1;
-  // The block whose speaker was cut off mid-sentence and can still resume.
-  let hold = -1;
-
-  const appendTo = (idx, seg, i) => {
-    const block = blocks[idx];
-    block.text = (block.text + ' ' + (seg.text || '').trim()).trim();
-    block.end = Math.max(block.end || 0, seg.end || 0);
-    block.indices.push(i);
-  };
-
-  for (let i = 0; i < (segments || []).length; i++) {
-    const seg = segments[i];
-    const spk = (seg.speaker || '').trim();
-    const current = cur >= 0 ? blocks[cur] : null;
-
-    // The same speaker carrying on. A block that has been overtaken in reading
-    // order takes only the rest of its unfinished sentence: append a *new*
-    // sentence to it and the reader gets words dated later than the block below
-    // them.
-    if (current && (current.speaker || '').trim() === spk
-        && (cur === blocks.length - 1 || !endsSentence(current.text))) {
-      appendTo(cur, seg, i);
-      continue;
-    }
-
-    // The interrupted speaker resuming, into the block they opened — as long as
-    // they are picking the sentence back up rather than answering after a
-    // silence.
-    if (hold >= 0 && (blocks[hold].speaker || '').trim() === spk
-        && !endsSentence(blocks[hold].text)
-        && silenceBefore(blocks[hold], seg) <= RESUME_MAX_SILENCE) {
-      // Whoever just held the floor may themselves have been cut off.
-      const resumed = hold;
-      hold = endsSentence(current.text) ? -1 : cur;
-      cur = resumed;
-      appendTo(cur, seg, i);
-      continue;
-    }
-
-    // Opening a block hands the floor to whoever just got cut off, if they were
-    // cut off. Anyone else's claim expires here.
-    hold = (current && !endsSentence(current.text)) ? cur : -1;
-    blocks.push({
-      speaker: spk,
-      start: seg.start,
-      end: seg.end,
-      text: (seg.text || '').trim(),
-      indices: [i],
-    });
-    cur = blocks.length - 1;
-  }
-
-  return blocks;
-}
-
-// Mirrors services/speaker_blocks.block_text_and_offsets. A segment with no
-// text writes nothing into the block, so it is charged no separator either --
-// editing across a segment boundary leaves such blanks behind, and counting a
-// space for each of them walks every later tag anchor off its own words.
-function blockTextAndOffsets(segments, indices) {
-  const parts = [];
-  const offsets = {};
-  let off = 0;
-  for (const idx of indices) {
-    const text = (segments[idx]?.text || '').trim();
-    if (!text) { offsets[idx] = off; continue; }
-    offsets[idx] = off + (off ? 1 : 0);
-    off = offsets[idx] + text.length;
-    parts.push(text);
-  }
-  return { text: parts.join(' '), offsets };
+/** The served block these segment indices belong to, if it is still there. */
+function blockFor(indices) {
+  const key = (indices || []).join(',');
+  return speakerBlocks().find(b => (b.indices || []).join(',') === key) || null;
 }
 
 function seedSpeakerColors(speakers) {
@@ -1257,7 +1042,7 @@ function renderTranscript(segments, tagSpans, comments) {
   const panel = document.getElementById('txPanel');
   const tagMap = {}; (data.tags || []).forEach(t => tagMap[t.id] = t);
 
-  const merged = mergeSpeakerBlocks(segments);
+  const merged = speakerBlocks();
 
   panel.innerHTML = merged.map((m, i) => {
     const cls = speakerClass(m.speaker);
@@ -1273,7 +1058,7 @@ function renderTranscript(segments, tagSpans, comments) {
       const endSeg = c.end_segment_idx ?? c.segment_idx;
       return indices.some(idx => idx >= c.segment_idx && idx <= endSeg);
     });
-    const offsetByIdx = blockTextAndOffsets(segments, indices).offsets;
+    const offsetByIdx = m.offsets || {};
     const mergedWords = [];
     indices.forEach(idx => {
       const seg = segments[idx];
@@ -1379,7 +1164,7 @@ function renderTranscript(segments, tagSpans, comments) {
     return `<div class="utt ${cls}" data-idx="${firstIdx}" data-indices="${indices.join(',')}" data-start="${m.start}">
       <span class="utt-ts">${ts}</span>
       <div class="utt-inner">
-        <span class="utt-spk" onclick="openSpeakerEdit(this)" title="Double-click to rename">${esc(m.speaker || 'Speaker')}</span><button type="button" class="utt-edit icon-btn" onclick="startBlockEdit(this)" title="Edit this paragraph" aria-label="Edit this paragraph"><svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M8.2 1.3l2.5 2.5-6 6-3 .5.5-3 6-6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></button>
+        <span class="utt-spk" onclick="openSpeakerEdit(this)" title="Double-click to rename">${esc(m.speaker || 'Speaker')}</span>
         <div class="utt-text">${textHtml || '\u00A0'}</div>
       </div>
     </div>`;
@@ -1416,7 +1201,13 @@ function renderTagsPane(tags, tagSpans, segments) {
   quotesEl.innerHTML = quotes.map(q => {
     const sp = q.span;
     const spanData = `data-span-id="${esc(sp.id || '')}" data-seg="${sp.segment_idx}" data-tag-id="${esc(sp.tag_id)}" data-start="${sp.start_char}" data-end="${sp.end_char}"`;
-    return `<div class="q-card" ${spanData}><div class="q-card-content" onclick="seekTo(${q.start})"><div class="q-text">${esc(q.text)}</div><div class="q-meta"><span><span class="q-tag-dot" style="background:${tagColor(q.tag?.color)}"></span>${esc(q.tag?.name || '')}</span><span>${fmtTime(q.start)}</span></div></div><button type="button" class="icon-btn icon-btn-danger" onclick="event.stopPropagation();removeTagSpan(this)" title="Remove this code from selection">&times;</button></div>`;
+    // The server compared this anchor against the words it was taken from and
+    // they no longer match, so the quote below is where the offsets point, not
+    // necessarily what was coded. Say so rather than show it as if it were.
+    const drifted = sp.anchor_drifted
+      ? `<span class="q-drift" title="${esc('Coded as: ' + (sp.anchor_text || ''))}">edited since coding</span>`
+      : '';
+    return `<div class="q-card${sp.anchor_drifted ? ' q-card-drifted' : ''}" ${spanData}><div class="q-card-content" onclick="seekTo(${q.start})"><div class="q-text">${esc(q.text)}</div><div class="q-meta"><span><span class="q-tag-dot" style="background:${tagColor(q.tag?.color)}"></span>${esc(q.tag?.name || '')}</span>${drifted}<span>${fmtTime(q.start)}</span></div></div><button type="button" class="icon-btn icon-btn-danger" onclick="event.stopPropagation();removeTagSpan(this)" title="Remove this code from selection">&times;</button></div>`;
   }).join('') || '<div class="empty-inline">No coded quotes yet. Highlight text to apply a code.</div>';
 }
 
@@ -1684,10 +1475,59 @@ function copyPendingSelectionOnCopyEvent(e) {
   return true;
 }
 
+// A double-click opens the paragraph for editing, and the browser selects a
+// word on the way there. Without this the tag popup would open over the caret
+// we are about to place, on every edit. The click count is only trustworthy on
+// the way down -- by pointerup the browser reports 0 for it.
+let openingEditorByDoubleClick = false;
+
+function onTranscriptPointerDown(e) {
+  if (e.detail >= 2) openingEditorByDoubleClick = true;
+}
+
+/** Double-click the text to edit the paragraph — the pencil this replaced. */
+function onTranscriptDblClick(e) {
+  if (editingBlock) return;            // inside an open editor, a word select is a word select
+  const textEl = e.target.closest('.utt-text');
+  if (!textEl || !textEl.closest('.utt')) return;
+  e.preventDefault();
+  // The word the browser just selected is not what the user asked for: they
+  // asked for a caret where they clicked.
+  const caret = caretOffsetFromPoint(textEl, e.clientX, e.clientY);
+  try { window.getSelection().removeAllRanges(); } catch (_) {}
+  document.getElementById('selPopup').classList.remove('show');
+  removeSelectionHighlight();
+  startBlockEdit(textEl, caret);
+}
+
+/**
+ * How many characters into ``textEl`` the point (x, y) falls.
+ *
+ * Measured before the editor replaces the rendered markup — highlight and word
+ * spans — with the block's plain text, so the caret can be put back where the
+ * user aimed rather than at the end of the paragraph.
+ */
+function caretOffsetFromPoint(textEl, x, y) {
+  let node = null, offset = 0;
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(x, y);
+    if (pos) { node = pos.offsetNode; offset = pos.offset; }
+  } else if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(x, y);
+    if (range) { node = range.startContainer; offset = range.startOffset; }
+  }
+  if (!node || !textEl.contains(node)) return null;
+  const upToPoint = document.createRange();
+  upToPoint.selectNodeContents(textEl);
+  try { upToPoint.setEnd(node, offset); } catch (_) { return null; }
+  return upToPoint.toString().length;
+}
+
 function onTextSelect(e) {
   // While a paragraph is open for editing, selecting text means selecting
   // text -- not reaching for the tag popup.
   if (editingBlock) return;
+  if (openingEditorByDoubleClick) { openingEditorByDoubleClick = false; return; }
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.type === 'mouseup' && typeof PointerEvent !== 'undefined') return;
   if (e.target.closest('.utt-spk')) return;
@@ -1772,18 +1612,13 @@ function commitTagSearch() {
   }
 }
 
-/** Merged speaker turns (same rules as renderTranscript) for transcript-only anchor text. */
-function mergedSpeakerBlocksForAnchor(segments) {
-  return mergeSpeakerBlocks(segments);
-}
-
 /**
  * Quote text from segment data only (no timestamps / speaker labels from DOM).
  * span: segment_idx, start_char, end_char, merged_start?, merged_end?, end_segment_idx?, end_merged_end?
  */
 function anchorTextFromAnnotationSpan(span, segments) {
   if (!segments?.length || span.segment_idx == null) return '';
-  const blocks = mergedSpeakerBlocksForAnchor(segments);
+  const blocks = speakerBlocks();
   const findBlock = (idx) => blocks.find(b => b.indices.includes(idx));
   const startBlock = findBlock(span.segment_idx);
   if (!startBlock) return '';
@@ -2522,15 +2357,22 @@ function blockIndicesOf(utt) {
   return (utt.dataset.indices || '').split(',').filter(s => s !== '').map(Number);
 }
 
-function startBlockEdit(btn) {
-  const utt = btn.closest('.utt');
+/**
+ * Open a paragraph for editing.
+ *
+ * ``origin`` is anything inside the paragraph — the text itself, when a
+ * double-click opened it. ``caretOffset`` is where the caret goes, in
+ * characters from the start of the block; without one it lands at the end,
+ * which is what a keyboard or programmatic open wants.
+ */
+function startBlockEdit(origin, caretOffset = null) {
+  const utt = origin.closest('.utt');
   if (!utt || editingBlock === utt) return;
   if (editingBlock) finishBlockEdit();
 
   const textEl = utt.querySelector('.utt-text');
   if (!textEl) return;
-  const segments = data?.transcript?.segments || [];
-  const original = blockTextAndOffsets(segments, blockIndicesOf(utt)).text;
+  const original = blockFor(blockIndicesOf(utt))?.text ?? '';
 
   utt.dataset.origText = original;
   textEl.textContent = original;
@@ -2545,8 +2387,14 @@ function startBlockEdit(btn) {
 
   textEl.focus();
   const range = document.createRange();
-  range.selectNodeContents(textEl);
-  range.collapse(false);
+  const textNode = textEl.firstChild;
+  if (caretOffset != null && textNode && textNode.nodeType === Node.TEXT_NODE) {
+    range.setStart(textNode, Math.max(0, Math.min(caretOffset, textNode.length)));
+    range.collapse(true);
+  } else {
+    range.selectNodeContents(textEl);
+    range.collapse(false);
+  }
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
@@ -2780,6 +2628,9 @@ function onTranscriptClick(e) {
   }
   const utt = e.target.closest('.utt');
   if (!utt || e.target.closest('.cmt-dot') || e.target.closest('.utt-spk')) return;
+  // The first half of a double-click on its way to the editor: the user is
+  // reaching for the text, not asking the audio to jump.
+  if (e.detail >= 2) return;
   if (window.getSelection().toString().length > 0) return;
   const wordSpan = e.target.closest('.word');
   if (!wordSpan || wordSpan.dataset.start == null || wordSpan.dataset.start === '') return;
@@ -2805,21 +2656,6 @@ function seekTo(secs, opts) {
   if (target && !opts?.skipScroll) scrollUttIntoView(target);
 }
 
-function esc(s) {
-  // Attribute-safe: also escapes quotes so values placed in HTML attributes
-  // (e.g. data-tag-name="...") cannot break out and inject markup/handlers.
-  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
-
-function escJsAttr(s) {
-  // For a value that lands in JavaScript that lands in an HTML attribute — two
-  // parsers, two escapes. JSON closes off quotes and backslashes for the JS
-  // parser; esc() closes off the attribute for the HTML parser, which unwraps
-  // its layer first and hands the JS parser exactly the literal we wrote.
-  // esc() alone cannot do this job: it turns ' into &#39;, and the HTML parser
-  // gives the apostrophe back before the JS parser ever sees the string.
-  return esc(JSON.stringify(String(s ?? '')));
-}
 
 function beginRenameRecordingTitle() {
   const wrap = document.querySelector('.tb-rec-name-wrap');

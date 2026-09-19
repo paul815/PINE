@@ -81,9 +81,41 @@ def test_root_layout_is_finalized_only_from_the_launch_handoff():
     assert '_refresh_windows_launcher_shortcuts' not in model_manager_source
 
 
-def test_main_pagehide_releases_lease_without_quitting_backend():
-    main_source = (REPO_ROOT / 'backend' / 'templates' / 'main.html').read_text(encoding='utf-8')
+def test_pagehide_releases_the_lease():
+    """Every page gives its lease back on the way out.
 
-    assert 'function releaseLeaseOnly()' in main_source
-    assert "window.addEventListener('pagehide', () => {" in main_source
-    assert '  releaseLeaseOnly();' in main_source
+    This used to be asserted against main.html, which carried its own copy of
+    the lease; the six copies are one module now, so the contract is checked
+    where it lives.
+    """
+    lease_source = (
+        REPO_ROOT / 'backend' / 'app' / 'static' / 'js' / 'lease.js'
+    ).read_text(encoding='utf-8')
+
+    assert "window.addEventListener('pagehide'" in lease_source
+    # ...and a page that must not stop the backend releases without quitting.
+    assert 'if (quitOnUnload) releaseAndQuit();' in lease_source
+    assert 'else release();' in lease_source
+
+
+def test_onboarding_keeps_the_backend_alive_when_it_closes():
+    """The handoff restarts the backend it just installed — quitting would race it."""
+    onboarding_source = (
+        REPO_ROOT / 'backend' / 'templates' / 'onboarding.html'
+    ).read_text(encoding='utf-8')
+
+    assert 'data-quit-on-unload="false"' in onboarding_source
+    # And the lease follows the supervisor the handoff started.
+    assert 'PineLease.setSupervisor(' in onboarding_source
+
+
+def test_every_page_holds_a_lease():
+    """A page that loads without lease.js lets the backend time out under it."""
+    templates = sorted((REPO_ROOT / 'backend' / 'templates').glob('*.html'))
+
+    missing = [
+        path.name for path in templates
+        if "filename='js/lease.js'" not in path.read_text(encoding='utf-8')
+    ]
+
+    assert missing == []

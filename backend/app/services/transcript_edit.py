@@ -17,6 +17,7 @@ tags and comments stay anchored to the same words.
 
 import re
 
+from .annotations import refresh_anchor_text
 from .speaker_blocks import (
     block_offsets,
     block_text_and_offsets,
@@ -77,6 +78,11 @@ def migrate_annotation_offsets(segments, annotations, mappers):
     closure; a segment missing from it was left untouched, so its offsets pass
     through. ``segments`` must already hold the *new* text — the cached
     ``merged_*`` offsets are rebuilt from it. Mutates ``annotations`` in place.
+
+    Each anchor's ``anchor_text`` is re-taken at the end. The offsets and the
+    snapshot are only guaranteed to agree at this moment, having just been made
+    to; leaving the old wording behind would give every later check two answers
+    and no way to tell which one was right.
     """
     boff = _block_offsets(segments)
 
@@ -108,6 +114,8 @@ def migrate_annotation_offsets(segments, annotations, mappers):
                     span['merged_start'] = boff.get(start_idx, 0) + (span.get('start_char') or 0)
                 if 'merged_end' in span:
                     span['merged_end'] = boff.get(start_idx, 0) + (span.get('end_char') or 0)
+
+    refresh_anchor_text(annotations, segments)
 
 
 def apply_find_replace(segments, annotations, find, replace,
