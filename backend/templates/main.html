@@ -283,7 +283,13 @@ body { font-size: inherit; }
 .launch-prompt-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
 .launch-prompt-row + .launch-prompt-row { border-top: 1px solid var(--border); }
 .launch-prompt-row-lbl { flex: 1; font-size: 0.923rem; color: var(--fg); }
-.launch-prompt-row-state { font-size: 0.846rem; color: var(--accent-on-dim); }
+/* Stands in for the answered row's Add button, which leaves the layout: matching
+   the button's height is what keeps the row — and the card floating above the
+   footer — from shrinking under the user the moment they answer it. */
+.launch-prompt-row-state {
+  font-size: 0.846rem; color: var(--accent-on-dim);
+  align-items: center; min-height: var(--btn-h-sm);
+}
 .launch-prompt-foot {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
   display: flex; justify-content: flex-end;
@@ -3785,7 +3791,7 @@ async function addLaunchShortcut(kind) {
   // The button goes rather than greys out — its absence is what the check below
   // reads to decide whether any offered row is still unanswered.
   btn.remove();
-  document.getElementById(cfg.stateId).style.display = 'inline';
+  document.getElementById(cfg.stateId).style.display = 'inline-flex';
 
   const pending = Object.values(_launchPromptKinds).some(c =>
     document.getElementById(c.rowId).style.display !== 'none' && document.getElementById(c.btnId)
