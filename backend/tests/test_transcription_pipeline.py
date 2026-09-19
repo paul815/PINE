@@ -526,6 +526,34 @@ class TestCleanTranscriptSegments:
 # 1. assign_speakers_simple
 # ---------------------------------------------------------------------------
 
+class TestJoinWords:
+    """Whisper spells "как-то" as two word tokens and tells them apart by the
+    leading space on the first. The mlx engine strips that space so the recording
+    UI can find each word in the segment text, and the plain join that used to
+    rebuild the text here then printed "как -то" into the saved transcript."""
+
+    def test_a_hyphenated_word_survives_the_join(self):
+        from ml_worker.pipeline import join_words
+        assert join_words(['как', '-то']) == 'как-то'
+
+    def test_an_ordinary_word_list_joins_as_it_always_did(self):
+        from ml_worker.pipeline import join_words
+        assert join_words(['мы', 'ушли', 'в', 'новый', 'сайт.']) == 'мы ушли в новый сайт.'
+
+    def test_a_dash_standing_on_its_own_stays_its_own_word(self):
+        from ml_worker.pipeline import join_words
+        assert join_words(['и', '-', 'да']) == 'и - да'
+
+    def test_the_saved_transcript_spells_it_as_one_word(self):
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [{
+            'start': 0.0, 'end': 1.0, 'speaker': 'A', 'text': 'как-то',
+            'words': [{'word': 'как', 'start': 0.0, 'end': 0.5},
+                      {'word': '-то', 'start': 0.5, 'end': 1.0}],
+        }]
+        assert clean_transcript_segments(segs)[0]['text'] == 'как-то'
+
+
 class TestAssignSpeakersSimple:
     """Tests for ml_worker.diarize.assign_speakers_simple."""
 

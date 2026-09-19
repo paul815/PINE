@@ -179,6 +179,32 @@ def is_whisper_hallucination(seg):
     return duration / n_words > HALLUCINATION_STRETCH_SEC_PER_WORD
 
 
+def join_words(words):
+    """Segment text rebuilt from its word tokens.
+
+    Whisper spells a hyphenated word as two tokens — "как-то" arrives as
+    ``[' как', '-то']`` — and tells them apart by the leading space on the first.
+    That space is gone by the time the words reach here: the mlx engine strips
+    every token so the recording UI can find it inside the segment text with
+    ``indexOf``. A plain join then printed "как -то", 89 of them in one 38-minute
+    interview, and printed it into the saved transcript, which is what the export
+    and the summary read.
+
+    A token that opens with a hyphen is the back half of a word, so it goes back
+    on without a space. Nothing else changes, and on the whisperx path nothing
+    changes at all: there the word list is made by splitting the segment text on
+    whitespace, so no token can begin with a hyphen and this is the join it
+    replaces, character for character.
+    """
+    parts = []
+    for word in words:
+        if parts and len(word) > 1 and word[0] == '-':
+            parts[-1] += word
+        else:
+            parts.append(word)
+    return ' '.join(parts)
+
+
 def clean_transcript_segments(segments):
     """Drop empty/degenerate segments and words before persisting transcript JSON."""
     clean_segments = []
@@ -201,7 +227,7 @@ def clean_transcript_segments(segments):
 
         text = str(seg.get('text', '') or '').strip()
         if words_out:
-            text = ' '.join(w['word'] for w in words_out)
+            text = join_words(w['word'] for w in words_out)
         elif had_words:
             # MLX artifact: keep neither empty nor all-zero-word segments.
             text = ''
