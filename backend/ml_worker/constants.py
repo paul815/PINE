@@ -1,4 +1,22 @@
-"""Tunables shared across the ML pipeline."""
+"""Tunables shared across the ML pipeline.
+
+The numbers here are measured, not guessed — each one carries the observation it
+came from — and they are literals on purpose. Every threshold used to also read
+a ``PINE_*`` environment variable, thirty-six of them, none named anywhere else
+in the repo: not in a test, not in the docs, not in a launcher. They were a
+tuning session that ended, left behind as a promise the code no longer keeps, so
+a reader had to check each default twice to learn it was the only value in play.
+Retune by changing the value and saying what you measured.
+
+Four overrides survive, because something outside this file knows them:
+
+* ``PINE_PARALLEL_STAGES`` and ``PINE_DIARIZE_DEVICE`` (the latter lives in
+  ``diarize.py``) — documentation/ARCHITECTURE.md tells you to measure with them.
+* ``PINE_LANG_CONFIDENCE_MIN`` / ``PINE_LANG_CONFIDENCE_MARGIN`` — documented in
+  documentation/API.md.
+* ``PINE_DIARIZE_CHUNK_THRESHOLD_SEC`` — the out-of-memory guard below. Not a
+  quality trade-off: the way out of a crash on a very long file.
+"""
 
 import os
 
@@ -68,23 +86,23 @@ PARALLEL_STAGES = os.environ.get('PINE_PARALLEL_STAGES', '0').strip() != '0'
 # sensible starting point for the very first recording — the alternative,
 # hand-tuning them per platform, needs a machine of every kind and goes stale
 # the moment anyone changes model.
-PROGRESS_RTF_TRANSCRIBE = float(os.environ.get('PINE_PROGRESS_RTF_TRANSCRIBE', '0.045'))
-PROGRESS_RTF_ALIGN = float(os.environ.get('PINE_PROGRESS_RTF_ALIGN', '0.010'))
-PROGRESS_RTF_DIARIZE = float(os.environ.get('PINE_PROGRESS_RTF_DIARIZE', '0.019'))
+PROGRESS_RTF_TRANSCRIBE = 0.045
+PROGRESS_RTF_ALIGN = 0.010
+PROGRESS_RTF_DIARIZE = 0.019
 # Bounds on the learned correction, so one pathological run (a machine that
 # went to sleep mid-job) cannot poison the estimate for every job after it.
-PROGRESS_SCALE_MIN = float(os.environ.get('PINE_PROGRESS_SCALE_MIN', '0.2'))
-PROGRESS_SCALE_MAX = float(os.environ.get('PINE_PROGRESS_SCALE_MAX', '5.0'))
+PROGRESS_SCALE_MIN = 0.2
+PROGRESS_SCALE_MAX = 5.0
 # Weight of the newest measurement against the running one.
-PROGRESS_SCALE_SMOOTHING = float(os.environ.get('PINE_PROGRESS_SCALE_SMOOTHING', '0.4'))
+PROGRESS_SCALE_SMOOTHING = 0.4
 # Below this much audio the flat costs dominate and the ratio measures disk
 # cache rather than transcription speed, so nothing is learned from it.
-PROGRESS_LEARN_MIN_SEC = float(os.environ.get('PINE_PROGRESS_LEARN_MIN_SEC', '120'))
+PROGRESS_LEARN_MIN_SEC = 120.0
 # Flat costs that don't scale with audio length.
-PROGRESS_LOAD_SEC = float(os.environ.get('PINE_PROGRESS_LOAD_SEC', '10'))
+PROGRESS_LOAD_SEC = 10.0
 PROGRESS_FINALIZE_SEC = 2.0
 # How often the interpolating ticker refreshes between real milestones.
-PROGRESS_TICK_SEC = float(os.environ.get('PINE_PROGRESS_TICK_SEC', '2'))
+PROGRESS_TICK_SEC = 2.0
 # Key the measured pace travels under inside the transcript payload. Underscored
 # because it is not part of the transcript — ``_finalize`` pops it before the
 # file is written. It lives here rather than beside the pipeline so the Flask
@@ -101,34 +119,34 @@ PROGRESS_SCALE_KEY = '_progress_scale'
 # which runs 0.3-0.8s and would be dropped by the 0.5s minimum a general-purpose
 # gate uses. Losing it costs the moderator's half of the conversation, so the
 # minimum sits at 0.2s and short gaps are closed before anything is discarded.
-VAD_FRAME_SEC = float(os.environ.get('PINE_VAD_FRAME_SEC', '0.02'))
-VAD_MIN_SPEECH_SEC = float(os.environ.get('PINE_VAD_MIN_SPEECH_SEC', '0.2'))
-VAD_MERGE_GAP_SEC = float(os.environ.get('PINE_VAD_MERGE_GAP_SEC', '0.5'))
-VAD_PAD_SEC = float(os.environ.get('PINE_VAD_PAD_SEC', '0.25'))
+VAD_FRAME_SEC = 0.02
+VAD_MIN_SPEECH_SEC = 0.2
+VAD_MERGE_GAP_SEC = 0.5
+VAD_PAD_SEC = 0.25
 # Thresholds are a fraction of each track's own quiet-to-loud range, so tracks
 # recorded at different levels are each measured against themselves.
-VAD_OPEN_FRACTION = float(os.environ.get('PINE_VAD_OPEN_FRACTION', '0.35'))
-VAD_CLOSE_FRACTION = float(os.environ.get('PINE_VAD_CLOSE_FRACTION', '0.20'))
-VAD_MIN_MARGIN_DB = float(os.environ.get('PINE_VAD_MIN_MARGIN_DB', '6.0'))
+VAD_OPEN_FRACTION = 0.35
+VAD_CLOSE_FRACTION = 0.20
+VAD_MIN_MARGIN_DB = 6.0
 # Digital silence is -inf dB; without a floor the range is unbounded and every
 # threshold derived from it collapses. Also the level below which a track with
 # no loud/quiet structure is read as empty rather than as speech throughout.
-VAD_SILENCE_FLOOR_DB = float(os.environ.get('PINE_VAD_SILENCE_FLOOR_DB', '-80.0'))
-VAD_MIN_DYNAMIC_DB = float(os.environ.get('PINE_VAD_MIN_DYNAMIC_DB', '6.0'))
+VAD_SILENCE_FLOOR_DB = -80.0
+VAD_MIN_DYNAMIC_DB = 6.0
 # How far one track must lead the others to be given a frame outright. Only
 # bites on multi-channel recordings where the mics hear each other.
-VAD_DOMINANCE_DB = float(os.environ.get('PINE_VAD_DOMINANCE_DB', '6.0'))
+VAD_DOMINANCE_DB = 6.0
 # Silence inserted between two spliced-together regions, so the model does not
 # run a turn from minute 3 into a turn from minute 40.
-VAD_COMPACT_GAP_SEC = float(os.environ.get('PINE_VAD_COMPACT_GAP_SEC', '0.2'))
+VAD_COMPACT_GAP_SEC = 0.2
 # Cutting the pauses out also cuts the transcript: a turn spoken across two
 # speech regions comes back as two segments. Neighbours from one speaker no
 # further apart than this are put back together — wide enough to close the
 # breath the gate opened on, short enough to leave a real handover alone.
-TRACK_JOIN_GAP_SEC = float(os.environ.get('PINE_TRACK_JOIN_GAP_SEC', '1.5'))
+TRACK_JOIN_GAP_SEC = 1.5
 # ...but only up to here. Someone talking steadily for ten minutes would
 # otherwise arrive as one block nobody can scroll past or click into.
-TRACK_JOIN_MAX_SEC = float(os.environ.get('PINE_TRACK_JOIN_MAX_SEC', '30.0'))
+TRACK_JOIN_MAX_SEC = 30.0
 # Per-track gate, for the multitrack path only (ml_worker/multitrack.py).
 # Every region boundary there is a seam the transcript can tear along: whisperx
 # reads the compacted track as continuous and the aligner spreads words over
@@ -136,17 +154,15 @@ TRACK_JOIN_MAX_SEC = float(os.environ.get('PINE_TRACK_JOIN_MAX_SEC', '30.0'))
 # inside a sentence, which cut a 40-minute interview into 330 regions; two
 # seconds closes the breath between sentences as well, for ~5% more audio to
 # decode. The MLX gate settled on the same pair for the same reason.
-TRACK_VAD_MERGE_GAP_SEC = float(
-    os.environ.get('PINE_TRACK_VAD_MERGE_GAP_SEC', '2.0'))
-TRACK_VAD_PAD_SEC = float(os.environ.get('PINE_TRACK_VAD_PAD_SEC', '0.5'))
+TRACK_VAD_MERGE_GAP_SEC = 2.0
+TRACK_VAD_PAD_SEC = 0.5
 # Cutting the pauses out also moves the words: whisperx aligns against audio
 # whose seams it cannot see, and a word landing a fifth of a second the wrong
 # side of one is remapped tens of seconds away from the rest of its sentence.
 # A lone word this close behind the previous one was never a second utterance —
 # a real one arrives after a pause — so it is kept with the words it belongs to.
 # Twice the inserted gap: nothing that follows a seam can be closer than one.
-TRACK_SEAM_CONTIGUOUS_SEC = float(
-    os.environ.get('PINE_TRACK_SEAM_CONTIGUOUS_SEC', '0.4'))
+TRACK_SEAM_CONTIGUOUS_SEC = 0.4
 
 # ── Gating the audio for mlx-whisper (see engines/mlx_engine.py) ──
 #
@@ -163,17 +179,17 @@ TRACK_SEAM_CONTIGUOUS_SEC = float(
 # saves seconds; dropping speech loses an answer the interview was recorded for.
 # A wider merge gap than the per-track VAD, so only real dead air is cut and the
 # pauses inside a sentence stay where they are.
-MLX_VAD_MERGE_GAP_SEC = float(os.environ.get('PINE_MLX_VAD_MERGE_GAP_SEC', '2.0'))
+MLX_VAD_MERGE_GAP_SEC = 2.0
 # Double the per-track padding: one mixed track has no second track to catch a
 # word this one clipped, so the gate errs wide on both sides of every region.
-MLX_VAD_PAD_SEC = float(os.environ.get('PINE_MLX_VAD_PAD_SEC', '0.5'))
+MLX_VAD_PAD_SEC = 0.5
 # Below this share of the recording surviving the gate, the audio goes to the
 # model untouched. Not a tuning knob — a dead-man's switch for the case where the
 # thresholds misread the take, where the old behaviour is the safe one.
-MLX_VAD_MIN_KEEP_FRACTION = float(os.environ.get('PINE_MLX_VAD_MIN_KEEP', '0.5'))
+MLX_VAD_MIN_KEEP_FRACTION = 0.5
 # And below this much to actually remove, splicing is not worth its own risk:
 # the recording goes through as it is.
-MLX_VAD_MIN_CUT_SEC = float(os.environ.get('PINE_MLX_VAD_MIN_CUT_SEC', '5.0'))
+MLX_VAD_MIN_CUT_SEC = 5.0
 # Ringback is loud, so an energy gate hands it to the model as speech — which is
 # how it got transcribed in the first place. Spectral flatness is what separates
 # them: the geometric mean of the power spectrum over its arithmetic mean, near
@@ -188,13 +204,13 @@ MLX_VAD_MIN_CUT_SEC = float(os.environ.get('PINE_MLX_VAD_MIN_CUT_SEC', '5.0'))
 # ringback recorded below ~20 dB SNR. That trade is the whole point: missing a
 # tone leaves today's behaviour in place, while taking a voice for one deletes an
 # answer the interview was recorded for.
-MLX_VAD_MIN_FLATNESS = float(os.environ.get('PINE_MLX_VAD_MIN_FLATNESS', '0.001'))
+MLX_VAD_MIN_FLATNESS = 0.001
 # Regions shorter than this are kept whatever they are made of. Low on purpose:
 # ringback is often a second of tone every five, so each ring arrives as its own
 # short region, and a threshold set to leave "short" audio alone would wave the
 # whole ring pattern through. Half a second is ~30 frames, plenty of spectrum to
 # read, and still above the back-channel — "угу", "да" — worth protecting.
-MLX_VAD_TONE_MIN_SEC = float(os.environ.get('PINE_MLX_VAD_TONE_MIN_SEC', '0.5'))
+MLX_VAD_TONE_MIN_SEC = 0.5
 
 # ── Carrying the prompt between windows (mlx only; see mlx_engine.py) ──
 #
@@ -209,15 +225,15 @@ MLX_VAD_TONE_MIN_SEC = float(os.environ.get('PINE_MLX_VAD_TONE_MIN_SEC', '0.5'))
 # further and costs fewer calls; shorter bounds what one bad prompt can take with
 # it. Two minutes is ~4 of Whisper's own windows — long enough for the prompt to
 # earn its keep, short enough that the worst case is two minutes re-decoded.
-MLX_PROMPT_WINDOW_SEC = float(os.environ.get('PINE_MLX_PROMPT_WINDOW_SEC', '120.0'))
+MLX_PROMPT_WINDOW_SEC = 120.0
 # How much of the previous window's text is handed on. Whisper truncates the
 # prompt to half its context on its own; this keeps what we send to the part that
 # still describes how the speaker is writing.
-MLX_PROMPT_CHARS = int(os.environ.get('PINE_MLX_PROMPT_CHARS', '200'))
+MLX_PROMPT_CHARS = 200
 # Identical segments in a row that mean the decoder is looping rather than
 # transcribing. Three is still reachable by someone saying "да. да. да."; the
 # runaway this catches ran for minutes.
-MLX_PROMPT_REPEAT_LIMIT = int(os.environ.get('PINE_MLX_PROMPT_REPEAT_LIMIT', '4'))
+MLX_PROMPT_REPEAT_LIMIT = 4
 
 # ── Dropping what Whisper wrote over non-speech (see pipeline.py) ──
 #
@@ -251,14 +267,12 @@ HALLUCINATION_PHRASES = frozenset({
 })
 # Speech runs ~0.3s a word. The two stretched credits above ran 10 and 3.6s;
 # five times normal pace is far from both.
-HALLUCINATION_STRETCH_SEC_PER_WORD = float(
-    os.environ.get('PINE_HALLUCINATION_STRETCH', '1.5'))
+HALLUCINATION_STRETCH_SEC_PER_WORD = 1.5
 # How far into the file to look for speech to identify the language on. The probe
 # used to read the first 30s whatever was there, which on a phone call is the
 # ringback — hence `p(en)=0.29` on a Russian interview, and a needless question to
 # the user. Long enough to clear an intro; the whole window is decoded once.
-MLX_LANG_PROBE_SEARCH_SEC = float(
-    os.environ.get('PINE_MLX_LANG_PROBE_SEARCH_SEC', '300.0'))
+MLX_LANG_PROBE_SEARCH_SEC = 300.0
 
 SPEAKER_LABELS = [
     'Moderator',
