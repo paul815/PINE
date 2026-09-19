@@ -8,8 +8,8 @@ positions as ``segment_idx`` + ``start_char``/``end_char`` (relative to the
 
 When find & replace changes the length of a segment's text, every annotation
 offset that sits after the edit must shift, or the highlight would drift onto
-the wrong words. ``apply_find_replace`` does that migration so existing tags and
-comments stay anchored to the same words.
+the wrong words. ``migrate_annotation_offsets`` does that migration so existing
+tags and comments stay anchored to the same words.
 """
 
 import re
@@ -57,6 +57,46 @@ def _compile(find, match_case, whole_word):
     return re.compile(pattern, flags)
 
 
+def migrate_annotation_offsets(segments, annotations, mappers):
+    """Shift tag and comment offsets to follow text that changed length.
+
+    ``mappers`` maps a segment index to that segment's ``_build_mapper``
+    closure; a segment missing from it was left untouched, so its offsets pass
+    through. ``segments`` must already hold the *new* text — the cached
+    ``merged_*`` offsets are rebuilt from it. Mutates ``annotations`` in place.
+    """
+    boff = _block_offsets(segments)
+
+    def remap(idx, value, is_end):
+        mp = mappers.get(idx)
+        return mp(value, is_end) if mp else value
+
+    for collection in (annotations.get('tag_spans') or [],
+                       annotations.get('comments') or []):
+        for span in collection:
+            start_idx = span.get('segment_idx')
+            if start_idx is None:
+                continue
+            if 'start_char' in span:
+                span['start_char'] = remap(start_idx, span.get('start_char') or 0, False)
+            end_idx = span.get('end_segment_idx')
+            if end_idx is not None:
+                if 'end_seg_end_char' in span:
+                    span['end_seg_end_char'] = remap(
+                        end_idx, span.get('end_seg_end_char') or 0, True)
+                if 'merged_start' in span:
+                    span['merged_start'] = boff.get(start_idx, 0) + (span.get('start_char') or 0)
+                if 'end_merged_end' in span:
+                    span['end_merged_end'] = boff.get(end_idx, 0) + (span.get('end_seg_end_char') or 0)
+            else:
+                if 'end_char' in span:
+                    span['end_char'] = remap(start_idx, span.get('end_char') or 0, True)
+                if 'merged_start' in span:
+                    span['merged_start'] = boff.get(start_idx, 0) + (span.get('start_char') or 0)
+                if 'merged_end' in span:
+                    span['merged_end'] = boff.get(start_idx, 0) + (span.get('end_char') or 0)
+
+
 def apply_find_replace(segments, annotations, find, replace,
                        match_case=False, whole_word=False):
     """Replace ``find`` with ``replace`` across all segments; migrate offsets.
@@ -91,35 +131,6 @@ def apply_find_replace(segments, annotations, find, replace,
     if not count:
         return 0
 
-    boff = _block_offsets(segments)
-
-    def remap(idx, value, is_end):
-        mp = mappers.get(idx)
-        return mp(value, is_end) if mp else value
-
-    for collection in (annotations.get('tag_spans') or [],
-                       annotations.get('comments') or []):
-        for span in collection:
-            start_idx = span.get('segment_idx')
-            if start_idx is None:
-                continue
-            if 'start_char' in span:
-                span['start_char'] = remap(start_idx, span.get('start_char') or 0, False)
-            end_idx = span.get('end_segment_idx')
-            if end_idx is not None:
-                if 'end_seg_end_char' in span:
-                    span['end_seg_end_char'] = remap(
-                        end_idx, span.get('end_seg_end_char') or 0, True)
-                if 'merged_start' in span:
-                    span['merged_start'] = boff.get(start_idx, 0) + (span.get('start_char') or 0)
-                if 'end_merged_end' in span:
-                    span['end_merged_end'] = boff.get(end_idx, 0) + (span.get('end_seg_end_char') or 0)
-            else:
-                if 'end_char' in span:
-                    span['end_char'] = remap(start_idx, span.get('end_char') or 0, True)
-                if 'merged_start' in span:
-                    span['merged_start'] = boff.get(start_idx, 0) + (span.get('start_char') or 0)
-                if 'merged_end' in span:
-                    span['merged_end'] = boff.get(start_idx, 0) + (span.get('end_char') or 0)
+    migrate_annotation_offsets(segments, annotations, mappers)
 
     return count
