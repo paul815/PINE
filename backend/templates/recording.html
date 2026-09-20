@@ -82,6 +82,17 @@ body { font-size: inherit; }
 }
 .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
+/* Find & replace is a correction tool, so it belongs to the mode for making
+   corrections rather than to the toolbar at large: it drops out from under the
+   Edit button while that mode is on, and is not there the rest of the time. */
+.edit-tools { position: relative; display: inline-flex; }
+.edit-tools .edit-subaction {
+  display: none;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  white-space: nowrap; box-shadow: var(--shadow-sm);
+}
+.edit-tools.open .edit-subaction { display: inline-flex; }
+
 .proj-pill { user-select: none; }
 .proj-pill.open { border-color: var(--accent-bd); color: var(--fg); background: var(--muted); }
 
@@ -347,6 +358,13 @@ body { font-size: inherit; }
 .utt-spk[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: var(--accent-dim); }
 .utt-text { font-size: 1.077rem; color: var(--fg); line-height: 1.65; user-select: text; }
 .utt-text .word { cursor: pointer; }
+/* In edit mode a click lands a caret instead of moving the recording, so the
+   text has to say so before it is clicked: the cursor stops offering to
+   navigate, and the panel carries a quiet accent for when the toolbar has been
+   scrolled out of sight. */
+.transcript-panel.editing { box-shadow: inset 2px 0 0 var(--accent-bd); }
+.transcript-panel.editing .utt-text,
+.transcript-panel.editing .utt-text .word { cursor: text; }
 .utt-text[contenteditable] {
   outline: 1px solid var(--accent);
   border-radius: 3px;
@@ -671,10 +689,18 @@ mark.pending-selection-highlight {
         <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 11c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         <span id="partPillLabel">Participant details</span>
       </button>
-      <button class="export-btn" onclick="openFindReplace()" title="Find &amp; replace text across this transcript — fix recurring transcription errors">
-        <svg viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 11 11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Fix text
-      </button>
+      <div class="edit-tools" id="editTools">
+        <button type="button" class="export-btn" id="editModeBtn" onclick="toggleEditMode()" aria-pressed="false"
+                title="Correct the transcript: click any paragraph to edit it (Ctrl twice)">
+          <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M8.2 1.3l2.5 2.5-6 6-3 .5.5-3 6-6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          <span id="editModeLabel">Edit</span>
+        </button>
+        <button type="button" class="export-btn edit-subaction" id="findReplaceBtn" onclick="openFindReplace()"
+                title="Find &amp; replace text across this transcript — fix recurring transcription errors">
+          <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="5" cy="5" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 11 11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Find&amp;Replace
+        </button>
+      </div>
       <button class="export-btn" onclick="openExport()">
         <svg viewBox="0 0 12 12" fill="none"><path d="M6 1v6.5M3.5 5 6 7.5 8.5 5M2 10h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Export
@@ -1171,7 +1197,20 @@ function renderTranscript(segments, tagSpans, comments) {
   }).join('');
 }
 
+// A refresh asked for while a paragraph was open, waiting for the caret to
+// leave. See refreshTranscript.
+let transcriptRefreshPending = false;
+
 function refreshTranscript() {
+  // Never rebuild the transcript under an open paragraph. The editor lives in
+  // the DOM this replaces, so the words being typed would go with it -- and in
+  // edit mode that is the normal case: closing one paragraph saves it, and the
+  // save comes back while the next one is already open.
+  if (editingBlock) {
+    transcriptRefreshPending = true;
+    return;
+  }
+  transcriptRefreshPending = false;
   const tx = data?.transcript || { segments: [] };
   const ann = data?.annotations || {};
   renderTranscript(tx.segments || [], ann.tag_spans || [], ann.comments || []);
@@ -1481,8 +1520,95 @@ function copyPendingSelectionOnCopyEvent(e) {
 // the way down -- by pointerup the browser reports 0 for it.
 let openingEditorByDoubleClick = false;
 
+/**
+ * Where a click in edit mode was aimed, read on the way down.
+ *
+ * Two things happen between pointerdown and click, and both spoil the aim. The
+ * paragraph that was open blurs: it closes, puts its markup back and reflows
+ * the text, so coordinates read at click time point at different words. And
+ * closing it can run a refresh that was waiting, which rebuilds every
+ * paragraph -- so the element aimed at is remembered by the segments it holds
+ * rather than by the node, and looked up again once the dust has settled.
+ */
+let aimedAtOnPointerDown = null;
+
 function onTranscriptPointerDown(e) {
   if (e.detail >= 2) openingEditorByDoubleClick = true;
+  aimedAtOnPointerDown = null;
+  if (!editMode) return;
+  const textEl = e.target.closest('.utt-text');
+  const utt = textEl && textEl.closest('.utt');
+  if (!utt) return;
+  aimedAtOnPointerDown = {
+    indices: utt.dataset.indices,
+    caret: caretOffsetFromPoint(textEl, e.clientX, e.clientY),
+  };
+}
+
+/** The paragraph holding these segments, in the transcript as it stands now. */
+function uttByIndices(indices) {
+  if (indices == null) return null;
+  return [...document.querySelectorAll('.utt')]
+    .find(u => u.dataset.indices === indices) || null;
+}
+
+/**
+ * Edit mode: what a plain click on the transcript means.
+ *
+ * Off, a click is navigation -- it seeks the recording to that word and starts
+ * playing -- and a paragraph is opened for editing by double-clicking it. That
+ * is right for fixing one word in passing, and wrong for a pass over the whole
+ * transcript, where every click meant to place a caret sends the audio
+ * somewhere else.
+ *
+ * On, a click opens the paragraph under it instead, caret where it landed, and
+ * the recording stays where it was. Nothing else changes: one paragraph is open
+ * at a time, exactly as before, so the tag highlights in every other paragraph
+ * stay on screen and the block save keeps its one writer.
+ */
+let editMode = false;
+
+function setEditMode(on) {
+  editMode = !!on;
+  if (!editMode && editingBlock) finishBlockEdit();
+  const btn = document.getElementById('editModeBtn');
+  btn.classList.toggle('on', editMode);
+  btn.setAttribute('aria-pressed', editMode ? 'true' : 'false');
+  document.getElementById('editModeLabel').textContent = editMode ? 'Editing' : 'Edit';
+  document.getElementById('editTools').classList.toggle('open', editMode);
+  document.getElementById('txPanel').classList.toggle('editing', editMode);
+  if (editMode) {
+    document.getElementById('selPopup').classList.remove('show');
+    removeSelectionHighlight();
+  }
+}
+
+function toggleEditMode() { setEditMode(!editMode); }
+
+// What playback was doing before a click on a word moved it, in case that click
+// turns out to be the first half of a double-click on its way to the editor.
+let playbackBeforeEdit = null;
+
+// Long enough to cover a slow double-click -- Windows lets the user set the
+// interval as high as 900ms -- and short enough that a deliberate seek made a
+// moment earlier is never taken back.
+const ACCIDENTAL_SEEK_WINDOW_MS = 900;
+
+/**
+ * Put playback back where the first click of the pair moved it from.
+ *
+ * A single click on a word does two things: it seeks *and* it starts playing.
+ * That is right when the click was navigation, and wrong when it was the
+ * opening half of a double-click, where the user is reaching for the text and
+ * the recording should stay where they left it.
+ */
+function undoAccidentalSeek() {
+  const before = playbackBeforeEdit;
+  playbackBeforeEdit = null;
+  if (!before || !mediaEl) return;
+  if (Date.now() - before.at > ACCIDENTAL_SEEK_WINDOW_MS) return;
+  mediaEl.currentTime = before.time;
+  if (before.paused && !mediaEl.paused) togglePlay();
 }
 
 /** Double-click the text to edit the paragraph — the pencil this replaced. */
@@ -1498,6 +1624,7 @@ function onTranscriptDblClick(e) {
   document.getElementById('selPopup').classList.remove('show');
   removeSelectionHighlight();
   startBlockEdit(textEl, caret);
+  undoAccidentalSeek();
 }
 
 /**
@@ -1525,8 +1652,10 @@ function caretOffsetFromPoint(textEl, x, y) {
 
 function onTextSelect(e) {
   // While a paragraph is open for editing, selecting text means selecting
-  // text -- not reaching for the tag popup.
-  if (editingBlock) return;
+  // text -- not reaching for the tag popup. The same holds for the whole
+  // transcript while edit mode is on: a popup offering codes is noise to
+  // someone who is there to fix words.
+  if (editingBlock || editMode) return;
   if (openingEditorByDoubleClick) { openingEditorByDoubleClick = false; return; }
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.type === 'mouseup' && typeof PointerEvent !== 'undefined') return;
@@ -2424,6 +2553,10 @@ function onBlockPaste(e) {
 function onBlockKeydown(e) {
   if (e.key === 'Escape') {
     e.preventDefault();
+    // Closing the paragraph is the whole of what this Escape does. Without
+    // this the document handler would see the same press, find no open
+    // paragraph, and leave edit mode as well -- two steps out for one press.
+    e.stopPropagation();
     cancelBlockEdit();
   } else if (e.key === 'Enter') {
     // A paragraph holds no line breaks, so Enter has nothing to do but finish.
@@ -2494,6 +2627,8 @@ function closeBlockEdit() {
     textEl.removeEventListener('compositionstart', onBlockCompositionStart);
     textEl.removeEventListener('compositionend', onBlockCompositionEnd);
   }
+  // The caret has left, so a refresh that was held back can run.
+  if (transcriptRefreshPending) refreshTranscript();
   return utt;
 }
 
@@ -2603,13 +2738,21 @@ function toggleFullscreen() {
 }
 
 function onTranscriptClick(e) {
+  // Where this click was aimed, measured on pointerdown -- see
+  // onTranscriptPointerDown for why it cannot be measured here.
+  const aim = aimedAtOnPointerDown;
+  aimedAtOnPointerDown = null;
+
   // A click in an open paragraph places the caret. One outside it finishes the
   // edit here rather than leaning on blur: if focus never landed, blur never
   // comes, and the whole panel would sit inert behind an edit nothing closes.
   // Either way the click must not seek the audio.
   if (editingBlock) {
-    if (!editingBlock.contains(e.target)) finishBlockEdit();
-    return;
+    if (editingBlock.contains(e.target)) return;
+    finishBlockEdit();
+    // In edit mode the same click goes on to open whatever was clicked, so
+    // moving down a transcript is one click per paragraph rather than two.
+    if (!editMode) return;
   }
   const pop = document.getElementById('selPopup');
   if (pop && pop.classList.contains('show')) {
@@ -2628,6 +2771,12 @@ function onTranscriptClick(e) {
   }
   const utt = e.target.closest('.utt');
   if (!utt || e.target.closest('.cmt-dot') || e.target.closest('.utt-spk')) return;
+  if (editMode) {
+    const aimed = aim && uttByIndices(aim.indices);
+    const textEl = aimed && aimed.querySelector('.utt-text');
+    if (textEl) startBlockEdit(textEl, aim.caret);
+    return;   // the recording stays where it is for as long as the mode is on
+  }
   // The first half of a double-click on its way to the editor: the user is
   // reaching for the text, not asking the audio to jump.
   if (e.detail >= 2) return;
@@ -2636,6 +2785,11 @@ function onTranscriptClick(e) {
   if (!wordSpan || wordSpan.dataset.start == null || wordSpan.dataset.start === '') return;
   const secs = parseFloat(wordSpan.dataset.start);
   if (Number.isNaN(secs)) return;
+  // Taken before the seek, because the seek is what has to be undone if the
+  // second click of a double-click is already on its way.
+  playbackBeforeEdit = mediaEl
+    ? { time: mediaEl.currentTime, paused: mediaEl.paused, at: Date.now() }
+    : null;
   seekTo(secs);
 }
 
@@ -3072,9 +3226,26 @@ document.addEventListener('keydown', function(e) {
       e.preventDefault();
       return;
     }
+    // An open paragraph handles its own Escape and stops it there, so one
+    // arriving here means edit mode is what is left to close.
+    if (editMode) {
+      setEditMode(false);
+      e.preventDefault();
+      return;
+    }
   }
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // Inside an open paragraph the plain keys belong to typing, so play/pause
+  // keeps a copy under the modifier. The arrows are left alone: Ctrl+Arrow
+  // moves by word, and taking that from a text editor to move the audio five
+  // seconds would be a poor trade.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey
+      && (e.key === ' ' || e.code === 'Space')) {
+    e.preventDefault();
+    togglePlay();
+    return;
+  }
   if (document.activeElement && document.activeElement.isContentEditable) return;
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
@@ -3085,6 +3256,44 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 'ArrowRight') {
     e.preventDefault();
     if (mediaEl) seekTo(Math.min(mediaEl.duration || 0, mediaEl.currentTime + 5));
+  }
+});
+
+/**
+ * Ctrl twice -- two taps of the modifier on its own -- toggles edit mode.
+ *
+ * A tap only counts when nothing else was pressed while the key was down, so
+ * Ctrl+C followed by Ctrl+V is never read as the chord; that matters most
+ * inside the editor, where those are the keys in use. ⌘ does the same on a Mac,
+ * where Ctrl belongs to the context menu.
+ */
+const MODIFIER_DOUBLE_TAP_MS = 400;
+let lastModifierTapAt = 0;
+let modifierUsedWithAnotherKey = false;
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Control' || e.key === 'Meta') {
+    if (!e.repeat) modifierUsedWithAnotherKey = false;
+    return;
+  }
+  if (e.ctrlKey || e.metaKey) modifierUsedWithAnotherKey = true;
+});
+
+document.addEventListener('keyup', function (e) {
+  if (e.key !== 'Control' && e.key !== 'Meta') return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (modifierUsedWithAnotherKey) {
+    modifierUsedWithAnotherKey = false;
+    lastModifierTapAt = 0;
+    return;
+  }
+  const now = Date.now();
+  if (now - lastModifierTapAt < MODIFIER_DOUBLE_TAP_MS) {
+    lastModifierTapAt = 0;
+    toggleEditMode();
+  } else {
+    lastModifierTapAt = now;
   }
 });
 

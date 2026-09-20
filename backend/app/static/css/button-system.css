@@ -376,7 +376,11 @@
   border-color: var(--accent-bd);
 }
 
-:is(.size-btn.on, .theme-btn.on, .font-btn.on, .fmt-btn.on, .seg-chip.active) {
+/* A toggle that is currently on. Tinted rather than filled: the weight of a
+   solid accent belongs to a button that commits something, and these only say
+   which way a switch is set. */
+:is(.size-btn.on, .theme-btn.on, .font-btn.on, .fmt-btn.on, .seg-chip.active,
+    .export-btn.on) {
   background: var(--accent-dim);
   color: var(--accent);
   border-color: var(--accent-bd);
