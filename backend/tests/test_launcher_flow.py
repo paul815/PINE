@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from app import _launch_page_html
@@ -64,6 +65,87 @@ def test_installers_leave_the_repo_root_alone():
     assert 'dev-config' not in windows_installer
     assert 'dev-config' not in macos_installer
     assert 'Launch Pine.lnk' not in windows_installer
+
+
+def _installer_label_body(installer, label, next_label):
+    return installer.split(f'\n:{label}\n', 1)[1].split(f'\n:{next_label}\n', 1)[0]
+
+
+def test_every_install_launch_gets_its_own_hidden_log():
+    """One shared launcher-hidden.log let a leftover instance lock out the next.
+
+    cmd opens a >> target without write sharing. While an earlier hidden
+    instance, or the supervisor it started, held the file, the next one failed
+    on its own redirect before running a line, and the window could only say
+    PINE never came up.
+    """
+    installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+
+    assert 'set "PINE_HIDDEN_CMD=%LOG_DIR%\\hidden-launch-%PINE_RUN_ID%.cmd"' in installer
+    assert 'set "PINE_HIDDEN_LOG=%LOG_DIR%\\launcher-hidden-%PINE_RUN_ID%.log"' in installer
+    assert 'echo call "%PINE_HIDDEN_TARGET%" ^>^>"%PINE_HIDDEN_LOG%" 2^>^&1' in installer
+    code = '\n'.join(
+        line for line in installer.splitlines()
+        if not line.strip().upper().startswith('REM ')
+    )
+    assert 'launcher-hidden.log' not in code
+
+
+def test_a_failed_install_launch_shows_only_its_own_logs():
+    """The newest backend log on disk can be an earlier run's, with another error."""
+    installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    failure = _installer_label_body(installer, 'show_backend_failure', 'open_browser')
+
+    assert '$since = $h.CreationTime' in failure
+    assert '$_.CreationTime -ge $since' in failure
+    # The hidden log exists before the hidden instance runs, so it can anchor.
+    assert installer.index('type nul > "%PINE_HIDDEN_LOG%"') < installer.index('Start-Process -WindowStyle Hidden')
+
+
+def test_the_hidden_install_instance_stops_waiting_once_the_supervisor_is_gone():
+    """Otherwise it polled a dead backend for six minutes, holding its files."""
+    installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    wait = _installer_label_body(installer, 'wait_for_ready_and_open', 'reset_venv')
+
+    assert 'curl -sf --max-time 2 http://127.0.0.1:!PINE_SUP_PORT!/status >nul 2>nul' in wait
+    assert 'if !WAIT_READY_COUNT! LSS 10 goto waitreadytick' in wait
+
+
+def test_the_installer_waits_out_a_reset_that_is_still_deleting():
+    """A launch inside the post-reset cleanup ran on a venv being deleted under it."""
+    installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    settings_source = (REPO_ROOT / 'backend' / 'app' / 'api' / 'settings.py').read_text(encoding='utf-8')
+    helper = (REPO_ROOT / 'backend' / 'tools' / 'reset_post_cleanup.cmd').read_text(encoding='utf-8')
+
+    # The installer watches the same two files the in-app reset hands off...
+    assert "'reset_cleanup_targets.txt'" in settings_source
+    assert "'reset_post_cleanup.cmd'" in settings_source
+    assert 'set "PINE_RESET_TARGETS=%BACKEND_DIR%tools\\reset_cleanup_targets.txt"' in installer
+    assert 'set "PINE_RESET_HELPER=%BACKEND_DIR%tools\\reset_post_cleanup.cmd"' in installer
+    # ...whose helper signals the end by deleting its list, and rereads it on
+    # every pass, which is what lets the installer stop a stuck one.
+    assert 'del /f /q "%LIST%"' in helper
+    assert helper.index(':retry') < helper.index('in ("%LIST%")')
+    # And it waits before deciding whether the venv is installed.
+    assert installer.index('call :wait_for_reset_cleanup') < installer.index('set "NEED_SETUP=0"')
+
+
+def test_every_label_the_installer_calls_exists():
+    """A call to a missing label kills the window without a word."""
+    installer = (REPO_ROOT / 'Setup_WIN.bat').read_text(encoding='utf-8')
+    labels = set(re.findall(r'^\s*:([A-Za-z_]\w*)\s*$', installer, re.M))
+    referenced = set(re.findall(r'\bcall\s+:([A-Za-z_]\w*)', installer))
+    referenced |= set(re.findall(r'\bgoto\s+:?([A-Za-z_]\w*)', installer))
+
+    assert referenced - {'eof'} - labels == set()
+
+
+def test_reset_also_stops_the_hidden_install_launcher():
+    """It is cmd.exe, not python, and it keeps its log in logs\\ open."""
+    reset = (REPO_ROOT / 'backend' / 'reset_win.bat').read_text(encoding='utf-8')
+
+    assert "Name='cmd.exe'" in reset
+    assert "$_.CommandLine -match ($dir + 'logs\\\\hidden-launch')" in reset
 
 
 def test_root_layout_is_finalized_only_from_the_launch_handoff():
