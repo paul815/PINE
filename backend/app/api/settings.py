@@ -251,8 +251,13 @@ def _schedule_windows_post_reset_cleanup(root_dir, failed_paths):
     try:
         with open(targets_path, 'w', encoding='utf-8') as fh:
             fh.write('\n'.join(cleanup_targets) + '\n')
+        # One string, not an argv list. From a list, "cmd /c" receives two quoted
+        # paths, and cmd then strips the first and last quote of the line and
+        # cuts the command at the first space: under an install path such as
+        # "F:\AI Stuff\..." the helper never started and the venv was left
+        # half-deleted. With /s cmd strips exactly the outer pair added here.
         subprocess.Popen(
-            ['cmd.exe', '/c', script_path, targets_path],
+            f'cmd.exe /d /s /c ""{script_path}" "{targets_path}""',
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
             | getattr(subprocess, 'DETACHED_PROCESS', 0),
             close_fds=True,
