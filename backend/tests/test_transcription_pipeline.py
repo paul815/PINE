@@ -415,7 +415,7 @@ class TestDecodeWindows:
         engine._model_path = 'fake-model'
         return engine
 
-    def _run(self, monkeypatch, replies, windows, window_sec=1.0):
+    def _run(self, monkeypatch, replies, windows, window_sec=1.0, rates=None):
         import sys
 
         import numpy as np
@@ -424,7 +424,7 @@ class TestDecodeWindows:
         monkeypatch.setitem(sys.modules, 'mlx_whisper', fake)
         monkeypatch.setattr(mlx_engine, 'MLX_PROMPT_WINDOW_SEC', window_sec)
         samples = np.zeros(int(windows * window_sec * 16000), dtype=np.float32)
-        segments, lang = self._engine()._decode_windows(samples)
+        segments, lang = self._engine()._decode_windows(samples, rates=rates)
         return fake, segments, lang
 
     def test_each_window_is_seeded_with_the_last_one(self, monkeypatch):
@@ -496,6 +496,95 @@ class TestDecodeWindows:
                 == 'И тогда он говорит. Что всё это было. Не так.')
         assert 'не так как теперь рассказывают' not in ' '.join(
             seg['text'] for seg in segments)
+
+    _ORDINARY = ' Одно. Второе. Третье. Четвёртое.'
+    _FLAT = ' и тогда он говорит что всё это было совсем не так как теперь рассказывают'
+    _MENDED = ' И тогда он говорит. Что всё это было. Не так.'
+
+    @staticmethod
+    def _reply(text=None):
+        return {'segments': [_said(text)] if text else [], 'language': 'ru'}
+
+    def test_a_window_still_flat_without_its_prompt_is_read_piece_by_piece(
+            self, monkeypatch):
+        """mlx-whisper carries each 30s piece of a window into the next, so one
+        piece that loses the punctuation hands the loss on inside the window
+        whatever prompt the window was given."""
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             r(self._FLAT), r(self._FLAT), r(self._MENDED), r(self._ORDINARY)],
+            windows=5)
+
+        assert len(fake.calls) == 7, 'expected the fourth window read three times'
+        assert fake.calls[4].get('initial_prompt') is None
+        assert fake.calls[4]['condition_on_previous_text'] is True
+        assert fake.calls[5].get('initial_prompt') is None
+        assert fake.calls[5]['condition_on_previous_text'] is False
+        assert fake.calls[6]['initial_prompt'] == self._MENDED.strip()
+        assert self._FLAT.strip() not in [seg['text'].strip() for seg in segments]
+
+    def test_a_window_that_does_not_recover_hands_on_the_prompt_it_got(
+            self, monkeypatch):
+        """Dropping the prompt there sent the next window in with none — and
+        with no prompt the check never ran again, so the rest of an interview
+        came back unpunctuated and unread."""
+        r = self._reply
+        best = ' и тогда он говорит что всё это было совсем не так. как теперь'
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             r(self._FLAT), r(self._FLAT), r(best), r(self._ORDINARY)],
+            windows=5)
+
+        assert len(fake.calls) == 7
+        assert fake.calls[6]['initial_prompt'] == self._ORDINARY.strip()
+        # The reading that ended the most sentences is the one kept.
+        assert [seg['text'].strip() for seg in segments][3] == best.strip()
+
+    def test_a_window_with_no_prompt_is_still_judged(self, monkeypatch):
+        """After a runaway there is no prompt to take away, so the window is read
+        again the one way that differs: piece by piece."""
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             {'segments': [_said('Звук колокола.')] * 5, 'language': 'ru'},
+             r(self._ORDINARY),
+             r(self._FLAT), r(self._MENDED)],
+            windows=5)
+
+        assert len(fake.calls) == 7
+        assert fake.calls[5].get('initial_prompt') is None
+        assert fake.calls[6].get('initial_prompt') is None
+        assert fake.calls[6]['condition_on_previous_text'] is False
+        assert [seg['text'].strip() for seg in segments][4] == self._MENDED.strip()
+
+    def test_an_empty_reading_does_not_replace_a_flat_one(self, monkeypatch):
+        """Words without punctuation are worth more than no words."""
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             r(self._FLAT), r(), r()],
+            windows=4)
+
+        assert len(fake.calls) == 6
+        assert [seg['text'].strip() for seg in segments][3] == self._FLAT.strip()
+
+    def test_a_take_is_judged_against_the_rates_it_is_handed(self, monkeypatch):
+        """Chunks share the recording's rates. Each chunk starting its own left
+        the first three windows of every chunk unjudged."""
+        rates = [125.0, 125.0, 125.0]
+        fake, segments, _ = self._run(
+            monkeypatch, [self._reply(self._FLAT), self._reply(self._MENDED)],
+            windows=1, rates=rates)
+
+        assert len(fake.calls) == 2, 'the first window of the take was not judged'
+        assert fake.calls[1]['condition_on_previous_text'] is False
+        assert segments[0]['text'].strip() == self._MENDED.strip()
+        assert len(rates) == 4, 'the take adds its windows for the next one'
 
 
 class TestMlxLanguageProbeWindow:
@@ -682,19 +771,34 @@ class TestAssignSpeakersSimple:
         assert result[0]['speaker'] == 'SPEAKER_00'
         assert result[1]['speaker'] == 'SPEAKER_01'
 
-    def test_no_overlap_gives_empty_speaker(self):
+    def test_a_segment_no_turn_covers_goes_to_the_nearest_speaker(self):
+        """Left blank, it exported as a bare "Speaker" between two named people."""
         from ml_worker.diarize import assign_speakers_simple
         diarization = FakeDiarization([
             (0.0, 2.0, 'SPEAKER_00'),
+            (20.0, 30.0, 'SPEAKER_01'),
         ])
-        # Segment is outside diarization range
         segments = [
-            {'start': 10.0, 'end': 15.0, 'text': 'Silence zone',
+            {'start': 10.0, 'end': 15.0, 'text': 'Between turns',
              'words': [{'start': 10.0, 'end': 15.0}]},
         ]
         result = assign_speakers_simple(diarization, segments)
-        # No overlap → speaker key either absent or empty
-        assert result[0].get('speaker', '') == ''
+        assert result[0]['speaker'] == 'SPEAKER_01', '5s away beats 8s away'
+
+    def test_a_one_word_answer_goes_to_the_short_turn_it_was(self):
+        """"Нет." is about as long as the turns the noise filter drops."""
+        from ml_worker.diarize import assign_speakers_simple
+        diarization = FakeDiarization([
+            (0.0, 5.0, 'MOD'),
+            (5.1, 5.35, 'RESP'),
+            (7.0, 12.0, 'MOD'),
+        ])
+        segments = [
+            {'start': 5.1, 'end': 5.4, 'text': 'Нет.',
+             'words': [{'start': 5.1, 'end': 5.4}]},
+        ]
+        result = assign_speakers_simple(diarization, segments)
+        assert result[0]['speaker'] == 'RESP'
 
     def test_majority_vote_across_words(self):
         from ml_worker.diarize import assign_speakers_simple

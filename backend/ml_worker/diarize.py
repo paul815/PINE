@@ -333,6 +333,9 @@ def assign_speakers_simple(diarization, segments):
                 log.debug('Speaker re-cluster: merged %d minor speakers',
                           len(remap))
 
+    # Every turn, short ones included, for the words the merged turns miss.
+    all_turns = list(turns)
+
     # Merge same-speaker turns with small gaps and filter short noise
     merged = []
     for start, end, spk in turns:
@@ -361,6 +364,26 @@ def assign_speakers_simple(diarization, segments):
                 best_speaker = speaker
         return best_speaker
 
+    def _nearest_speaker(start, end):
+        """Whoever spoke closest to a range no merged turn overlaps.
+
+        The noise filter above drops turns under 0.3s, and a one-word answer
+        is about that long: "Так." and "Нет." came back overlapping no turn at
+        all, and the export printed them under a bare "Speaker" between two
+        people it had named. The short turns are searched too, since one of
+        them is often the answer itself. Past them, the turn nearest in time
+        is still a better guess than nobody.
+        """
+        best_speaker = ''
+        best_score = None
+        for t_start, t_end, speaker in all_turns:
+            # The overlap, or the gap between them as a negative number.
+            score = min(end, t_end) - max(start, t_start)
+            if best_score is None or score > best_score:
+                best_score = score
+                best_speaker = speaker
+        return best_speaker
+
     for seg in segments:
         if 'words' in seg and seg['words']:
             # Assign speaker per word, then duration-weighted vote for segment
@@ -376,6 +399,9 @@ def assign_speakers_simple(diarization, segments):
                                      key=speaker_durations.get)
         else:
             seg['speaker'] = _find_speaker(
+                seg.get('start', 0), seg.get('end', 0))
+        if not seg.get('speaker'):
+            seg['speaker'] = _nearest_speaker(
                 seg.get('start', 0), seg.get('end', 0))
 
     return segments

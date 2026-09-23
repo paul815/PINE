@@ -562,7 +562,40 @@ class MlxWhisperEngine(EngineAdapter):
             tx_kw['language'] = language
         return tx_kw
 
-    def _decode_windows(self, samples, language=None, check_cancel=None):
+    def _reread_collapsed(self, path, segments, rates, language, prompt):
+        """A punctuated reading of a window that stopped punctuating, if any.
+
+        Returns ``(segments, recovered)``. Without its prompt first, when it had
+        one. Then with nothing carried between the 30s pieces inside the window
+        either: mlx-whisper conditions each piece on the one before, so a piece
+        that loses the punctuation hands the loss to every piece after it, and
+        the first retry — a prompt taken away, that memory kept — can come back
+        the same. A reading that loops or holds no text is never taken. When
+        none recovers, the one that ended the most sentences is kept.
+        """
+        import mlx_whisper
+
+        readings = [('', True)] if prompt else []
+        readings.append(('', False))
+
+        best = segments
+        best_rate = sentence_rate(segments) or 0.0
+        for reprompt, conditioned in readings:
+            result = mlx_whisper.transcribe(
+                path, **self._decode_kwargs(language, prompt=reprompt or None,
+                                            conditioned=conditioned))
+            candidate = result.get('segments', []) or []
+            rate = sentence_rate(candidate)
+            if rate is None or is_runaway(candidate, reprompt):
+                continue
+            if not is_collapsed(candidate, rates):
+                return candidate, True
+            if rate > best_rate:
+                best, best_rate = candidate, rate
+        return best, False
+
+    def _decode_windows(self, samples, language=None, check_cancel=None,
+                        rates=None):
         """Decode one gated take window by window. Returns ``(segments, language)``.
 
         The segments come back on the take's own clock. Each window is seeded
@@ -571,9 +604,15 @@ class MlxWhisperEngine(EngineAdapter):
         ends where its last finished segment ended rather than at the length it
         was cut to, so no seam falls in the middle of a word.
 
-        A window that comes back looping, or writing far less punctuation than
-        the rest of the recording, is decoded again with nothing carried in, and
-        its text is not passed on.
+        A window that comes back looping is decoded again with nothing carried
+        in, and its text is not passed on. One writing far less punctuation than
+        the rest of the recording is read again (``_reread_collapsed``); if no
+        reading recovers, the prompt it was given goes on to the next window in
+        place of its text.
+
+        ``rates`` holds the recording's sentence rate per window. A caller that
+        cuts the recording into several takes passes one list to all of them,
+        so each take is judged against the recording from its first window.
         """
         import mlx_whisper
 
@@ -584,7 +623,7 @@ class MlxWhisperEngine(EngineAdapter):
                                 f'pine_window_{os.getpid()}.wav')
         detected_lang = language or 'en'
         all_segments = []
-        rates = []
+        rates = [] if rates is None else rates
         prompt = ''
         start = 0.0
         index = 0
@@ -618,18 +657,23 @@ class MlxWhisperEngine(EngineAdapter):
                     # Whatever set the loop off is in the text being carried, so
                     # the next window starts from the audio and nothing else.
                     carry = False
-                elif prompt and is_collapsed(segments, rates):
+                    prompt = ''
+                elif is_collapsed(segments, rates):
+                    # Checked whether a prompt was carried in or not. Only
+                    # checking after a prompt let one unrecovered window end
+                    # the checks for good: its prompt was dropped, the next
+                    # window came in with none, and every window after that
+                    # went unread however little it punctuated.
                     log.warning('Window %d (%.0f-%.0fs) came back with %.1f '
                                 'sentence endings per 1000 characters against '
-                                '%.1f for the recording — decoding it again with '
-                                'no prompt', index, start, end,
+                                '%.1f for the recording — reading it again',
+                                index, start, end,
                                 sentence_rate(segments) or 0.0, median(rates))
-                    result = mlx_whisper.transcribe(
-                        tmp_path, **self._decode_kwargs(language))
-                    segments = result.get('segments', []) or []
-                    # Only worth carrying if the second reading recovered; if it
-                    # did not, the fault is in the audio and not in the prompt.
-                    carry = not is_collapsed(segments, rates)
+                    segments, carry = self._reread_collapsed(
+                        tmp_path, segments, rates, language, prompt)
+                    if not carry:
+                        log.warning('Window %d did not recover — handing on '
+                                    'the prompt it was given', index)
 
                 if index == 1:
                     detected_lang = result.get('language', detected_lang)
@@ -643,11 +687,12 @@ class MlxWhisperEngine(EngineAdapter):
                 rate = sentence_rate(segments)
                 if rate is not None:
                     rates.append(rate)
+                # A window whose text is not fit to carry leaves the prompt as it
+                # was: the last finished sentences read well, rather than none,
+                # which would leave the next window to settle its style alone.
                 if carry:
                     prompt = prompt_tail(' '.join(
                         str(seg.get('text') or '') for seg in segments)) or prompt
-                else:
-                    prompt = ''
 
                 all_segments.extend(shift_segments(segments, start))
                 start = resume
@@ -717,6 +762,11 @@ class MlxWhisperEngine(EngineAdapter):
         all_segments = []
         detected_lang = language or None
         chunked_start = time.monotonic()
+        # The punctuation every window is judged against belongs to the
+        # recording, not the chunk. Started afresh per chunk, it left the first
+        # three windows of each chunk unjudged, and a short last chunk unjudged
+        # from start to end.
+        rates = []
 
         for i, offset in enumerate(chunk_starts):
             duration = min(CHUNK_SIZE_SEC, total_duration - offset)
@@ -751,7 +801,7 @@ class MlxWhisperEngine(EngineAdapter):
             # the cheaper mistake.
             segments, lang = self._decode_windows(
                 gated_audio, language=language or detected_lang,
-                check_cancel=ctx.check_cancel)
+                check_cancel=ctx.check_cancel, rates=rates)
             if i == 0:
                 detected_lang = lang
 
