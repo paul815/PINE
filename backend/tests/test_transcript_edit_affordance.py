@@ -1,10 +1,9 @@
 """How a paragraph is opened for editing.
 
-A double-click on the text opens it. That replaced a pencil button beside the
-speaker name, and the switch has two halves that have to stay together: the
-handler that opens the editor, and the suppression of everything else a
-double-click would otherwise set off — the browser selects a word, which used
-to raise the tag popup, and the first of the two clicks used to seek the audio.
+Only through edit mode: the Edit button, or Ctrl tapped twice, turns it on, and
+then a click opens the paragraph under it. A double-click on the text used to
+open it too, and was removed -- a double-click is how a word is picked to code,
+so it kept opening an editor nobody asked for.
 
 These are structural checks on the template. The behaviour itself is a browser
 interaction and is verified by opening the page.
@@ -20,49 +19,42 @@ def _source():
     return TEMPLATE.read_text(encoding='utf-8')
 
 
-def test_the_transcript_panel_listens_for_a_double_click():
+def test_a_double_click_does_not_open_the_editor():
     source = _source()
 
     panel = re.search(r'<div class="transcript-panel"[^>]*>', source)
 
     assert panel, 'the transcript panel is gone'
-    assert 'ondblclick="onTranscriptDblClick(event)"' in panel.group(0)
-    # The click count is read on the way down; by pointerup it is no longer there.
-    assert 'onpointerdown="onTranscriptPointerDown(event)"' in panel.group(0)
+    assert 'ondblclick' not in panel.group(0)
+    assert 'onTranscriptDblClick' not in source
+    # Its machinery goes with it: nothing hides the tag popup from a word
+    # picked by double-click, and nothing takes the first click's seek back.
+    assert 'openingEditorByDoubleClick' not in source
+    assert 'undoAccidentalSeek' not in source
+    assert 'playbackBeforeEdit' not in source
 
 
-def test_the_double_click_opens_the_editor_where_it_was_aimed():
+def test_only_edit_mode_opens_a_paragraph():
     source = _source()
 
-    assert 'function onTranscriptDblClick(' in source
-    assert 'startBlockEdit(textEl, caret)' in source, \
-        'the editor must open at the clicked character, not at the end'
-    assert 'function caretOffsetFromPoint(' in source
+    callers = re.findall(r'startBlockEdit\(([^)]*)\)', source)
+
+    # The definition and the edit-mode click, nothing else.
+    assert callers == ['origin, caretOffset = null', 'textEl, aim.caret']
 
 
-def test_a_double_click_does_not_tag_or_seek():
-    """Both were what a double-click used to do, and both are wrong now."""
-    source = _source()
+def test_the_speaker_name_says_what_a_click_does():
+    """It opens on one click; the tooltip used to promise a double-click."""
+    speaker = re.search(r'<span class="utt-spk"[^>]*>', _source())
 
-    # The word the browser selected must not raise the tag popup...
-    assert 'if (openingEditorByDoubleClick)' in source
-    # ...the second click must not seek again...
-    assert re.search(r'if \(e\.detail >= 2\) return;', source)
-    # ...and the first one, which already did, is taken back.
-    assert 'function undoAccidentalSeek(' in source
-    assert 'undoAccidentalSeek();' in source
+    assert 'onclick="openSpeakerEdit(this)"' in speaker.group(0)
+    assert 'title="Click to rename or change color"' in speaker.group(0)
 
 
-def test_the_undone_seek_restores_position_and_pause():
-    """seekTo() also starts playing, so putting the time back is not enough."""
-    source = _source()
+def test_the_second_click_of_a_pair_does_not_seek_again():
+    click = _function_body(_source(), 'onTranscriptClick')
 
-    snapshot = re.search(r'playbackBeforeEdit = mediaEl\s*\?\s*\{([^}]*)\}', source)
-
-    assert snapshot, 'nothing remembers what playback was doing before the seek'
-    for field in ('time:', 'paused:', 'at:'):
-        assert field in snapshot.group(1)
-    assert 'if (before.paused && !mediaEl.paused) togglePlay();' in source
+    assert re.search(r'if \(e\.detail >= 2\) return;', click)
 
 
 def test_the_pencil_is_gone_from_every_paragraph():
@@ -117,6 +109,9 @@ def test_edit_mode_shows_its_state():
 
     assert "btn.classList.toggle('on', editMode)" in source
     assert "classList.toggle('editing', editMode)" in source
+    # The button names what it edits -- the text, not the codes or the speakers.
+    assert '<span id="editModeLabel">Edit text</span>' in source
+    assert "editMode ? 'Editing' : 'Edit text'" in source
     assert '.transcript-panel.editing' in source
     # The cursor stops offering to navigate before anything is clicked.
     assert re.search(r'\.transcript-panel\.editing[^{]*\.word \{[^}]*cursor: text', source)

@@ -12,7 +12,6 @@ moves only when that paragraph has left the screen.
 """
 
 import json
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -73,14 +72,6 @@ def test_a_seek_settles_the_playing_paragraph_itself():
     seek = _function_body(_source(), 'seekTo')
 
     assert 'lastPlayingIdx = idx;' in seek
-
-
-def test_undoing_a_seek_puts_the_paragraph_back_too():
-    source = _source()
-
-    snapshot = re.search(r'playbackBeforeEdit = mediaEl\s*\?\s*\{([^}]*)\}', source)
-    assert 'utt: lastPlayingIdx' in snapshot.group(1)
-    assert 'lastPlayingIdx = before.utt;' in _function_body(source, 'undoAccidentalSeek')
 
 
 # ── the rule itself, run under node ──────────────────────────────────────────

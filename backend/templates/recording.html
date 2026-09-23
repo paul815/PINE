@@ -693,7 +693,7 @@ mark.pending-selection-highlight {
         <button type="button" class="export-btn" id="editModeBtn" onclick="toggleEditMode()" aria-pressed="false"
                 title="Correct the transcript: click any paragraph to edit it (Ctrl twice)">
           <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M8.2 1.3l2.5 2.5-6 6-3 .5.5-3 6-6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-          <span id="editModeLabel">Edit</span>
+          <span id="editModeLabel">Edit text</span>
         </button>
         <button type="button" class="export-btn edit-subaction" id="findReplaceBtn" onclick="openFindReplace()"
                 title="Find &amp; replace text across this transcript — fix recurring transcription errors">
@@ -753,7 +753,7 @@ mark.pending-selection-highlight {
           </div>
         </div>
         <div class="resize-handle" id="resizeHandle"><div class="resize-grip"></div></div>
-        <div class="transcript-panel" id="txPanel" onpointerdown="onTranscriptPointerDown(event)" onpointerup="onTextSelect(event)" onmouseup="onTextSelect(event)" onclick="onTranscriptClick(event)" ondblclick="onTranscriptDblClick(event)"></div>
+        <div class="transcript-panel" id="txPanel" onpointerdown="onTranscriptPointerDown(event)" onpointerup="onTextSelect(event)" onmouseup="onTextSelect(event)" onclick="onTranscriptClick(event)"></div>
       </div>
       <div class="right">
         <div class="rtab-bar">
@@ -1199,7 +1199,7 @@ function renderTranscript(segments, tagSpans, comments) {
     return `<div class="utt ${cls}" data-idx="${firstIdx}" data-indices="${indices.join(',')}" data-start="${m.start}">
       <span class="utt-ts">${ts}</span>
       <div class="utt-inner">
-        <span class="utt-spk" onclick="openSpeakerEdit(this)" title="Double-click to rename">${esc(m.speaker || 'Speaker')}</span>
+        <span class="utt-spk" onclick="openSpeakerEdit(this)" title="Click to rename or change color">${esc(m.speaker || 'Speaker')}</span>
         <div class="utt-text">${textHtml || '\u00A0'}</div>
       </div>
     </div>`;
@@ -1523,12 +1523,6 @@ function copyPendingSelectionOnCopyEvent(e) {
   return true;
 }
 
-// A double-click opens the paragraph for editing, and the browser selects a
-// word on the way there. Without this the tag popup would open over the caret
-// we are about to place, on every edit. The click count is only trustworthy on
-// the way down -- by pointerup the browser reports 0 for it.
-let openingEditorByDoubleClick = false;
-
 /**
  * Where a click in edit mode was aimed, read on the way down.
  *
@@ -1542,7 +1536,6 @@ let openingEditorByDoubleClick = false;
 let aimedAtOnPointerDown = null;
 
 function onTranscriptPointerDown(e) {
-  if (e.detail >= 2) openingEditorByDoubleClick = true;
   aimedAtOnPointerDown = null;
   if (!editMode) return;
   const textEl = e.target.closest('.utt-text');
@@ -1562,18 +1555,18 @@ function uttByIndices(indices) {
 }
 
 /**
- * Edit mode: what a plain click on the transcript means.
+ * Edit mode: what a plain click on the transcript means, and the only way into
+ * the text. It is switched by the Edit button or by tapping Ctrl twice.
  *
  * Off, a click is navigation -- it seeks the recording to that word and starts
- * playing -- and a paragraph is opened for editing by double-clicking it. That
- * is right for fixing one word in passing, and wrong for a pass over the whole
- * transcript, where every click meant to place a caret sends the audio
- * somewhere else.
+ * playing -- and a double-click selects a word to code, as anywhere else. A
+ * double-click used to open the paragraph as well, and every word picked for a
+ * code opened an editor on the way.
  *
  * On, a click opens the paragraph under it instead, caret where it landed, and
- * the recording stays where it was. Nothing else changes: one paragraph is open
- * at a time, exactly as before, so the tag highlights in every other paragraph
- * stay on screen and the block save keeps its one writer.
+ * the recording stays where it was. One paragraph is open at a time, so the tag
+ * highlights in every other paragraph stay on screen and the block save keeps
+ * its one writer.
  */
 let editMode = false;
 
@@ -1583,7 +1576,7 @@ function setEditMode(on) {
   const btn = document.getElementById('editModeBtn');
   btn.classList.toggle('on', editMode);
   btn.setAttribute('aria-pressed', editMode ? 'true' : 'false');
-  document.getElementById('editModeLabel').textContent = editMode ? 'Editing' : 'Edit';
+  document.getElementById('editModeLabel').textContent = editMode ? 'Editing' : 'Edit text';
   document.getElementById('editTools').classList.toggle('open', editMode);
   document.getElementById('txPanel').classList.toggle('editing', editMode);
   if (editMode) {
@@ -1593,52 +1586,6 @@ function setEditMode(on) {
 }
 
 function toggleEditMode() { setEditMode(!editMode); }
-
-// What playback was doing before a click on a word moved it, in case that click
-// turns out to be the first half of a double-click on its way to the editor.
-let playbackBeforeEdit = null;
-
-// Long enough to cover a slow double-click -- Windows lets the user set the
-// interval as high as 900ms -- and short enough that a deliberate seek made a
-// moment earlier is never taken back.
-const ACCIDENTAL_SEEK_WINDOW_MS = 900;
-
-/**
- * Put playback back where the first click of the pair moved it from.
- *
- * A single click on a word does two things: it seeks *and* it starts playing.
- * That is right when the click was navigation, and wrong when it was the
- * opening half of a double-click, where the user is reaching for the text and
- * the recording should stay where they left it.
- */
-function undoAccidentalSeek() {
-  const before = playbackBeforeEdit;
-  playbackBeforeEdit = null;
-  if (!before || !mediaEl) return;
-  if (Date.now() - before.at > ACCIDENTAL_SEEK_WINDOW_MS) return;
-  mediaEl.currentTime = before.time;
-  // The paragraph goes back with the time, or the next time update would see
-  // a change and scroll the panel out from under the editor being opened.
-  lastPlayingIdx = before.utt;
-  markPlaying(before.utt);
-  if (before.paused && !mediaEl.paused) togglePlay();
-}
-
-/** Double-click the text to edit the paragraph — the pencil this replaced. */
-function onTranscriptDblClick(e) {
-  if (editingBlock) return;            // inside an open editor, a word select is a word select
-  const textEl = e.target.closest('.utt-text');
-  if (!textEl || !textEl.closest('.utt')) return;
-  e.preventDefault();
-  // The word the browser just selected is not what the user asked for: they
-  // asked for a caret where they clicked.
-  const caret = caretOffsetFromPoint(textEl, e.clientX, e.clientY);
-  try { window.getSelection().removeAllRanges(); } catch (_) {}
-  document.getElementById('selPopup').classList.remove('show');
-  removeSelectionHighlight();
-  startBlockEdit(textEl, caret);
-  undoAccidentalSeek();
-}
 
 /**
  * How many characters into ``textEl`` the point (x, y) falls.
@@ -1669,7 +1616,6 @@ function onTextSelect(e) {
   // transcript while edit mode is on: a popup offering codes is noise to
   // someone who is there to fix words.
   if (editingBlock || editMode) return;
-  if (openingEditorByDoubleClick) { openingEditorByDoubleClick = false; return; }
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.type === 'mouseup' && typeof PointerEvent !== 'undefined') return;
   if (e.target.closest('.utt-spk')) return;
@@ -2503,7 +2449,7 @@ function blockIndicesOf(utt) {
  * Open a paragraph for editing.
  *
  * ``origin`` is anything inside the paragraph — the text itself, when a
- * double-click opened it. ``caretOffset`` is where the caret goes, in
+ * click in edit mode opened it. ``caretOffset`` is where the caret goes, in
  * characters from the start of the block; without one it lands at the end,
  * which is what a keyboard or programmatic open wants.
  */
@@ -2837,19 +2783,13 @@ function onTranscriptClick(e) {
     if (textEl) startBlockEdit(textEl, aim.caret);
     return;   // the recording stays where it is for as long as the mode is on
   }
-  // The first half of a double-click on its way to the editor: the user is
-  // reaching for the text, not asking the audio to jump.
+  // The second click of a double-click: the first one already moved the audio.
   if (e.detail >= 2) return;
   if (window.getSelection().toString().length > 0) return;
   const wordSpan = e.target.closest('.word');
   if (!wordSpan || wordSpan.dataset.start == null || wordSpan.dataset.start === '') return;
   const secs = parseFloat(wordSpan.dataset.start);
   if (Number.isNaN(secs)) return;
-  // Taken before the seek, because the seek is what has to be undone if the
-  // second click of a double-click is already on its way.
-  playbackBeforeEdit = mediaEl
-    ? { time: mediaEl.currentTime, paused: mediaEl.paused, at: Date.now(), utt: lastPlayingIdx }
-    : null;
   // The word is on screen -- it was just clicked -- so the text stays where
   // the user is reading it. Moving it would re-centre the paragraph and, in a
   // long one, carry the clicked word off the edge.
