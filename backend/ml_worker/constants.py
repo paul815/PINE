@@ -187,9 +187,13 @@ MLX_VAD_PAD_SEC = 0.5
 # model untouched. Not a tuning knob — a dead-man's switch for the case where the
 # thresholds misread the take, where the old behaviour is the safe one.
 MLX_VAD_MIN_KEEP_FRACTION = 0.5
-# And below this much to actually remove, splicing is not worth its own risk:
-# the recording goes through as it is.
-MLX_VAD_MIN_CUT_SEC = 5.0
+# The shortest cut worth making, applied to each cut rather than to their sum:
+# a gap under this is closed and the audio inside it kept. What separates the two
+# cases is not delicate. The ringback this gate exists for is one block of ~45s;
+# the pauses in an 88-minute interview that it wrongly shaved were 18 cuts of 1-2s
+# each, 29s in total. Anything between them divides the two, so the value is set
+# well clear of both — and a cut left in costs only the seconds spent decoding it.
+MLX_VAD_MIN_CUT_SEC = 10.0
 # Ringback is loud, so an energy gate hands it to the model as speech — which is
 # how it got transcribed in the first place. Spectral flatness is what separates
 # them: the geometric mean of the power spectrum over its arithmetic mean, near
@@ -234,6 +238,20 @@ MLX_PROMPT_CHARS = 200
 # transcribing. Three is still reachable by someone saying "да. да. да."; the
 # runaway this catches ran for minutes.
 MLX_PROMPT_REPEAT_LIMIT = 4
+# A window ends where its last finished segment ended, not at the length it was
+# cut to, so the sentence that was still going is read again with the audio that
+# finishes it. Below this much progress the tail is kept instead: re-reading a
+# window almost from its start buys nothing and costs the whole window again.
+# One of Whisper's own 30s windows is the natural floor.
+MLX_WINDOW_MIN_PROGRESS_SEC = 30.0
+# A window writing less than this share of the recording's own punctuation has
+# copied a broken prompt rather than the audio, and is read again without one.
+# Half is not a close call: measured over one 88-minute interview, windows that
+# read correctly never fell below 70% of the median and the collapsed ones sat
+# near 10%.
+MLX_SENTENCE_RATE_FRACTION = 0.5
+# And nothing is judged until there are this many windows to take a median from.
+MLX_SENTENCE_RATE_WINDOWS = 3
 
 # ── Dropping what Whisper wrote over non-speech (see pipeline.py) ──
 #
