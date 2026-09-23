@@ -18,8 +18,10 @@ from ...services.annotations import (
     get_annotations,
     get_project_tags,
     get_project_themes,
+    mark_anchor_drift,
     save_annotations,
 )
+from ...services.speaker_blocks import with_speaker_blocks
 from ...services.file_utils import (
     atomic_read_json,
     atomic_write_text,
@@ -356,12 +358,16 @@ def get_recording(project_id, recording_id):
     if recording.transcription_status == 'transcribed' and recording.transcript_path:
         transcript_file = os.path.join(project_dir, recording.transcript_path)
         if os.path.isfile(transcript_file):
-            data['transcript'] = atomic_read_json(transcript_file)
+            data['transcript'] = with_speaker_blocks(atomic_read_json(transcript_file))
 
     data['tags'] = get_project_tags(project_dir)
     data['themes'] = get_project_themes(project_dir)
     ann = get_annotations(project_dir, annotation_recording_ref(recording))
-    data['annotations'] = ann
+    # Every anchor is checked against the words it was taken from on the way
+    # out: a highlight whose offsets no longer cover its quote is reported
+    # rather than drawn as though nothing had happened.
+    data['annotations'] = mark_anchor_drift(
+        ann, (data.get('transcript') or {}).get('segments') or [])
 
     # Include segment info if assigned
     if recording.segment_id:
@@ -449,7 +455,7 @@ def get_transcript(project_id, recording_id):
     if not os.path.isfile(transcript_file):
         return jsonify({'error': 'Transcript file missing'}), 404
 
-    return jsonify(atomic_read_json(transcript_file))
+    return jsonify(with_speaker_blocks(atomic_read_json(transcript_file)))
 
 @projects_bp.route('/<int:project_id>/recordings/<int:recording_id>/transcript/replace', methods=['POST'])
 def replace_transcript_text(project_id, recording_id):
@@ -495,7 +501,79 @@ def replace_transcript_text(project_id, recording_id):
         _touch_project(project)
         db.session.commit()
 
-    return jsonify({'count': count, 'transcript': transcript, 'annotations': annotations})
+    return jsonify({'count': count, 'transcript': with_speaker_blocks(transcript),
+                    'annotations': annotations})
+
+# Said when the transcript on disk no longer matches what the editor started
+# from -- another tab, or another window of the same one, got there first.
+_BLOCK_EDIT_STALE_MESSAGE = 'This transcript changed elsewhere. Reload the page to continue editing.'
+
+
+@projects_bp.route('/<int:project_id>/recordings/<int:recording_id>/transcript/block', methods=['POST'])
+def edit_transcript_block(project_id, recording_id):
+    """Rewrite one speaker block's text, the way it reads on the recording screen.
+
+    The caller sends the block's own ``indices`` (not a range -- an interrupted
+    speaker resumes into the block they opened), the text it had when editing
+    started, and the text it has now. Sending the original back is what lets a
+    second tab's edit be refused instead of silently overwritten.
+    """
+    recording = db.session.get(Recording, recording_id)
+    if not recording or recording.project_id != project_id:
+        return jsonify({'error': 'Recording not found'}), 404
+    if recording.transcription_status != 'transcribed' or not recording.transcript_path:
+        return jsonify({'error': 'Transcript not available'}), 404
+
+    body = request.get_json(force=True, silent=True) or {}
+    raw_indices = body.get('indices')
+    if not isinstance(raw_indices, list) or not raw_indices or \
+            not all(isinstance(i, int) and not isinstance(i, bool) for i in raw_indices):
+        return jsonify({'error': 'Nothing to save'}), 400
+    original_text = str(body.get('original_text') or '')
+    new_text = str(body.get('new_text') or '')
+
+    project = db.session.get(Project, project_id)
+    transcript_file = os.path.join(_projects_root(), project.folder_name, recording.transcript_path)
+    if not os.path.isfile(transcript_file):
+        return jsonify({'error': 'Transcript file missing'}), 404
+
+    transcript = atomic_read_json(transcript_file)
+    segments = transcript.get('segments') or []
+    if any(i < 0 or i >= len(segments) for i in raw_indices):
+        return jsonify({'error': 'stale', 'message': _BLOCK_EDIT_STALE_MESSAGE}), 409
+
+    project_dir = os.path.join(_projects_root(), project.folder_name)
+    ann_ref = annotation_recording_ref(recording)
+    annotations = get_annotations(project_dir, ann_ref)
+
+    from ...services.speaker_blocks import block_text
+    from ...services.transcript_edit import (
+        BLOCK_EDIT_EMPTY,
+        BLOCK_EDIT_OK,
+        BLOCK_EDIT_STALE,
+        apply_block_edit,
+    )
+    status = apply_block_edit(segments, annotations, raw_indices, original_text, new_text)
+
+    if status == BLOCK_EDIT_STALE:
+        return jsonify({'error': 'stale', 'message': _BLOCK_EDIT_STALE_MESSAGE}), 409
+    if status == BLOCK_EDIT_EMPTY:
+        return jsonify({'error': 'Nothing to save'}), 400
+
+    changed = status == BLOCK_EDIT_OK
+    if changed:
+        atomic_write_text(transcript_file, json.dumps(transcript, ensure_ascii=False, indent=2))
+        save_annotations(project_dir, ann_ref, annotations)
+        _touch_project(project)
+        db.session.commit()
+
+    return jsonify({
+        'changed': changed,
+        'transcript': with_speaker_blocks(transcript),
+        'annotations': annotations,
+        'indices': raw_indices,
+        'block_text': block_text(segments, raw_indices),
+    })
 
 @projects_bp.route('/<int:project_id>/recordings/<int:recording_id>', methods=['DELETE'])
 def delete_recording(project_id, recording_id):

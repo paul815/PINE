@@ -100,6 +100,8 @@ projects/<folder_name>/
 
 **Design decision:** Annotations live in JSON files, not SQLite, so they stay with the project folder and are easy to include in transfer packages.
 
+**Editing transcript text.** Two routes write to `_transcript.json`, both through `services/transcript_edit.py`: find & replace across the whole recording, and rewriting one speaker block from the recording screen. Because annotations are anchored by `segment_idx` + char offsets in a *separate* file, every write migrates those offsets through `migrate_annotation_offsets` — a highlight that drifts is the failure this design has to prevent. A block is named by its own segment `indices`, not a range: `services/speaker_blocks.py` gives an interrupted speaker back the block they opened, so those indices can have a hole in them. A block edit never drops or inserts a segment, so `segment_idx` keeps pointing at the same thing; one whose text the edit swallowed is left blank, and `block_text_and_offsets` — shared by the renderer, the export and the editor — steps over it.
+
 ---
 
 ## Key Components

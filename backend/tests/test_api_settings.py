@@ -1,7 +1,11 @@
 """API integration tests for settings endpoints."""
 
 import os
+import shutil
+import time
 from pathlib import Path
+
+import pytest
 
 from app.api.settings import ALLOWED_KEYS
 
@@ -209,6 +213,35 @@ class TestSettingsAPI:
         assert 'close to finish reset cleanup' in data.get('message', '').lower()
         assert called['scheduled'] == [os.path.join(root_dir, '.venv')]
         assert called['shutdown'] is True
+
+    @pytest.mark.skipif(os.name != 'nt', reason='the helper is a cmd.exe script')
+    def test_post_reset_cleanup_helper_runs_from_a_path_with_a_space(self, tmp_path):
+        """Launched from an argv list, cmd cut the helper's path at the space.
+
+        It never started, so under "F:\\AI Stuff\\..." every in-app reset left a
+        half-deleted venv behind. Runs the shipped helper for real.
+        """
+        from app.api import settings as settings_api
+
+        root = tmp_path / 'AI Stuff'
+        tools = root / 'backend' / 'tools'
+        tools.mkdir(parents=True)
+        shutil.copyfile(
+            Path(__file__).resolve().parents[1] / 'tools' / 'reset_post_cleanup.cmd',
+            tools / 'reset_post_cleanup.cmd',
+        )
+        leftover = root / 'backend' / '.venv'
+        (leftover / 'Lib').mkdir(parents=True)
+        (leftover / 'pyvenv.cfg').write_text('home = x\n', encoding='utf-8')
+        targets = tools / 'reset_cleanup_targets.txt'
+
+        assert settings_api._schedule_windows_post_reset_cleanup(str(root), [str(leftover)])
+
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and (leftover.exists() or targets.exists()):
+            time.sleep(0.2)
+        assert not leftover.exists()
+        assert not targets.exists()
 
     def test_reset_removes_start_menu_and_desktop_shortcuts(self, app, client, monkeypatch, tmp_path):
         from app.api import settings as settings_api

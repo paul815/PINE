@@ -118,16 +118,69 @@ def merge_speaker_blocks(segments):
     return blocks
 
 
+def with_speaker_blocks(transcript):
+    """``transcript`` plus the speaker turns its segments fold into.
+
+    Each block also carries ``offsets``: where each of its segments starts
+    inside the block's own text. That is the coordinate system every annotation
+    is stored in, so it is answered here rather than recomputed by whoever is
+    drawing.
+
+    The browser used to do both for itself, from a second copy of the rules
+    above written in JavaScript. Two implementations of one rule is one too many
+    when annotations are anchored by character offsets inside the folded block:
+    a boundary or a separator that moved in one and not the other puts every
+    highlight after it on the wrong words. So the page is served its turns
+    instead of deriving them, and this is the only place they are made.
+
+    Returns a copy — the transcript on disk holds segments, not blocks.
+    """
+    if not isinstance(transcript, dict):
+        return transcript
+    segments = transcript.get('segments') or []
+    blocks = merge_speaker_blocks(segments)
+    for block in blocks:
+        block['offsets'] = block_text_and_offsets(segments, block['indices'])[1]
+    return dict(transcript, blocks=blocks)
+
+
+def block_text_and_offsets(segments, indices):
+    """The text ``indices`` read as, and where each segment sits inside it.
+
+    The single definition of how segment texts join into what a reader sees:
+    the non-empty ones, separated by one space -- exactly what ``append_to``
+    builds above. A segment with no text writes nothing, so it must not be
+    charged for a separator either; it takes the offset of the seam it sits
+    on. Editing across a segment boundary leaves such blanks behind (the
+    segments stay in the list so annotation indices keep pointing at the same
+    things), and counting a space for each of them walks every later anchor off
+    its own words.
+    """
+    parts = []
+    offsets = {}
+    off = 0
+    for i in indices:
+        text = (segments[i].get('text') or '').strip()
+        if not text:
+            offsets[i] = off
+            continue
+        offsets[i] = off + (1 if off else 0)
+        off = offsets[i] + len(text)
+        parts.append(text)
+    return ' '.join(parts), offsets
+
+
+def block_text(segments, indices):
+    """The text the block spanning ``indices`` reads as."""
+    return block_text_and_offsets(segments, indices)[0]
+
+
 def block_offsets(segments):
     """Char offset of each segment within its merged block's text.
 
-    Keyed by index into ``segments``; mirrors the single space
-    ``merge_speaker_blocks`` joins with.
+    Keyed by index into ``segments``.
     """
     offsets = {}
     for block in merge_speaker_blocks(segments):
-        running = 0
-        for i in block['indices']:
-            offsets[i] = running
-            running += len((segments[i].get('text') or '').strip()) + 1
+        offsets.update(block_text_and_offsets(segments, block['indices'])[1])
     return offsets

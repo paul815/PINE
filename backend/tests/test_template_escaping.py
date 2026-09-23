@@ -21,32 +21,58 @@ from pathlib import Path
 import pytest
 
 TEMPLATES = Path(__file__).resolve().parents[1] / 'templates'
+STATIC_JS = Path(__file__).resolve().parents[1] / 'app' / 'static' / 'js'
 HTML_FILES = sorted(TEMPLATES.glob('*.html'))
 BUILD_HTML = [f for f in HTML_FILES if 'innerHTML' in f.read_text(encoding='utf-8')]
+# Vendored, minified, and not ours to hold to the house style.
+OUR_JS = sorted(p for p in STATIC_JS.glob('*.js') if not p.name.endswith('.min.js'))
 
 
 def _source(path):
     return path.read_text(encoding='utf-8')
 
 
-@pytest.mark.parametrize('path', BUILD_HTML, ids=lambda p: p.name)
-def test_every_template_that_builds_html_has_an_attribute_safe_esc(path):
-    """All five characters, not just the three that matter for text nodes."""
-    source = _source(path)
+def test_the_shared_esc_is_attribute_safe():
+    """All five characters, not just the three that matter for text nodes.
+
+    esc() used to be copied into each template; the copies are gone and this is
+    the one implementation, so this test moved with it.
+    """
+    source = _source(STATIC_JS / 'dom.js')
     definition = re.search(r'function esc\s*\([^)]*\)\s*\{(.*?)\n\}', source, re.S)
 
-    assert definition, f'{path.name} builds HTML without an esc() helper'
+    assert definition, 'dom.js no longer defines esc()'
     # Comments explain the history; only the code counts as an implementation.
     body = '\n'.join(
         line for line in definition.group(1).splitlines()
-        if not line.strip().startswith('//')
+        if not line.strip().startswith(('//', '*', '/*'))
     )
     assert 'textContent' not in body, \
-        f'{path.name}: the textContent trick leaves both quote characters unescaped'
+        'the textContent trick leaves both quote characters unescaped'
     assert '&quot;' in body and '&#39;' in body, \
-        f'{path.name}: esc() does not escape both quote characters'
+        'esc() does not escape both quote characters'
     for entity in ('&amp;', '&lt;', '&gt;'):
-        assert entity in body, f'{path.name}: esc() is missing {entity}'
+        assert entity in body, f'esc() is missing {entity}'
+
+
+@pytest.mark.parametrize('path', BUILD_HTML, ids=lambda p: p.name)
+def test_every_template_that_builds_html_loads_the_shared_esc(path):
+    """A page that builds markup without dom.js would call an undefined esc()."""
+    assert "filename='js/dom.js'" in _source(path), \
+        f'{path.name} builds HTML but does not load dom.js'
+
+
+@pytest.mark.parametrize('path', HTML_FILES, ids=lambda p: p.name)
+def test_no_template_redefines_a_shared_helper(path):
+    """The copies drifted once; a page-local redefinition would silently win."""
+    source = _source(path)
+    offenders = [
+        name for name in ('esc', 'escJsAttr', '_applyTheme')
+        if re.search(r'^\s*(?:async\s+)?function\s+' + name + r'\s*\(', source, re.M)
+    ]
+
+    assert offenders == [], \
+        f'{path.name} redefines {offenders}, which shadows the shared copy'
 
 
 @pytest.mark.parametrize('path', HTML_FILES, ids=lambda p: p.name)
@@ -75,7 +101,7 @@ def test_no_handler_lives_in_a_single_quoted_attribute(path):
 
 def test_escjsattr_wraps_esc_around_json():
     """Order matters: JSON first for the JS parser, esc second for the HTML one."""
-    source = _source(TEMPLATES / 'main.html')
+    source = _source(STATIC_JS / 'dom.js')
     definition = re.search(r'function escJsAttr\s*\([^)]*\)\s*\{(.*?)\n\}', source, re.S)
 
     assert definition
@@ -145,6 +171,16 @@ def test_every_templates_inline_script_parses(path, tmp_path):
     script = tmp_path / 'inline.js'
     script.write_text(js, encoding='utf-8')
     result = subprocess.run([_node(), '--check', str(script)],
+                            capture_output=True, text=True, timeout=60)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(not shutil.which('node'), reason='node is not installed')
+@pytest.mark.parametrize('path', OUR_JS, ids=lambda p: p.name)
+def test_every_shared_script_parses(path, tmp_path):
+    """The same guard for the code that moved out of the templates."""
+    result = subprocess.run([_node(), '--check', str(path)],
                             capture_output=True, text=True, timeout=60)
 
     assert result.returncode == 0, result.stderr

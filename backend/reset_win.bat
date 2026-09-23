@@ -55,7 +55,10 @@ REM makes cmd.exe lose its place in the file and run the wrong branch)
 REM Python (Jupyter, other apps). We scope the kill two ways:
 REM   1) the supervisor PID we recorded in data\supervisor.pid (plus its child
 REM      backend/worker processes via /t), and
-REM   2) any python(w).exe whose command line runs from THIS install directory.
+REM   2) any python(w).exe whose command line runs from THIS install directory,
+REM   3) the hidden cmd.exe Setup_WIN.bat launched them from. It is not python,
+REM      so neither rule above reaches it, and it keeps polling with its log in
+REM      logs\ open -- the logs folder then fails to delete below.
 echo Stopping PINE background processes...
 set "PINE_PIDFILE=%~dp0data\supervisor.pid"
 if exist "%PINE_PIDFILE%" (
@@ -63,7 +66,7 @@ if exist "%PINE_PIDFILE%" (
     set /p PINE_SUP_PID=<"%PINE_PIDFILE%"
     if defined PINE_SUP_PID taskkill /f /t /pid !PINE_SUP_PID! >nul 2>&1
 )
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$dir=[regex]::Escape('%~dp0'); Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match $dir } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$dir=[regex]::Escape('%~dp0'); Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe' OR Name='cmd.exe'\" -ErrorAction SilentlyContinue | Where-Object { if ($_.Name -eq 'cmd.exe') { $_.CommandLine -match ($dir + 'logs\\hidden-launch') } else { $_.CommandLine -match $dir } } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }" >nul 2>&1
 timeout /t 2 /nobreak >nul
 
 if exist "..\backend\data\onboarding_complete.flag" del /f /q "..\backend\data\onboarding_complete.flag" >nul 2>nul

@@ -221,7 +221,7 @@ from ..models.project import Project
 from ..models.recording import Recording
 from ..models.segment import Segment
 from ..models.setting import Setting
-from .speaker_blocks import merge_speaker_blocks
+from .speaker_blocks import block_text_and_offsets, merge_speaker_blocks
 
 
 def _projects_root(app):
@@ -474,18 +474,10 @@ def _render_transcript_blocks(segments, merged_blocks, tag_spans, comments, tag_
     for block in merged_blocks:
         speaker = block['speaker'] or 'Speaker'
         indices = block['indices']
-        # Build merged text and offset map for tag spans
-        offset_by_idx = {}
-        off = 0
-        text_parts = []
-        for i, idx in enumerate(indices):
-            offset_by_idx[idx] = off
-            seg_text = (segments[idx].get('text') or '').strip()
-            text_parts.append(seg_text)
-            off += len(seg_text)
-            if i < len(indices) - 1:
-                off += 1  # space between segments
-        text = ' '.join(text_parts)
+        # Merged text and the offset map tag spans are anchored into. Shared
+        # with the renderer and with editing, so a tag saved on screen lands on
+        # the same words here.
+        text, offset_by_idx = block_text_and_offsets(segments, indices)
         # Collect inline spans: tags and positioned comments, sorted by position
         # Collect inline spans, deduplicating cross-block tags (indexed into multiple segments)
         seen_tags = set()

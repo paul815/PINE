@@ -486,6 +486,38 @@ class TestRenderTranscriptBlocks:
         assert '**aa bb** [Tag Test 2]' in body
         assert ' cc' in body
 
+    def test_a_blanked_segment_leaves_no_gap_in_the_exported_text(self):
+        """Editing across a boundary blanks segments; export must step over them.
+
+        The blank writes nothing into the block a reader sees, so joining it in
+        printed a double space and made the exported block one char longer than
+        the same block on screen -- two lengths for one piece of text, with the
+        tag offsets saved by the screen measured against the other one.
+        """
+        segments = [
+            {'speaker': 'Mod', 'text': 'aa', 'start': 0, 'end': 1},
+            {'speaker': 'Mod', 'text': '', 'start': 1, 'end': 2},
+            {'speaker': 'Mod', 'text': 'bb cc', 'start': 2, 'end': 5},
+        ]
+        merged = _merge_consecutive_speakers(segments)
+        assert len(merged) == 1
+        assert merged[0]['text'] == 'aa bb cc'
+
+        tag_spans = [{
+            'segment_idx': 2,
+            'start_char': 0,
+            'end_char': 2,
+            'anchor_text': 'bb',
+            'tag_id': 't1',
+        }]
+        tag_map = {'t1': {'id': 't1', 'name': 'Tag Test'}}
+
+        lines = _render_transcript_blocks(segments, merged, tag_spans, [], tag_map, True, False)
+        body = '\n'.join(lines)
+
+        assert 'aa  bb' not in body, 'the blank left a gap in the exported text'
+        assert '**bb** [Tag Test]' in body
+
     def test_merged_coordinates_without_end_segment_idx(self):
         """Without end_segment_idx, merged_start/merged_end override clipped start_char/end_char."""
         segments = [

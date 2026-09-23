@@ -6,18 +6,19 @@ file mtimes — see `_cached_json`.
 
 import json
 import os
-import re
 from flask import jsonify, request
 from ...extensions import db
 from ...models.project import Project
 from ...models.recording import Recording
 from ...models.segment import Segment
 from ...services.annotations import (
+    anchor_text_from_span as _anchor_text_from_span,
     annotation_recording_ref,
     annotations_filename,
     get_annotations,
     get_project_tags,
     get_project_themes,
+    mark_anchor_drift,
     save_project_tags,
     save_project_themes,
     update_annotations,
@@ -75,7 +76,13 @@ def recording_annotations(project_id, recording_id):
     ann_ref = annotation_recording_ref(recording)
 
     if request.method == 'GET':
-        return jsonify(get_annotations(project_dir, ann_ref))
+        annotations = get_annotations(project_dir, ann_ref)
+        # Every anchor is checked against the words it remembers on the way out,
+        # so a highlight that no longer covers its quote is reported instead of
+        # drawn as though nothing happened. Costs one read of a file this
+        # request's page is loading anyway, cached on its mtime.
+        segments = _recording_segments(project_dir, recording)
+        return jsonify(mark_anchor_drift(annotations, segments))
 
     data = request.get_json(force=True)
     updates = {}
@@ -113,81 +120,18 @@ def _cached_json(path):
     except (OSError, json.JSONDecodeError):
         return None
 
+def _recording_segments(project_dir, recording):
+    """A recording's transcript segments, or [] when there is no transcript yet."""
+    if not recording.transcript_path:
+        return []
+    transcript = _cached_json(os.path.join(project_dir, recording.transcript_path))
+    return (transcript or {}).get('segments') or []
+
+
 def _merged_speaker_blocks(segments):
     """Speaker turns for anchor reconstruction (built once per recording so it
     is not quadratic in spans×segments). See ``services.speaker_blocks``."""
     return merge_speaker_blocks(segments)
-
-def _anchor_text_from_span(span, segments, blocks=None):
-    """Port of JS anchorTextFromAnnotationSpan — reconstruct full quote text
-    for spans that may cross multiple segments / merged speaker blocks.
-
-    ``blocks`` may be prebuilt via ``_merged_speaker_blocks`` to avoid rebuilding
-    them for every span. Offsets use ``is not None`` (not truthiness) so a
-    legitimate offset of 0 matches the JS ``??`` semantics exactly.
-    """
-    seg_idx = span.get('segment_idx')
-    if seg_idx is None or not segments:
-        return ''
-    if blocks is None:
-        blocks = _merged_speaker_blocks(segments)
-
-    def find_block(idx):
-        for b in blocks:
-            if idx in b['indices']:
-                return b
-        return None
-
-    start_block = find_block(seg_idx)
-    if not start_block:
-        return ''
-    mt = start_block['text']
-
-    merged_start = span.get('merged_start')
-    merged_end = span.get('merged_end')
-
-    end_seg_idx = span.get('end_segment_idx')
-    if end_seg_idx is not None:
-        end_block = find_block(end_seg_idx)
-        if not end_block:
-            return ''
-        end_off = span.get('end_merged_end')
-        if end_off is None:
-            end_off = span.get('end_seg_end_char')
-        ms = merged_start if merged_start is not None else 0
-        if start_block is end_block:
-            if end_off is not None:
-                me = end_off
-            elif merged_end is not None:
-                me = merged_end
-            else:
-                me = len(mt)
-            return mt[max(0, ms):min(len(mt), me)]
-        # Different blocks — include whole blocks BETWEEN start and end, otherwise
-        # a selection spanning 3+ speaker blocks silently drops the middle ones.
-        me_first = merged_end if merged_end is not None else len(mt)
-        first = mt[max(0, ms):min(len(mt), me_first)]
-        et = end_block['text']
-        ec = end_off if end_off is not None else 0
-        second = et[:min(len(et), ec)]
-        si = next((i for i, b in enumerate(blocks) if b is start_block), -1)
-        ei = next((i for i, b in enumerate(blocks) if b is end_block), -1)
-        middle = [b['text'] for b in blocks[si + 1:ei]] if 0 <= si < ei else []
-        return re.sub(r'\s+', ' ', ' '.join([first, *middle, second])).strip()
-
-    if merged_start is not None and merged_end is not None:
-        return mt[max(0, merged_start):min(len(mt), merged_end)]
-
-    # Fallback: single segment
-    seg = segments[seg_idx] if 0 <= seg_idx < len(segments) else None
-    if not seg:
-        return ''
-    st = (seg.get('text') or '').strip()
-    sc = span.get('start_char')
-    sc = sc if sc is not None else 0
-    ec = span.get('end_char')
-    ec = ec if ec is not None else len(st)
-    return st[max(0, sc):min(len(st), ec)]
 
 @projects_bp.route('/<int:project_id>/tags/quotes', methods=['GET'])
 def tag_quotes(project_id):
