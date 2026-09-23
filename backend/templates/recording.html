@@ -796,7 +796,9 @@ let mediaEl = null;
 let duration = 0;
 let isVideo = false;
 let lastPlayingIdx = -1;
-let suppressScrollUntil = 0;
+// Every segment's time span and the paragraph it is drawn in, rebuilt with the
+// transcript. See uttIndexAt for why paragraphs cannot be timed by their starts.
+let playSpans = [];
 
 // toast() and showSaveStatus() come from js/save-status.js
 
@@ -1069,6 +1071,13 @@ function renderTranscript(segments, tagSpans, comments) {
   const tagMap = {}; (data.tags || []).forEach(t => tagMap[t.id] = t);
 
   const merged = speakerBlocks();
+  playSpans = [];
+  merged.forEach((m, i) => (m.indices || []).forEach(idx => {
+    const seg = segments[idx];
+    const start = parseFloat(seg?.start);
+    const end = parseFloat(seg?.end);
+    if (!Number.isNaN(start)) playSpans.push({ start, end: Number.isNaN(end) ? start : end, utt: i });
+  }));
 
   panel.innerHTML = merged.map((m, i) => {
     const cls = speakerClass(m.speaker);
@@ -1608,6 +1617,10 @@ function undoAccidentalSeek() {
   if (!before || !mediaEl) return;
   if (Date.now() - before.at > ACCIDENTAL_SEEK_WINDOW_MS) return;
   mediaEl.currentTime = before.time;
+  // The paragraph goes back with the time, or the next time update would see
+  // a change and scroll the panel out from under the editor being opened.
+  lastPlayingIdx = before.utt;
+  markPlaying(before.utt);
   if (before.paused && !mediaEl.paused) togglePlay();
 }
 
@@ -2664,6 +2677,26 @@ async function saveAnnotations(ann) {
   }
 }
 
+/**
+ * Whether ``utt`` can be read where it is, so following playback need not move it.
+ *
+ * Centring every paragraph as playback reached it moved the text on every turn
+ * of a dialogue, and back again: an interrupted speaker resumes in the
+ * paragraph above the interjection, so the highlight goes down and up and the
+ * text went with it. Now the text moves only when what is playing has left
+ * the screen, or is about to: it starts in the bottom quarter, or began above
+ * and has all but scrolled out of the top.
+ */
+function uttInView(utt) {
+  const panel = document.getElementById('txPanel');
+  if (!panel || !utt) return false;
+  const view = panel.getBoundingClientRect();
+  const r = utt.getBoundingClientRect();
+  const margin = view.height / 4;
+  if (r.top >= view.top) return r.top <= view.bottom - margin;
+  return r.bottom >= view.top + margin;
+}
+
 function scrollUttIntoView(utt) {
   const panel = document.getElementById('txPanel');
   if (!panel || !utt) return;
@@ -2674,26 +2707,53 @@ function scrollUttIntoView(utt) {
   panel.scrollTop = Math.max(0, scrollTop);
 }
 
+/**
+ * The paragraph the recording is in at ``t``, or -1 before anyone speaks.
+ *
+ * Paragraphs overlap in time. A speaker interrupted mid-sentence resumes in the
+ * paragraph they opened (see speaker_blocks.py), so that paragraph runs on past
+ * the interjection drawn below it. Timing each paragraph from its own start to
+ * the next one's handed a fifth of a dialogue's words to the interjection: a
+ * click on them lit up and scrolled to the paragraph underneath instead of the
+ * one clicked. So the answer comes from the segments, which are what actually
+ * carry the times.
+ *
+ * ``current`` keeps the floor for as long as one of its segments is still
+ * playing, so two people talking at once do not flick the highlight between
+ * them. Between segments, the paragraph that spoke last holds it.
+ */
+function uttIndexAt(t, current) {
+  let covering = -1, coveringStart = -Infinity;
+  let latest = -1, latestStart = -Infinity;
+  for (const s of playSpans) {
+    if (s.start > t) continue;
+    if (t < s.end) {
+      if (s.utt === current) return current;
+      if (s.start > coveringStart) { covering = s.utt; coveringStart = s.start; }
+    }
+    if (s.start > latestStart) { latest = s.utt; latestStart = s.start; }
+  }
+  return covering >= 0 ? covering : latest;
+}
+
+function markPlaying(idx) {
+  const utts = document.querySelectorAll('.utt');
+  utts.forEach((u, i) => u.classList.toggle('playing', i === idx));
+  return utts[idx] || null;
+}
+
 function onTimeUpdate() {
   const t = mediaEl.currentTime;
   document.getElementById('curTime').textContent = fmtTime(t);
   const pct = duration > 0 ? (t / duration) * 100 : 0;
   document.getElementById('tlFill').style.width = pct + '%';
 
-  const utts = document.querySelectorAll('.utt');
-  let playingIdx = -1;
-  utts.forEach((u, i) => {
-    const start = parseFloat(u.dataset.start);
-    const end = u.dataset.end ? parseFloat(u.dataset.end) : (u.nextElementSibling ? parseFloat(u.nextElementSibling.dataset.start) : duration);
-    const isPlaying = t >= start && t < end;
-    u.classList.toggle('playing', isPlaying);
-    if (isPlaying) playingIdx = i;
-  });
-
-  if (playingIdx >= 0 && playingIdx !== lastPlayingIdx) {
+  const playingIdx = uttIndexAt(t, lastPlayingIdx);
+  const playing = markPlaying(playingIdx);
+  if (playingIdx !== lastPlayingIdx) {
     lastPlayingIdx = playingIdx;
-    if (Date.now() >= suppressScrollUntil) scrollUttIntoView(utts[playingIdx]);
-  } else if (playingIdx < 0) lastPlayingIdx = -1;
+    if (playing && !uttInView(playing)) scrollUttIntoView(playing);
+  }
 }
 
 function togglePlay() {
@@ -2788,11 +2848,23 @@ function onTranscriptClick(e) {
   // Taken before the seek, because the seek is what has to be undone if the
   // second click of a double-click is already on its way.
   playbackBeforeEdit = mediaEl
-    ? { time: mediaEl.currentTime, paused: mediaEl.paused, at: Date.now() }
+    ? { time: mediaEl.currentTime, paused: mediaEl.paused, at: Date.now(), utt: lastPlayingIdx }
     : null;
-  seekTo(secs);
+  // The word is on screen -- it was just clicked -- so the text stays where
+  // the user is reading it. Moving it would re-centre the paragraph and, in a
+  // long one, carry the clicked word off the edge.
+  const clicked = [...document.querySelectorAll('.utt')].indexOf(utt);
+  seekTo(secs, { utt: clicked, skipScroll: true });
 }
 
+/**
+ * Jump the recording to ``secs`` and play.
+ *
+ * ``opts.utt`` names the paragraph the jump was aimed at, when the caller knows
+ * it; otherwise it is worked out from the time. ``opts.skipScroll`` leaves the
+ * transcript where it is. Either way the paragraph becomes the playing one
+ * here, so the next time update finds nothing new and does not scroll.
+ */
 function seekTo(secs, opts) {
   if (!mediaEl) return;
   mediaEl.currentTime = secs;
@@ -2800,14 +2872,10 @@ function seekTo(secs, opts) {
   document.getElementById('playIco').innerHTML = '<rect x="1" y="1" width="3" height="10"/><rect x="6" y="1" width="3" height="10"/>';
   document.getElementById('playBtn').classList.remove('paused');
 
-  if (opts?.skipScroll) suppressScrollUntil = Date.now() + 200;
-  const utts = document.querySelectorAll('.utt');
-  let target = utts[0];
-  for (const u of utts) {
-    if (parseFloat(u.dataset.start) <= secs) target = u;
-    else break;
-  }
-  if (target && !opts?.skipScroll) scrollUttIntoView(target);
+  const idx = opts?.utt >= 0 ? opts.utt : uttIndexAt(secs, -1);
+  lastPlayingIdx = idx;
+  const target = markPlaying(idx);
+  if (target && !opts?.skipScroll && !uttInView(target)) scrollUttIntoView(target);
 }
 
 
