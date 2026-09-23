@@ -238,6 +238,15 @@ MLX_PROMPT_CHARS = 200
 # transcribing. Three is still reachable by someone saying "да. да. да."; the
 # runaway this catches ran for minutes.
 MLX_PROMPT_REPEAT_LIMIT = 4
+# The other shape a loop takes: one segment going round a handful of words —
+# "и т.д. и т.д. .д. и т т.д." for twenty seconds, which Whisper writes when its
+# own fallback gives up and samples the loop at a high temperature. No two
+# segments match, so the count above never sees it. What does not survive it is
+# the vocabulary: that loop had 3 different words in any 16 in a row. Over ~33,000
+# words of Whisper transcripts, Russian and English, no 16 in a row held fewer than
+# 8 — "yeah definitely yeah definitely" included.
+MLX_LOOP_WINDOW_WORDS = 16
+MLX_LOOP_MAX_DISTINCT = 4
 # A window ends where its last finished segment ended, not at the length it was
 # cut to, so the sentence that was still going is read again with the audio that
 # finishes it. Below this much progress the tail is kept instead: re-reading a

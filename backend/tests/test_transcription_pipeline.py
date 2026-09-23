@@ -129,6 +129,36 @@ class TestSynchronizeMlxSegmentsForUi:
         synchronize_segments_for_ui(segs)
         assert segs[0]['text'] == once == 'как-то вот'
 
+    def test_an_abbreviation_comes_back_as_one_word(self):
+        """Whisper opens a word on the full stop, so "т.д." arrives in two pieces,
+        and the saved transcript, rebuilt from the words, printed "т .д."."""
+        from ml_worker.engines.mlx_engine import synchronize_segments_for_ui
+        from ml_worker.pipeline import clean_transcript_segments
+        segs = [{
+            'start': 0.0, 'end': 2.0, 'speaker': 'A',
+            'words': [
+                {'word': ' и', 'start': 0.0, 'end': 0.2, 'probability': 0.9},
+                {'word': ' т', 'start': 0.2, 'end': 0.4, 'probability': 0.9},
+                {'word': '.д.', 'start': 0.4, 'end': 0.7, 'probability': 0.6},
+                {'word': ' сайт', 'start': 0.8, 'end': 1.2, 'probability': 0.9},
+                {'word': ' ya', 'start': 1.2, 'end': 1.5, 'probability': 0.9},
+                {'word': '.ru', 'start': 1.5, 'end': 2.0, 'probability': 0.9},
+            ],
+        }]
+        synchronize_segments_for_ui(segs)
+
+        assert segs[0]['text'] == 'и т.д. сайт ya.ru'
+        assert [w['word'] for w in segs[0]['words']] == ['и', 'т.д.', 'сайт', 'ya.ru']
+        merged = segs[0]['words'][1]
+        assert (merged['start'], merged['end'], merged['probability']) == (0.2, 0.7, 0.6)
+        assert clean_transcript_segments(segs)[0]['text'] == 'и т.д. сайт ya.ru'
+
+    def test_a_full_stop_on_its_own_is_not_a_word_tail(self):
+        from ml_worker.engines.mlx_engine import synchronize_segments_for_ui
+        segs = [{'words': [{'word': ' ну'}, {'word': '...'}, {'word': ' вот'}]}]
+        synchronize_segments_for_ui(segs)
+        assert [w['word'] for w in segs[0]['words']] == ['ну', '...', 'вот']
+
 
 # ---------------------------------------------------------------------------
 # 0b. Keeping non-speech away from mlx-whisper (Mac-native; whisperx has a VAD)
@@ -363,6 +393,26 @@ class TestSentenceRateCollapse:
         assert sentence_rate([]) is None
         assert not is_collapsed([], [12.0, 13.0, 11.0])
 
+    def test_only_a_mark_that_ends_a_sentence_counts(self):
+        from ml_worker.engines.mlx_engine import count_sentence_endings
+        assert count_sentence_endings('Так. Нет? Понял!') == 3
+        assert count_sentence_endings('Он спросил: «а зачем?» — Затем.') == 2
+        assert count_sentence_endings('Сайты, чаты и т.д. и всё прочее') == 0
+        assert count_sentence_endings('вот… значит так') == 0
+        assert count_sentence_endings('Было в 2020. 2021 был хуже.') == 2
+
+    def test_a_loop_of_full_stops_does_not_pass_for_punctuation(self):
+        """The window the user saw: ninety seconds with no punctuation, then
+        Whisper going round "и т.д." — which, counted mark by mark, read as five
+        times better punctuated than the rest of the interview."""
+        from ml_worker.engines.mlx_engine import is_collapsed
+        # What healthy windows of a Russian interview read at.
+        rates = [20.0, 21.0, 19.0]
+        flat = _said('на телеграме потому что мы все-таки одно время до туда сложили '
+                     'большое количество материала но после апреля поняли что')
+        loop = _said('и .д. .д. т .д. и т .д. .д. и т т .д. .д. и и т .д. и т .д. и')
+        assert is_collapsed([flat, loop], rates)
+
 
 class TestRunawayDetector:
     """What tells a looping window from a person repeating themselves."""
@@ -381,6 +431,25 @@ class TestRunawayDetector:
         from ml_worker.engines.mlx_engine import is_runaway
         assert is_runaway([_said('Звук колокола.'), _said('Звук колокола')],
                           prompt='…а потом звук колокола.')
+
+    def test_a_segment_going_round_a_few_words_is_a_runaway(self):
+        """No two lines match, so the repeat count never sees it."""
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert is_runaway([
+            _said('всю мою школу туда пока была идея сделать там 10-20 раз'),
+            _said('и т.д. т.д. и т т.д. и т.д. и и т.д. т.д. и т.д.'),
+            _said('т.д. и т.д. и .д. и т.д. и т.д.'),
+        ])
+
+    def test_someone_repeating_themselves_is_not(self):
+        """The least varied 16 words in ~33,000 words of real transcripts."""
+        from ml_worker.engines.mlx_engine import is_runaway
+        assert not is_runaway([_said(
+            'kind of to kind of drill that in yeah definitely yeah definitely '
+            'yeah definitely yeah definitely')])
+        assert not is_runaway([_said(
+            'по поводу и чемпионата мира в России и чемпионата мира в Катаре '
+            'и чемпионата мира в')])
 
     def test_one_short_answer_inside_a_long_prompt_is_not(self):
         from ml_worker.engines.mlx_engine import is_runaway
@@ -531,7 +600,7 @@ class TestDecodeWindows:
         with no prompt the check never ran again, so the rest of an interview
         came back unpunctuated and unread."""
         r = self._reply
-        best = ' и тогда он говорит что всё это было совсем не так. как теперь'
+        best = ' и тогда он говорит что всё это было совсем не так. Как теперь'
         fake, segments, _ = self._run(
             monkeypatch,
             [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
@@ -585,6 +654,39 @@ class TestDecodeWindows:
         assert fake.calls[1]['condition_on_previous_text'] is False
         assert segments[0]['text'].strip() == self._MENDED.strip()
         assert len(rates) == 4, 'the take adds its windows for the next one'
+
+    _LOOP = ' и т.д. т.д. и т т.д. и т.д. и и т.д. т.д. и т.д. т.д. и т.д. и т.д. и'
+
+    def test_a_window_that_trails_off_into_a_loop_is_read_again(self, monkeypatch):
+        """The interview the user sent: unpunctuated speech, then Whisper going
+        round "и т.д." until its fallback gave up."""
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             {'segments': [_said(self._FLAT), _said(self._LOOP)], 'language': 'ru'},
+             r(self._MENDED), r(self._ORDINARY)],
+            windows=5)
+
+        assert len(fake.calls) == 6
+        assert fake.calls[4]['condition_on_previous_text'] is False
+        # Nothing of the loop is handed on, and nothing of it is kept.
+        assert fake.calls[5].get('initial_prompt') is None
+        assert not any('т.д. т.д.' in seg['text'] for seg in segments)
+
+    def test_a_reading_that_loops_is_no_recovery(self, monkeypatch):
+        """Its full stops would have passed it for well punctuated."""
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(self._ORDINARY), r(self._ORDINARY), r(self._ORDINARY),
+             r(self._FLAT),
+             {'segments': [_said(self._FLAT), _said(self._LOOP)], 'language': 'ru'},
+             r(self._MENDED), r(self._ORDINARY)],
+            windows=5)
+
+        assert len(fake.calls) == 7, 'the looping reading should not end the retries'
+        assert [seg['text'].strip() for seg in segments][3] == self._MENDED.strip()
 
 
 class TestMlxLanguageProbeWindow:

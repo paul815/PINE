@@ -21,6 +21,8 @@ from ..constants import (
     LANG_CONFIDENCE_MARGIN,
     LANG_CONFIDENCE_MIN,
     MLX_LANG_PROBE_SEARCH_SEC,
+    MLX_LOOP_MAX_DISTINCT,
+    MLX_LOOP_WINDOW_WORDS,
     MLX_PROMPT_CHARS,
     MLX_PROMPT_REPEAT_LIMIT,
     MLX_PROMPT_WINDOW_SEC,
@@ -51,6 +53,29 @@ _FLATNESS_LO_HZ = 200.0
 _FLATNESS_HI_HZ = 3800.0
 
 
+def _is_dot_tail(raw):
+    """The back half of "т.д." or "self.id": a full stop, then a letter or digit."""
+    return raw[:1] == '.' and raw[1:2].isalnum()
+
+
+def _merge_dot_tails(words, raws):
+    """``words`` and ``raws`` with each dot tail folded into the word before it."""
+    merged, merged_raws = [], []
+    for w, raw in zip(words, raws, strict=True):
+        if merged and _is_dot_tail(raw):
+            head = merged[-1]
+            merged_raws[-1] += raw
+            head['word'] = merged_raws[-1]
+            if w.get('end') is not None:
+                head['end'] = w['end']
+            if 'probability' in w and 'probability' in head:
+                head['probability'] = min(head['probability'], w['probability'])
+            continue
+        merged.append(w)
+        merged_raws.append(raw)
+    return merged, merged_raws
+
+
 def synchronize_segments_for_ui(segments):
     """Normalize mlx-whisper ``text`` / ``word`` fields so the recording UI can align words.
 
@@ -69,6 +94,12 @@ def synchronize_segments_for_ui(segments):
     pass — spacing and all — so it stands; otherwise a plain space between them is
     the best guess left, which is what this always used to do.
 
+    Whisper also opens a word on a punctuation token, so "т.д." arrives as
+    ``[' т', '.д.']``. The text built here spells it right, but the saved
+    transcript is rebuilt from the words once they are trimmed, and printed
+    "т .д." — so a piece opening on a full stop and a letter goes back into the
+    word it belongs to, here, where the spacing that says so can still be read.
+
     Run this last, after any stage that rewrites the word list: it is what leaves
     ``text`` agreeing with ``words``.
     """
@@ -79,6 +110,9 @@ def synchronize_segments_for_ui(segments):
 
         raws = [('' if w.get('word') is None else str(w.get('word', '')))
                 for w in words]
+        if any(_is_dot_tail(raw) for raw in raws[1:]):
+            words, raws = _merge_dot_tails(words, raws)
+            seg['words'] = words
         for w, raw in zip(words, raws, strict=True):
             w['word'] = raw.strip()
         tokens = [w['word'] for w in words if w['word']]
@@ -285,18 +319,31 @@ def longest_repeat_run(segments):
     return best
 
 
+def narrowest_vocabulary(segments, width=MLX_LOOP_WINDOW_WORDS):
+    """Fewest different words in any ``width`` words in a row, or None if shorter."""
+    words = ' '.join(_repeat_key(seg.get('text')) for seg in segments or []).split()
+    if len(words) < width:
+        return None
+    return min(len(set(words[i:i + width])) for i in range(len(words) - width + 1))
+
+
 def is_runaway(segments, prompt=''):
     """True when a window looped instead of transcribing.
 
-    Two signs, because they appear at different times. A window that repeats one
-    line past ``MLX_PROMPT_REPEAT_LIMIT`` has stopped listening to the audio,
-    whatever set it off. A window whose every segment is a line already in its
-    own prompt has done something more specific: it has read the prompt back
-    rather than the recording, which is the first step of the runaway that made
-    3.5 minutes of an interview come back as "Звук колокола." — and the step
-    worth catching, since the prompt is ours to withdraw.
+    Three signs, because a loop takes more than one shape. A window that repeats
+    one line past ``MLX_PROMPT_REPEAT_LIMIT`` has stopped listening to the audio,
+    whatever set it off. So has one that goes round a few words inside its
+    segments, where no two lines match (see ``MLX_LOOP_MAX_DISTINCT``). A window
+    whose every segment is a line already in its own prompt has done something
+    more specific: it has read the prompt back rather than the recording, which is
+    the first step of the runaway that made 3.5 minutes of an interview come back
+    as "Звук колокола." — and the step worth catching, since the prompt is ours to
+    withdraw.
     """
     if longest_repeat_run(segments) >= MLX_PROMPT_REPEAT_LIMIT:
+        return True
+    narrowest = narrowest_vocabulary(segments)
+    if narrowest is not None and narrowest <= MLX_LOOP_MAX_DISTINCT:
         return True
     if not prompt:
         return False
@@ -338,6 +385,35 @@ def prompt_tail(text, limit=MLX_PROMPT_CHARS):
     return text[-limit:].split(' ', 1)[-1]
 
 
+_ENDING = re.compile(r'[.!?…]+["»”\')\]]*')
+_OPENERS = '"«„“\'([—–-'
+
+
+def count_sentence_endings(text):
+    """Full stops, question marks and the like that actually end a sentence.
+
+    One is counted where the text ends or the next word does not open in lower
+    case. Counting every mark was fooled by the loop ``MLX_LOOP_MAX_DISTINCT``
+    describes: "и т.д. .д. и т .д." spent 38 full stops on 139 characters, and
+    a window whose other 90 seconds held no punctuation at all read as five times
+    better punctuated than the recording. Nor does "т.д." in the middle of a
+    sentence end it. A script with no case to read counts every ending followed by
+    a word, as before.
+    """
+    count = 0
+    for match in _ENDING.finditer(text):
+        rest = text[match.end():]
+        if not rest.strip():
+            count += 1
+            continue
+        if not rest[0].isspace():
+            continue
+        nxt = rest.lstrip().lstrip(_OPENERS).lstrip()[:1]
+        if nxt.isalnum() and not nxt.islower():
+            count += 1
+    return count
+
+
 def sentence_rate(segments):
     """Sentence endings per 1000 characters of a window's text.
 
@@ -348,7 +424,7 @@ def sentence_rate(segments):
     text = ' '.join(str(seg.get('text') or '') for seg in segments or []).strip()
     if not text:
         return None
-    return 1000.0 * len(re.findall(r'[.!?…]', text)) / len(text)
+    return 1000.0 * count_sentence_endings(text) / len(text)
 
 
 def is_collapsed(segments, rates, fraction=MLX_SENTENCE_RATE_FRACTION,
