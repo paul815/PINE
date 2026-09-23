@@ -11,6 +11,7 @@ import re
 import tempfile
 import threading
 import time
+from statistics import median
 
 from ..audio import clear_mlx_cache, fmt_elapsed, load_audio_range, write_wav
 from ..constants import (
@@ -23,12 +24,15 @@ from ..constants import (
     MLX_PROMPT_CHARS,
     MLX_PROMPT_REPEAT_LIMIT,
     MLX_PROMPT_WINDOW_SEC,
+    MLX_SENTENCE_RATE_FRACTION,
+    MLX_SENTENCE_RATE_WINDOWS,
     MLX_VAD_MERGE_GAP_SEC,
     MLX_VAD_MIN_CUT_SEC,
     MLX_VAD_MIN_FLATNESS,
     MLX_VAD_MIN_KEEP_FRACTION,
     MLX_VAD_PAD_SEC,
     MLX_VAD_TONE_MIN_SEC,
+    MLX_WINDOW_MIN_PROGRESS_SEC,
 )
 from .base import (
     EngineAdapter,
@@ -159,6 +163,40 @@ def drop_tones(samples, regions, sample_rate):
     return kept
 
 
+def keep_long_cuts(regions, total, protected=(), min_cut=MLX_VAD_MIN_CUT_SEC):
+    """The same regions, with every cut too short to be worth its seam closed.
+
+    A cut is not free. Each one is a seam ``tracks.remap`` has to put words back
+    across, and — because the gate runs before the windows are planned — a pause
+    the model no longer hears. An 88-minute interview came back gated at 18 cuts
+    of one to two seconds each: 29s saved out of 5293, and with them every pause
+    long enough for a window boundary to land in. So the crumbs are closed and
+    only dead air worth the name is cut.
+
+    A gap holding something ``drop_tones`` removed is never closed: it was cut
+    for what was in it, not for its length.
+    """
+    if not regions:
+        return []
+
+    def held(lo, hi):
+        return any(start < hi and end > lo for start, end in protected)
+
+    merged = [list(regions[0])]
+    for start, end in regions[1:]:
+        if (start - merged[-1][1]) < min_cut and not held(merged[-1][1], start):
+            merged[-1][1] = end
+        else:
+            merged.append([start, end])
+
+    # The head and the tail are cuts too, judged on the same length.
+    if merged[0][0] < min_cut and not held(0.0, merged[0][0]):
+        merged[0][0] = 0.0
+    if (total - merged[-1][1]) < min_cut and not held(merged[-1][1], total):
+        merged[-1][1] = total
+    return [(start, end) for start, end in merged]
+
+
 def gate_speech(samples):
     """Keep the speech of one mono take, as ``(samples, splices)``.
 
@@ -168,6 +206,9 @@ def gate_speech(samples):
     ``condition_on_previous_text`` then feeds to the next window as context. One
     38-minute recording lost its first 2.5 minutes that way, the consent question
     among them. whisperx never sees this because its own VAD runs first.
+
+    What it is not for is shaving pauses: see ``keep_long_cuts``. The gate earns
+    its keep on one long stretch of dead air, not on a hundred short ones.
 
     ``splices`` is ``None`` when the audio passes through untouched, which is the
     answer whenever the gate is not confident: a pause left in costs seconds of
@@ -182,23 +223,29 @@ def gate_speech(samples):
         return samples, None
 
     try:
-        regions = detect_speech(samples,
-                                merge_gap=MLX_VAD_MERGE_GAP_SEC,
-                                pad=MLX_VAD_PAD_SEC)
-        regions = drop_tones(samples, regions, SAMPLE_RATE)
+        found = detect_speech(samples,
+                              merge_gap=MLX_VAD_MERGE_GAP_SEC,
+                              pad=MLX_VAD_PAD_SEC)
+        voiced = drop_tones(samples, found, SAMPLE_RATE)
     except Exception as exc:
         log.warning('VAD failed (%s) — transcribing the audio as it is', exc)
         return samples, None
 
-    kept = sum(end - start for start, end in regions)
+    kept = sum(end - start for start, end in voiced)
     # No regions at all is the gate saying it found no loud/quiet structure to
     # measure, not that the take is silent. Under the keep floor it found
     # something, but too little to be believed over the recording itself.
-    if not regions or kept < total * MLX_VAD_MIN_KEEP_FRACTION:
+    if not voiced or kept < total * MLX_VAD_MIN_KEEP_FRACTION:
         log.info('VAD kept %.0f%% of %.0fs — passing the audio through untouched',
                  (kept / total) * 100, total)
         return samples, None
+
+    regions = keep_long_cuts(voiced, total,
+                             protected=[r for r in found if r not in voiced])
+    kept = sum(end - start for start, end in regions)
     if (total - kept) < MLX_VAD_MIN_CUT_SEC:
+        log.info('VAD: nothing to cut from %.0fs but pauses shorter than %.0fs '
+                 '— passing the audio through untouched', total, MLX_VAD_MIN_CUT_SEC)
         return samples, None
 
     gated, splices = compact(samples, regions)
@@ -266,52 +313,90 @@ def is_runaway(segments, prompt=''):
 
 
 def prompt_tail(text, limit=MLX_PROMPT_CHARS):
-    """The end of ``text``, cut on a word boundary, for the next window's prompt."""
+    """The end of ``text`` up to its last finished sentence, for the next window.
+
+    Whisper writes in the style of the prompt it is given, punctuation included,
+    so a prompt that breaks off mid-sentence teaches it to break off too: in one
+    88-minute interview five stretches, up to three windows long, came back with
+    1.1 sentence endings per 100 words where the rest of the same transcript held
+    12. Each began where a window had ended mid-word and handed its stump on.
+
+    So only finished sentences are carried. On ordinary speech that costs almost
+    nothing — measured over a clean transcript of the same interview, the last
+    full stop is a median of 4 words back, 14 at the 90th percentile — and where
+    a window holds no finished sentence at all, nothing is carried and the next
+    window decodes from the audio alone, as this engine did before the prompt was
+    carried at all.
+    """
     text = ' '.join(str(text or '').split())
+    cut = 0
+    for match in re.finditer(r'[.!?…]["»\')\]]*(?=\s|$)', text):
+        cut = match.end()
+    text = text[:cut].strip()
     if len(text) <= limit:
         return text
     return text[-limit:].split(' ', 1)[-1]
 
 
-def plan_windows(samples, sample_rate=16000, max_sec=MLX_PROMPT_WINDOW_SEC):
-    """Prompt-window bounds as ``[(start_sec, end_sec)]``, tiling the whole take.
+def sentence_rate(segments):
+    """Sentence endings per 1000 characters of a window's text.
 
-    Cut in silence wherever there is silence to cut in, so a window boundary does
-    not land mid-word: the prompt carries the sentence across, but only a gap
-    keeps the two halves of a word together within one decode. The search is
-    limited to the second half of each window so a pause early on cannot leave a
-    ten-second window behind. With no gap to use, the window is cut at its
-    length — Whisper already breaks the audio every 30 s, and one more seam costs
-    less than letting a runaway run to the end of the recording.
+    The measure the collapse above is caught by. Per character rather than per
+    word so it does not depend on how the language being transcribed spaces
+    itself, and per window so it can be held against the rest of the recording.
     """
-    from ..tracks import detect_speech
+    text = ' '.join(str(seg.get('text') or '') for seg in segments or []).strip()
+    if not text:
+        return None
+    return 1000.0 * len(re.findall(r'[.!?…]', text)) / len(text)
 
-    total = len(samples) / sample_rate
-    if total <= max_sec:
-        return [(0.0, total)]
 
-    try:
-        regions = detect_speech(samples,
-                                merge_gap=MLX_VAD_MERGE_GAP_SEC,
-                                pad=MLX_VAD_PAD_SEC)
-    except Exception as exc:
-        log.warning('Prompt windows: VAD failed (%s) — cutting on length alone', exc)
-        regions = []
-    gaps = [(before[1] + after[0]) / 2
-            for before, after in zip(regions, regions[1:], strict=False)]
+def is_collapsed(segments, rates, fraction=MLX_SENTENCE_RATE_FRACTION,
+                 settle=MLX_SENTENCE_RATE_WINDOWS):
+    """True when a window wrote far less punctuation than the recording does.
 
-    windows = []
-    start = 0.0
-    while start < total - 1e-6:
-        limit = start + max_sec
-        if limit >= total:
-            windows.append((start, total))
-            break
-        cut = max((g for g in gaps if start + max_sec / 2 <= g <= limit),
-                  default=limit)
-        windows.append((start, cut))
-        start = cut
-    return windows
+    Held against the recording's own median rather than a number in this file:
+    what counts as normal punctuation depends on the language, the model and the
+    speaker, and none of those are known here. The gap it has to find is not a
+    subtle one. Over the 88-minute interview this was written for, the windows
+    that read correctly ran from 8.3 to 18.1 sentence endings per 100 words and
+    never once went below 8.3; the five collapsed stretches sat at 1.1 to 1.5.
+
+    Until ``settle`` windows have been read there is no median to hold anything
+    against, and a recording that simply punctuates sparsely is never flagged —
+    it sets its own median.
+    """
+    if len(rates) < settle:
+        return False
+    rate = sentence_rate(segments)
+    if rate is None:
+        return False
+    return rate < median(rates) * fraction
+
+
+def trim_tail(segments, start, end, total,
+              min_progress=MLX_WINDOW_MIN_PROGRESS_SEC):
+    """A window's segments without its unfinished last one, and where to resume.
+
+    A window is cut out of the waveform at a fixed length, so its final segment
+    is whatever the model could make of a sentence that was still going — often
+    half a word, and always without the audio that finishes it. Whisper's own
+    loop never keeps that segment: it seeks back to where the last finished one
+    ended and reads the rest with the audio it needs. This does the same across
+    the windows this engine cuts, so the seam costs a few seconds decoded twice
+    instead of costing the word it fell in.
+
+    The last window of a take has no unfinished tail — the recording ends there —
+    and a window whose only segment reaches back to its start is left alone
+    rather than re-read from the beginning for no progress.
+    """
+    if end >= total - 1e-6:
+        return segments, total
+    if len(segments) > 1:
+        resume = start + float(segments[-1].get('start', 0) or 0)
+        if min_progress <= resume - start <= end - start:
+            return segments[:-1], resume
+    return segments, end
 
 
 def shift_segments(segments, offset):
@@ -481,52 +566,72 @@ class MlxWhisperEngine(EngineAdapter):
         """Decode one gated take window by window. Returns ``(segments, language)``.
 
         The segments come back on the take's own clock. Each window is seeded
-        with the tail of the last accepted one, which is what carries a sentence
-        — and its punctuation — across the seam; a window that comes back looping
-        is decoded again with nothing carried in, and its text is not passed on.
+        with the finished sentences of the last accepted one, which is what
+        carries the punctuation and the casing across the seam, and each window
+        ends where its last finished segment ended rather than at the length it
+        was cut to, so no seam falls in the middle of a word.
+
+        A window that comes back looping, or writing far less punctuation than
+        the rest of the recording, is decoded again with nothing carried in, and
+        its text is not passed on.
         """
         import mlx_whisper
 
         from ..tracks import SAMPLE_RATE
 
-        windows = plan_windows(samples)
+        total = len(samples) / SAMPLE_RATE
         tmp_path = os.path.join(tempfile.gettempdir(),
                                 f'pine_window_{os.getpid()}.wav')
         detected_lang = language or 'en'
         all_segments = []
+        rates = []
         prompt = ''
+        start = 0.0
+        index = 0
 
         try:
-            for i, (start, end) in enumerate(windows):
+            while start < total - 1e-3:
                 if check_cancel is not None:
                     check_cancel()
 
+                end = min(start + MLX_PROMPT_WINDOW_SEC, total)
                 piece = samples[int(start * SAMPLE_RATE):int(end * SAMPLE_RATE)]
                 if len(piece) == 0:
-                    continue
+                    break
                 write_wav(tmp_path, piece)
+                index += 1
 
                 result = mlx_whisper.transcribe(
                     tmp_path,
                     **self._decode_kwargs(language, prompt=prompt or None))
                 segments = result.get('segments', []) or []
+                carry = True
 
                 if is_runaway(segments, prompt):
-                    log.warning('Window %d/%d (%.0f-%.0fs) came back looping — '
+                    log.warning('Window %d (%.0f-%.0fs) came back looping — '
                                 'decoding it again with no prompt',
-                                i + 1, len(windows), start, end)
+                                index, start, end)
                     result = mlx_whisper.transcribe(
                         tmp_path,
                         **self._decode_kwargs(language, conditioned=False))
                     segments = result.get('segments', []) or []
                     # Whatever set the loop off is in the text being carried, so
                     # the next window starts from the audio and nothing else.
-                    prompt = ''
-                else:
-                    prompt = prompt_tail(' '.join(
-                        str(seg.get('text') or '') for seg in segments)) or prompt
+                    carry = False
+                elif prompt and is_collapsed(segments, rates):
+                    log.warning('Window %d (%.0f-%.0fs) came back with %.1f '
+                                'sentence endings per 1000 characters against '
+                                '%.1f for the recording — decoding it again with '
+                                'no prompt', index, start, end,
+                                sentence_rate(segments) or 0.0, median(rates))
+                    result = mlx_whisper.transcribe(
+                        tmp_path, **self._decode_kwargs(language))
+                    segments = result.get('segments', []) or []
+                    # Only worth carrying if the second reading recovered; if it
+                    # did not, the fault is in the audio and not in the prompt.
+                    carry = not is_collapsed(segments, rates)
 
-                if i == 0:
+                if index == 1:
                     detected_lang = result.get('language', detected_lang)
                 # Settled on the first window and held. Two minutes is a thin
                 # thing to re-detect a language from, and one window that
@@ -534,7 +639,18 @@ class MlxWhisperEngine(EngineAdapter):
                 # alphabet.
                 language = language or detected_lang
 
+                segments, resume = trim_tail(segments, start, end, total)
+                rate = sentence_rate(segments)
+                if rate is not None:
+                    rates.append(rate)
+                if carry:
+                    prompt = prompt_tail(' '.join(
+                        str(seg.get('text') or '') for seg in segments)) or prompt
+                else:
+                    prompt = ''
+
                 all_segments.extend(shift_segments(segments, start))
+                start = resume
                 del piece
         finally:
             try:
