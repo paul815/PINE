@@ -64,7 +64,19 @@ DIARIZE_CHUNK_OVERLAP_SEC = 30       # 30s overlap for speaker continuity
 # a responsive desktop. Set PINE_PARALLEL_STAGES=1 to overlap them again --
 # worth it when diarization is on a different device (PINE_DIARIZE_DEVICE=cpu)
 # or the GPU has headroom to spare.
-PARALLEL_STAGES = os.environ.get('PINE_PARALLEL_STAGES', '0').strip() != '0'
+#
+# A Mac running mlx-whisper has that other device to spare. Overlapped with
+# pyannote on MPS as well (2026-07-19, the same 74-min recording), the two
+# queued on one GPU: STT nearly doubled and the whole job gained only 17%. With
+# pyannote on the CPU the GPU is left to Metal, and serially the stages cost
+# 1051s + 307s on an 88-minute interview (2026-09-23), so the CPU has 1051s to
+# do what MPS did in 307s before anyone waits for it. On that path the stages
+# overlap by default, with diarization on the CPU (``pipeline.parallel_stages``
+# and ``pipeline.diarize_device_for``); PINE_PARALLEL_STAGES=0 puts it back
+# after STT on MPS. None here means nobody set the variable and the engine
+# decides.
+_PARALLEL_ENV = os.environ.get('PINE_PARALLEL_STAGES', '').strip()
+PARALLEL_STAGES = (_PARALLEL_ENV != '0') if _PARALLEL_ENV else None
 
 # Progress weighting: expected cost of each stage as a multiple of the audio
 # duration. These only set how the single 0→100 scale is divided between
@@ -261,6 +273,44 @@ MLX_WINDOW_MIN_PROGRESS_SEC = 30.0
 MLX_SENTENCE_RATE_FRACTION = 0.5
 # And nothing is judged until there are this many windows to take a median from.
 MLX_SENTENCE_RATE_WINDOWS = 3
+# The temperatures mlx-whisper may fall back to when a 30s piece fails its own
+# compression or log-probability check. Its default ladder climbs to 1.0, and
+# near the top the decoder samples rather than reads: an 88-minute interview came
+# back with "generatedți repentance Actinghesiaọнальных" in the middle of a
+# sentence and its last 25 seconds as "тысячи DER terugивает ушко понятно…".
+# whisperx never samples — it runs beam search and keeps what it finds — and the
+# same recording on Windows has none of it. At 0.2 a token the model gave one
+# chance in a thousand is left about one in 10^15, so the fallback can still
+# nudge a piece out of a loop without writing in another alphabet. A loop that
+# survives it is ``is_runaway``'s to catch, and that window is read again with
+# nothing carried in.
+MLX_TEMPERATURES = (0.0, 0.2)
+# Languages written in Cyrillic, where a letter from any script but Cyrillic or
+# Latin is not a word the speaker said. Latin is kept because Russian speech is
+# full of it — YouTube, FIFA, Forbes, "Prime Time" all came out of one interview
+# — and so is Latin-1 (Citroën, café). What is left over is what the sampler
+# made up: "ọn", "ọn坐", "generatedți". Serbian is not here: its Latin alphabet
+# needs letters (č, ć, đ) past Latin-1.
+MLX_CYRILLIC_LANGUAGES = frozenset(
+    {'ru', 'uk', 'be', 'bg', 'mk', 'kk', 'tg', 'mn', 'tt', 'ba'})
+# Speech the gate heard and no word covers, for at least this long, was skipped
+# by the decoder rather than left silent by the speaker: greedy decoding can jump
+# a timestamp past what it did not manage to read. Three passages of one Mac
+# interview went that way, 7 to 19 seconds each, and whisperx — which decodes
+# every stretch of speech on its own — has all three. Measured against the
+# Windows transcript of the same recording, the energy gate found 10 uncovered
+# stretches of 4s or more, all of them intro music, jingles and closing credits,
+# and 4 of 6s or more. So 6s catches every skip seen and costs about four short
+# decodes a recording.
+MLX_HOLE_MIN_SEC = 6.0
+# The most of a hole one word is allowed to cover. The decoder that jumps a
+# passage often stretches the word before the jump across it, so a word's own
+# end time would hide the very skip this looks for. Two seconds is longer than
+# any word anyone says.
+MLX_HOLE_WORD_CAP_SEC = 2.0
+# Audio kept either side of a hole when it is read on its own, so the words at
+# its edges are heard whole. Only the words that fall inside the hole are kept.
+MLX_HOLE_PAD_SEC = 1.0
 
 # ── Dropping what Whisper wrote over non-speech (see pipeline.py) ──
 #

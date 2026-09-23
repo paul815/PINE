@@ -20,6 +20,10 @@ from ..constants import (
     CHUNK_THRESHOLD_SEC,
     LANG_CONFIDENCE_MARGIN,
     LANG_CONFIDENCE_MIN,
+    MLX_CYRILLIC_LANGUAGES,
+    MLX_HOLE_MIN_SEC,
+    MLX_HOLE_PAD_SEC,
+    MLX_HOLE_WORD_CAP_SEC,
     MLX_LANG_PROBE_SEARCH_SEC,
     MLX_LOOP_MAX_DISTINCT,
     MLX_LOOP_WINDOW_WORDS,
@@ -28,6 +32,7 @@ from ..constants import (
     MLX_PROMPT_WINDOW_SEC,
     MLX_SENTENCE_RATE_FRACTION,
     MLX_SENTENCE_RATE_WINDOWS,
+    MLX_TEMPERATURES,
     MLX_VAD_MERGE_GAP_SEC,
     MLX_VAD_MIN_CUT_SEC,
     MLX_VAD_MIN_FLATNESS,
@@ -488,6 +493,135 @@ def shift_segments(segments, offset):
     return segments
 
 
+def _alphabet(ch):
+    """'cyr', 'lat' or 'other' for one letter."""
+    code = ord(ch)
+    if 0x0400 <= code <= 0x052F:
+        return 'cyr'
+    if ch.isascii() or 0x00C0 <= code <= 0x00FF:
+        return 'lat'
+    return 'other'
+
+
+def is_alien_word(word, language=None):
+    """True for a word nobody said: one the decoder sampled rather than read.
+
+    Two signs. Cyrillic and Latin run together inside one word — "terugивает",
+    "Никонаisme" — which no language does; a hyphen or an apostrophe is where
+    they may meet, as in "YouTube-канал" or "SMS-ка", so each side of one is
+    judged apart. And, in a language written in Cyrillic, a letter from a third
+    alphabet: "ọn", "ọn坐", "generatedți" (see ``MLX_CYRILLIC_LANGUAGES``).
+    """
+    for part in re.split(r"[-'’]", str(word or '')):
+        alphabets = {_alphabet(ch) for ch in part if ch.isalpha()}
+        if 'cyr' in alphabets and 'lat' in alphabets:
+            return True
+        if 'other' in alphabets and language in MLX_CYRILLIC_LANGUAGES:
+            return True
+    return False
+
+
+def _join_raw(raws):
+    """Segment text from the words' raw spelling, the way Whisper spaced it."""
+    raws = [str(r) for r in raws if str(r).strip()]
+    if any(r[:1].isspace() for r in raws):
+        return ''.join(raws)
+    return ' '.join(raws)
+
+
+def alien_words(segments, language=None):
+    """Every word in ``segments`` that ``is_alien_word`` rejects."""
+    found = []
+    for seg in segments or []:
+        words = seg.get('words')
+        tokens = ([w.get('word') for w in words] if words
+                  else str(seg.get('text') or '').split())
+        found.extend(str(t).strip() for t in tokens
+                     if is_alien_word(t, language))
+    return found
+
+
+def strip_alien_words(segments, language=None):
+    """``segments`` without their alien words, and without any left empty."""
+    kept = []
+    for seg in segments or []:
+        words = seg.get('words')
+        if words:
+            clean = [w for w in words if not is_alien_word(w.get('word'), language)]
+            if len(clean) != len(words):
+                seg = dict(seg, words=clean,
+                           text=_join_raw(w.get('word', '') for w in clean))
+        else:
+            tokens = str(seg.get('text') or '').split()
+            clean = [t for t in tokens if not is_alien_word(t, language)]
+            if len(clean) != len(tokens):
+                seg = dict(seg, text=' '.join(clean))
+        if str(seg.get('text') or '').strip():
+            kept.append(seg)
+    return kept
+
+
+def find_holes(segments, regions, until, min_len=MLX_HOLE_MIN_SEC,
+               word_cap=MLX_HOLE_WORD_CAP_SEC):
+    """Stretches of speech that no word covers, as ``[(start, end)]``.
+
+    ``regions`` is where the gate heard speech and ``segments`` what the model
+    wrote over it, on one clock; nothing past ``until`` is looked at. A word
+    covers from its start for at most ``word_cap`` — the word before a skipped
+    passage is often stretched across it. A segment with no word timings
+    covers its whole span.
+    """
+    covered = []
+    for seg in segments or []:
+        words = seg.get('words') or []
+        if words:
+            for w in words:
+                if w.get('start') is None or w.get('end') is None:
+                    continue
+                lo = float(w['start'])
+                covered.append((lo, min(float(w['end']), lo + word_cap)))
+        elif seg.get('start') is not None and seg.get('end') is not None:
+            covered.append((float(seg['start']), float(seg['end'])))
+    covered.sort()
+
+    holes = []
+    for r_start, r_end in regions or []:
+        r_end = min(r_end, until)
+        cursor = r_start
+        for lo, hi in covered:
+            if hi <= cursor:
+                continue
+            if lo >= r_end:
+                break
+            if lo - cursor >= min_len:
+                holes.append((cursor, lo))
+            cursor = max(cursor, hi)
+        if r_end - cursor >= min_len:
+            holes.append((cursor, r_end))
+    return holes
+
+
+def words_inside(segments, lo, hi):
+    """``segments`` cut down to the words whose middle falls in ``[lo, hi)``."""
+    kept = []
+    for seg in segments or []:
+        words = seg.get('words') or []
+        if not words:
+            mid = (float(seg.get('start', 0)) + float(seg.get('end', 0))) / 2
+            if lo <= mid < hi and str(seg.get('text') or '').strip():
+                kept.append(dict(seg))
+            continue
+        inside = [w for w in words
+                  if lo <= (float(w.get('start', 0)) + float(w.get('end', 0))) / 2 < hi]
+        if not inside:
+            continue
+        kept.append(dict(seg, words=inside,
+                         start=inside[0].get('start', seg.get('start')),
+                         end=inside[-1].get('end', seg.get('end')),
+                         text=_join_raw(w.get('word', '') for w in inside)))
+    return kept
+
+
 def probe_language_file(audio_path: str, model_path: str):
     """Return (best_code, top_p, second_p, options) or None on failure."""
     try:
@@ -631,6 +765,8 @@ class MlxWhisperEngine(EngineAdapter):
             # False and no prompt. A runaway now costs one window, detected, and
             # cannot reach the next one.
             'condition_on_previous_text': bool(conditioned),
+            # Its own fallback stops short of sampling; see MLX_TEMPERATURES.
+            'temperature': MLX_TEMPERATURES,
         }
         if prompt:
             tx_kw['initial_prompt'] = prompt
@@ -670,8 +806,101 @@ class MlxWhisperEngine(EngineAdapter):
                 best, best_rate = candidate, rate
         return best, False
 
+    def _reread_alien(self, path, segments, rates, language, index, span):
+        """A window with no alien words in it, read again if it had any.
+
+        The words are what the decoder sampled rather than read, and on the
+        interview this was written for the sampling did not stop at them: the
+        last 25 seconds came back as "тысячи DER terugивает ушко понятно…",
+        where only two words give the passage away. So the window is read again
+        with nothing carried in, and that reading is kept when it has fewer
+        such words, does not loop and still punctuates like the recording.
+        Whatever is left is struck out word by word.
+        """
+        import mlx_whisper
+
+        aliens = alien_words(segments, language)
+        if not aliens:
+            return segments
+        log.warning('Window %d (%s) came back with %d word(s) in no alphabet '
+                    '%s is written in (%s) — reading it again with nothing '
+                    'carried in', index, span, len(aliens), language,
+                    ', '.join(aliens[:5]))
+        result = mlx_whisper.transcribe(
+            path, **self._decode_kwargs(language, conditioned=False))
+        candidate = result.get('segments', []) or []
+        if (candidate and not is_runaway(candidate)
+                and len(alien_words(candidate, language)) < len(aliens)
+                and not is_collapsed(candidate, rates)):
+            segments = candidate
+        else:
+            log.warning('Window %d: the second reading was no better — '
+                        'striking the words out', index)
+        return strip_alien_words(segments, language)
+
+    def _fill_holes(self, samples, start, segments, speech, until, language,
+                    index, offset):
+        """``segments`` with the speech the decoder skipped read on its own.
+
+        ``segments`` are on the window's clock, which starts at ``start`` on
+        the take's; ``speech`` is where the gate heard speech on the take's.
+        Only the part of the window being kept — up to ``until`` — is looked
+        at: the rest is read again by the next window anyway.
+
+        whisperx gets this for nothing, because it decodes every stretch of
+        speech separately and a skip cannot run past the stretch's end. Here a
+        greedy 30s piece can jump its timestamp over a passage it did not
+        manage to read — 19 seconds of one interview's answer went that way.
+        Each hole is read with no prompt, and only the words that fall inside
+        it are kept, so the audio either side cannot write a word twice.
+        """
+        import mlx_whisper
+
+        from ..tracks import SAMPLE_RATE
+
+        regions = [(max(lo, start) - start, min(hi, start + until) - start)
+                   for lo, hi in speech
+                   if hi > start and lo < start + until]
+        holes = find_holes(segments, regions, until)
+        if not holes:
+            return segments
+
+        total = len(samples) / SAMPLE_RATE
+        hole_path = os.path.join(tempfile.gettempdir(),
+                                 f'pine_hole_{os.getpid()}.wav')
+        try:
+            for a, b in holes:
+                lo = max(0.0, start + a - MLX_HOLE_PAD_SEC)
+                hi = min(total, start + b + MLX_HOLE_PAD_SEC)
+                write_wav(hole_path,
+                          samples[int(lo * SAMPLE_RATE):int(hi * SAMPLE_RATE)])
+                result = mlx_whisper.transcribe(
+                    hole_path, **self._decode_kwargs(language, conditioned=False))
+                found = result.get('segments', []) or []
+                if is_runaway(found):
+                    found = []
+                found = words_inside(strip_alien_words(found, language),
+                                     start + a - lo, start + b - lo)
+                recovered = sum(len(seg.get('words') or [])
+                                or len(str(seg.get('text') or '').split())
+                                for seg in found)
+                log.info('Window %d: %.1fs of speech at %.0f-%.0fs held no '
+                         'words — read on its own, %d word(s) recovered',
+                         index, b - a, start + a + offset, start + b + offset,
+                         recovered)
+                if found:
+                    segments = sorted(
+                        list(segments) + shift_segments(found, lo - start),
+                        key=lambda seg: seg.get('start', 0))
+        finally:
+            try:
+                os.unlink(hole_path)
+            except OSError:
+                pass
+        return segments
+
     def _decode_windows(self, samples, language=None, check_cancel=None,
-                        rates=None):
+                        rates=None, offset=0.0):
         """Decode one gated take window by window. Returns ``(segments, language)``.
 
         The segments come back on the take's own clock. Each window is seeded
@@ -684,15 +913,20 @@ class MlxWhisperEngine(EngineAdapter):
         in, and its text is not passed on. One writing far less punctuation than
         the rest of the recording is read again (``_reread_collapsed``); if no
         reading recovers, the prompt it was given goes on to the next window in
-        place of its text.
+        place of its text. One holding words in no alphabet its language uses is
+        read again too (``_reread_alien``), and speech no word covers is read on
+        its own (``_fill_holes``).
 
         ``rates`` holds the recording's sentence rate per window. A caller that
         cuts the recording into several takes passes one list to all of them,
         so each take is judged against the recording from its first window.
+        ``offset`` is where the take starts in the recording, for the log only:
+        a window logged at 3311s is one that can be found in the recording at
+        3311s, give or take what the gate cut before it.
         """
         import mlx_whisper
 
-        from ..tracks import SAMPLE_RATE
+        from ..tracks import SAMPLE_RATE, detect_speech
 
         total = len(samples) / SAMPLE_RATE
         tmp_path = os.path.join(tempfile.gettempdir(),
@@ -703,6 +937,13 @@ class MlxWhisperEngine(EngineAdapter):
         prompt = ''
         start = 0.0
         index = 0
+        try:
+            speech = detect_speech(samples, merge_gap=MLX_VAD_MERGE_GAP_SEC,
+                                   pad=MLX_VAD_PAD_SEC)
+        except Exception as exc:
+            log.warning('VAD failed (%s) — skipped speech will not be looked for',
+                        exc)
+            speech = []
 
         try:
             while start < total - 1e-3:
@@ -715,17 +956,18 @@ class MlxWhisperEngine(EngineAdapter):
                     break
                 write_wav(tmp_path, piece)
                 index += 1
+                span = f'{start + offset:.0f}-{end + offset:.0f}s'
 
                 result = mlx_whisper.transcribe(
                     tmp_path,
                     **self._decode_kwargs(language, prompt=prompt or None))
                 segments = result.get('segments', []) or []
                 carry = True
+                plain = False
 
                 if is_runaway(segments, prompt):
-                    log.warning('Window %d (%.0f-%.0fs) came back looping — '
-                                'decoding it again with no prompt',
-                                index, start, end)
+                    log.warning('Window %d (%s) came back looping — '
+                                'decoding it again with no prompt', index, span)
                     result = mlx_whisper.transcribe(
                         tmp_path,
                         **self._decode_kwargs(language, conditioned=False))
@@ -733,6 +975,7 @@ class MlxWhisperEngine(EngineAdapter):
                     # Whatever set the loop off is in the text being carried, so
                     # the next window starts from the audio and nothing else.
                     carry = False
+                    plain = True
                     prompt = ''
                 elif is_collapsed(segments, rates):
                     # Checked whether a prompt was carried in or not. Only
@@ -740,10 +983,10 @@ class MlxWhisperEngine(EngineAdapter):
                     # the checks for good: its prompt was dropped, the next
                     # window came in with none, and every window after that
                     # went unread however little it punctuated.
-                    log.warning('Window %d (%.0f-%.0fs) came back with %.1f '
+                    log.warning('Window %d (%s) came back with %.1f '
                                 'sentence endings per 1000 characters against '
                                 '%.1f for the recording — reading it again',
-                                index, start, end,
+                                index, span,
                                 sentence_rate(segments) or 0.0, median(rates))
                     segments, carry = self._reread_collapsed(
                         tmp_path, segments, rates, language, prompt)
@@ -759,7 +1002,18 @@ class MlxWhisperEngine(EngineAdapter):
                 # alphabet.
                 language = language or detected_lang
 
+                if plain:
+                    # Already read with nothing carried in: a second reading
+                    # the same way has nothing different to offer.
+                    segments = strip_alien_words(segments, language)
+                else:
+                    segments = self._reread_alien(
+                        tmp_path, segments, rates, language, index, span)
+
                 segments, resume = trim_tail(segments, start, end, total)
+                segments = self._fill_holes(samples, start, segments, speech,
+                                            resume - start, language, index,
+                                            offset)
                 rate = sentence_rate(segments)
                 if rate is not None:
                     rates.append(rate)
@@ -769,6 +1023,17 @@ class MlxWhisperEngine(EngineAdapter):
                 if carry:
                     prompt = prompt_tail(' '.join(
                         str(seg.get('text') or '') for seg in segments)) or prompt
+
+                log.info('Window %d (%s): %d segment(s), %d word(s), %s sentence '
+                         'endings per 1000 characters, %d segment(s) read at a '
+                         'fallback temperature — next from %.0fs',
+                         index, span, len(segments),
+                         sum(len(str(seg.get('text') or '').split())
+                             for seg in segments),
+                         'no' if rate is None else f'{rate:.1f}',
+                         sum(1 for seg in segments
+                             if (seg.get('temperature') or 0) > 0),
+                         resume + offset)
 
                 all_segments.extend(shift_segments(segments, start))
                 start = resume
@@ -877,7 +1142,7 @@ class MlxWhisperEngine(EngineAdapter):
             # the cheaper mistake.
             segments, lang = self._decode_windows(
                 gated_audio, language=language or detected_lang,
-                check_cancel=ctx.check_cancel, rates=rates)
+                check_cancel=ctx.check_cancel, rates=rates, offset=offset)
             if i == 0:
                 detected_lang = lang
 

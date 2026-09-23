@@ -15,6 +15,7 @@ stage it does not actually depend on.
 """
 
 import logging
+import math
 import os
 import sys
 import time
@@ -291,10 +292,85 @@ def merge_chunk_speakers(turns, chunk_starts, overlap_sec):
     return [(s, e, _resolve(spk)) for s, e, spk in turns]
 
 
+def speaker_centroids(raw):
+    """What each label's voice sounds like, from a pyannote 4 output, or None.
+
+    ``speaker_embeddings`` holds one row per label of ``speaker_diarization``,
+    in the order of its ``labels()``. pyannote pads it with zero rows when it
+    has fewer centroids than labels, and a zero row describes no voice at all.
+    """
+    if isinstance(raw, tuple):
+        raw = raw[0]
+    embeddings = getattr(raw, 'speaker_embeddings', None)
+    labelled = getattr(raw, 'speaker_diarization', None)
+    if embeddings is None or not hasattr(labelled, 'labels'):
+        return None
+    try:
+        rows = [[float(x) for x in row] for row in embeddings]
+    except TypeError:
+        return None
+    labels = list(labelled.labels())
+    if len(rows) < len(labels):
+        return None
+    centroids = {}
+    for label, row in zip(labels, rows[:len(labels)], strict=True):
+        norm = math.sqrt(sum(x * x for x in row))
+        if norm > 0 and math.isfinite(norm):
+            centroids[label] = [x / norm for x in row]
+    return centroids or None
+
+
+class NativeDiarization:
+    """A diarization ``Annotation``, and the voice behind each of its labels.
+
+    Stands in for the Annotation wherever one is read — ``itertracks`` is all
+    ``assign_speakers_simple`` asks of it — and carries ``centroids`` along
+    for the one decision that needs them.
+    """
+
+    def __init__(self, annotation, centroids=None):
+        self.annotation = annotation
+        self.centroids = centroids
+
+    def itertracks(self, yield_label=False):
+        return self.annotation.itertracks(yield_label=yield_label)
+
+
+def _cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+def _voice_match(spk, major, centroids):
+    """``(nearest main speaker, how alike, the bar)`` for one minor speaker.
+
+    The bar is how alike the two most alike main speakers sound: two people
+    the recording already tells apart. A minor voice closer to a main speaker
+    than that is the same person split off; one further from every main
+    speaker is somebody else. Measured on an 88-minute interview, the host and
+    the guest came out 0.66 alike, while an advert read by a third voice and a
+    clip played into the conversation sat at 0.35 and 0.32 from the nearest of
+    them — and had been merged into the guest and the host.
+
+    No constant says what "alike" means here, because the scale moves with the
+    microphone, the room and the model; each recording sets its own bar.
+    """
+    majors = sorted(major)
+    similarity = {m: _cosine(centroids[spk], centroids[m]) for m in majors}
+    target = max(similarity, key=similarity.get)
+    bar = max((_cosine(centroids[a], centroids[b])
+               for i, a in enumerate(majors) for b in majors[i + 1:]),
+              default=-1.0)
+    return target, similarity[target], bar
+
+
 def assign_speakers_simple(diarization, segments):
     """Assign speaker labels using pyannote ``Annotation`` (native path).
 
-    ``diarization`` must support ``itertracks(yield_label=True)``.
+    ``diarization`` must support ``itertracks(yield_label=True)``. When it
+    also carries ``centroids`` (see ``NativeDiarization``), minor speakers are
+    merged by voice rather than by who talks around them.
     """
     from bisect import bisect_right
     from collections import Counter, defaultdict
@@ -305,8 +381,13 @@ def assign_speakers_simple(diarization, segments):
         turns.append((turn.start, turn.end, speaker))
     turns.sort(key=lambda t: t[0])
 
-    # Re-cluster: absorb minor speakers into dominant temporal neighbors.
+    # Re-cluster: absorb minor speakers into the main ones they belong to.
     # Pyannote on Mac/MPS can over-segment, assigning 4+ IDs to one person.
+    # But a minor speaker is also who a third voice is — an advert read by
+    # someone else, a clip played into the interview — and merging every one
+    # of them wrote those voices under the host's name. So where pyannote says
+    # what each label sounds like, the voice decides (``_voice_match``); only
+    # without that is a minor speaker handed to whoever talks around it.
     speaker_time = defaultdict(float)
     for start, end, spk in turns:
         speaker_time[spk] += end - start
@@ -315,9 +396,23 @@ def assign_speakers_simple(diarization, segments):
         threshold = sorted_times[1] * 0.25 if len(sorted_times) > 1 else 0
         major = {spk for spk, t in speaker_time.items() if t >= threshold}
         minor = {spk for spk, t in speaker_time.items() if t < threshold}
+        centroids = getattr(diarization, 'centroids', None) or {}
         if minor and major:
             remap = {}
-            for spk in minor:
+            for spk in sorted(minor):
+                if spk in centroids and all(m in centroids for m in major):
+                    target, similarity, bar = _voice_match(spk, major, centroids)
+                    if similarity > bar:
+                        remap[spk] = target
+                        log.info('Speakers: %s (%.0fs) merged into %s — its voice '
+                                 'is %.2f alike, the main speakers %.2f',
+                                 spk, speaker_time[spk], target, similarity, bar)
+                    else:
+                        log.info('Speakers: %s (%.0fs) kept apart — its voice is '
+                                 '%.2f alike the nearest main speaker, the main '
+                                 'speakers %.2f', spk, speaker_time[spk],
+                                 similarity, bar)
+                    continue
                 neighbor_counts = Counter()
                 for i, (_s, _e, sp) in enumerate(turns):
                     if sp != spk:
@@ -328,10 +423,11 @@ def assign_speakers_simple(diarization, segments):
                         neighbor_counts[turns[i + 1][2]] += 1
                 if neighbor_counts:
                     remap[spk] = neighbor_counts.most_common(1)[0][0]
+                    log.info('Speakers: %s (%.0fs) merged into %s, who talks '
+                             'around it — no voice to compare',
+                             spk, speaker_time[spk], remap[spk])
             if remap:
                 turns = [(s, e, remap.get(sp, sp)) for s, e, sp in turns]
-                log.debug('Speaker re-cluster: merged %d minor speakers',
-                          len(remap))
 
     # Every turn, short ones included, for the words the merged turns miss.
     all_turns = list(turns)
@@ -698,7 +794,7 @@ class Diarizer:
                 'Unexpected diarization type %s — skipping speaker labels',
                 type(annotation).__name__)
             return None
-        return annotation
+        return NativeDiarization(annotation, speaker_centroids(diar_raw))
 
     def _compute_chunked(self, audio_path, total_duration, num_speakers=None,
                          on_status=_noop_status, check_cancel=_noop_check_cancel):

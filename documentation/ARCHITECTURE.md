@@ -132,13 +132,17 @@ projects/<folder_name>/
   (`DIARIZE_CHUNK_THRESHOLD_SEC`), because matching speakers across chunk seams
   flipped labels; past 4 hours the ~4 MB-per-audio-minute waveform is the bigger
   risk, so it accepts the drift rather than the OOM
-- **Stage order:** diarization runs *after* ASR, not alongside it. The two have no
-  real dependency — pyannote reads only the audio — and overlapping them costs
-  `max(STT, diarize)` instead of the sum. But on CUDA both land on the same card
-  by default, and 12 GB running whisperx float16 next to pyannote spends minutes
-  paging VRAM to host RAM with the desktop unusable and the progress line frozen.
-  So `PARALLEL_STAGES` is **off**; set `PINE_PARALLEL_STAGES=1` when diarization
-  is on another device (`PINE_DIARIZE_DEVICE=cpu`) or the GPU has headroom
+- **Stage order:** with whisperx, diarization runs *after* ASR, not alongside it.
+  The two have no real dependency — pyannote reads only the audio — and
+  overlapping them costs `max(STT, diarize)` instead of the sum. But on CUDA both
+  land on the same card by default, and 12 GB running whisperx float16 next to
+  pyannote spends minutes paging VRAM to host RAM with the desktop unusable and
+  the progress line frozen. So whisperx keeps them in turn; set
+  `PINE_PARALLEL_STAGES=1` when diarization is on another device
+  (`PINE_DIARIZE_DEVICE=cpu`) or the GPU has headroom. With mlx-whisper on a Mac
+  the stages overlap by default and pyannote goes to the CPU, leaving Metal to
+  the STT stage (`pipeline.parallel_stages`, `pipeline.diarize_device_for`);
+  `PINE_PARALLEL_STAGES=0` puts diarization back after ASR, on MPS
 - **Recovery:** `requeue_interrupted()` on startup returns anything left in
   `transcribing` or `awaiting_language` to `pending` and enqueues it again
 - **ETA:** `ml_worker/progress.py` folds every stage into one 0–100 scale. The

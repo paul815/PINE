@@ -475,6 +475,120 @@ class TestRunawayDetector:
         assert prompt_tail('и тогда он говорит что всё это') == ''
 
 
+class TestAlienWords:
+    """Words the decoder sampled rather than read. One Mac interview had ten of
+    them in otherwise clean Russian; the same recording on Windows had none."""
+
+    @pytest.mark.parametrize('word', [
+        'terugивает', 'Никонаisme', 'песço', 'Actinghesiaọнальных'])
+    def test_two_alphabets_in_one_word(self, word):
+        from ml_worker.engines.mlx_engine import is_alien_word
+        assert is_alien_word(word, 'ru')
+        assert is_alien_word(word, 'en'), 'no language runs them together'
+
+    @pytest.mark.parametrize('word', ['ọn', 'ọn坐', 'generatedți'])
+    def test_a_third_alphabet_in_a_cyrillic_language(self, word):
+        from ml_worker.engines.mlx_engine import is_alien_word
+        assert is_alien_word(word, 'ru')
+
+    @pytest.mark.parametrize('word', [
+        'YouTube', 'FIFA.', 'Profi.ru', 'Prime', '«Динамо».', 'YouTube-канал',
+        'SMS-ка', "iPhone'ы", 'Citroën', '2019', 'как-то', '—'])
+    def test_what_russian_speech_is_full_of_passes(self, word):
+        from ml_worker.engines.mlx_engine import is_alien_word
+        assert not is_alien_word(word, 'ru')
+
+    def test_other_languages_keep_their_own_letters(self):
+        from ml_worker.engines.mlx_engine import is_alien_word
+        assert not is_alien_word('Łódź', 'pl')
+        assert not is_alien_word('mulțumesc', 'ro')
+
+    def test_striking_them_out_leaves_the_sentence(self):
+        from ml_worker.engines.mlx_engine import alien_words, strip_alien_words
+        segments = [
+            {'start': 0.0, 'end': 3.0, 'text': ' Кто я такой? ọn Сказать',
+             'words': [{'word': ' Кто'}, {'word': ' я'}, {'word': ' такой?'},
+                       {'word': ' ọn'}, {'word': ' Сказать'}]},
+            {'start': 3.0, 'end': 4.0, 'text': ' jedem terugивает'},
+        ]
+        assert alien_words(segments, 'ru') == ['ọn', 'terugивает']
+
+        kept = strip_alien_words(segments, 'ru')
+        assert kept[0]['text'] == ' Кто я такой? Сказать'
+        assert [w['word'] for w in kept[0]['words']] == [
+            ' Кто', ' я', ' такой?', ' Сказать']
+        assert kept[1]['text'] == 'jedem'
+
+    def test_a_segment_left_empty_is_dropped(self):
+        from ml_worker.engines.mlx_engine import strip_alien_words
+        assert strip_alien_words([{'text': ' ọn坐'}], 'ru') == []
+
+
+def _varied(stem, count):
+    """``count`` different words, so the loop detector reads them as speech."""
+    return ' '.join(f'{stem}{i}' for i in range(count))
+
+
+def _words(text, start, step=0.5):
+    """Word timings for ``text``, one word every ``step`` seconds from ``start``."""
+    return [{'word': f' {w}', 'start': start + i * step,
+             'end': start + i * step + step * 0.8}
+            for i, w in enumerate(text.split())]
+
+
+class TestFindHoles:
+    """Speech the gate heard and no word covers. On the Mac transcript of one
+    interview, three answers of 7 to 19 seconds were simply not there."""
+
+    def test_a_skipped_passage_is_found(self):
+        from ml_worker.engines.mlx_engine import find_holes
+        segments = [{'start': 0.0, 'end': 10.0, 'words': _words('a ' * 20, 0.0)},
+                    {'start': 25.0, 'end': 30.0, 'words': _words('b ' * 10, 25.0)}]
+        holes = find_holes(segments, [(0.0, 30.0)], until=30.0)
+        assert len(holes) == 1
+        lo, hi = holes[0]
+        assert lo == pytest.approx(9.9) and hi == 25.0
+
+    def test_a_word_stretched_across_it_does_not_hide_it(self):
+        """The word before a skip is often timed to end after it."""
+        from ml_worker.engines.mlx_engine import find_holes
+        segments = [{'start': 0.0, 'end': 20.0,
+                     'words': [{'word': ' генерал', 'start': 1.0, 'end': 19.0},
+                               {'word': ' КГБ,', 'start': 19.0, 'end': 20.0}]}]
+        holes = find_holes(segments, [(0.0, 20.0)], until=20.0)
+        assert holes == [(3.0, 19.0)]
+
+    def test_a_pause_is_not_a_hole(self):
+        from ml_worker.engines.mlx_engine import find_holes
+        segments = [{'start': 0.0, 'end': 10.0, 'words': _words('a ' * 20, 0.0)},
+                    {'start': 14.0, 'end': 20.0, 'words': _words('b ' * 12, 14.0)}]
+        assert find_holes(segments, [(0.0, 20.0)], until=20.0) == []
+
+    def test_quiet_the_gate_did_not_call_speech_is_not_a_hole(self):
+        from ml_worker.engines.mlx_engine import find_holes
+        segments = [{'start': 0.0, 'end': 5.0, 'words': _words('a ' * 10, 0.0)}]
+        assert find_holes(segments, [(0.0, 5.0)], until=60.0) == []
+
+    def test_nothing_past_the_part_being_kept(self):
+        """The next window reads that part again anyway."""
+        from ml_worker.engines.mlx_engine import find_holes
+        segments = [{'start': 0.0, 'end': 5.0, 'words': _words('a ' * 10, 0.0)}]
+        assert find_holes(segments, [(0.0, 60.0)], until=10.0) == []
+
+    def test_a_segment_without_word_timings_covers_its_span(self):
+        from ml_worker.engines.mlx_engine import find_holes
+        assert find_holes([_said('Одно длинное.', 0.0, 30.0)], [(0.0, 30.0)],
+                          until=30.0) == []
+
+    def test_only_the_words_inside_are_kept(self):
+        from ml_worker.engines.mlx_engine import words_inside
+        segments = [{'start': 0.0, 'end': 4.0, 'text': ' раз два три четыре',
+                     'words': _words('раз два три четыре', 0.0, step=1.0)}]
+        kept = words_inside(segments, 1.0, 3.0)
+        assert kept[0]['text'] == ' два три'
+        assert kept[0]['start'] == 1.0 and kept[0]['end'] == pytest.approx(2.8)
+
+
 class TestDecodeWindows:
     """The chain PINE holds in place of the one mlx-whisper would hold itself."""
 
@@ -687,6 +801,102 @@ class TestDecodeWindows:
 
         assert len(fake.calls) == 7, 'the looping reading should not end the retries'
         assert [seg['text'].strip() for seg in segments][3] == self._MENDED.strip()
+
+    def test_the_fallback_never_climbs_to_sampling(self, monkeypatch):
+        """mlx-whisper's own ladder runs to 1.0, where it writes in any alphabet."""
+        from ml_worker.constants import MLX_TEMPERATURES
+        fake, _, _ = self._run(monkeypatch, [self._reply(self._ORDINARY)], windows=1)
+
+        assert fake.calls[0]['temperature'] == MLX_TEMPERATURES
+        assert max(MLX_TEMPERATURES) < 0.5
+
+    def test_a_window_with_alien_words_is_read_again(self, monkeypatch):
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(' Кто я такой? ọn Сказать, что я выдвигаю, неправильно.'),
+             r(' Кто я такой? Сказать, что я выдвигаю кандидата, неправильно.'),
+             r(self._ORDINARY)],
+            windows=2)
+
+        assert len(fake.calls) == 3
+        assert fake.calls[1].get('initial_prompt') is None
+        assert fake.calls[1]['condition_on_previous_text'] is False
+        assert segments[0]['text'].strip() == (
+            'Кто я такой? Сказать, что я выдвигаю кандидата, неправильно.')
+        # The clean reading is fit to carry.
+        assert fake.calls[2]['initial_prompt'] == segments[0]['text'].strip()
+
+    def test_alien_words_a_second_reading_keeps_are_struck_out(self, monkeypatch):
+        r = self._reply
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [r(' Только меньше считаете jedem ọn坐 се'),
+             r(' Только ọn坐 меньше terugивает'),
+             r(self._ORDINARY)],
+            windows=2)
+
+        assert len(fake.calls) == 3
+        assert segments[0]['text'] == 'Только меньше считаете jedem се'
+
+    def test_a_looping_window_is_not_read_a_third_time_for_its_letters(
+            self, monkeypatch):
+        """It was already read with nothing carried in."""
+        fake, segments, _ = self._run(
+            monkeypatch,
+            [{'segments': [_said('Звук колокола.')] * 5, 'language': 'ru'},
+             self._reply(' Люди ọn адаптируются.')],
+            windows=1)
+
+        assert len(fake.calls) == 2
+        assert segments[0]['text'] == 'Люди адаптируются.'
+
+    def _run_voice(self, monkeypatch, replies, secs):
+        import sys
+        fake = _FakeMlx(replies)
+        monkeypatch.setitem(sys.modules, 'mlx_whisper', fake)
+        segments, _ = self._engine()._decode_windows(_voice(secs), language='ru')
+        return fake, segments
+
+    def test_speech_the_decoder_skipped_is_read_on_its_own(self, monkeypatch):
+        """What happened to 19 seconds of an answer on the Mac: the text runs
+        to "у которого я брал", and picks up again at the next question."""
+        # Varied words: twenty of one word in a row is a loop, not speech.
+        first, second = _varied('раз', 20), _varied('два', 30)
+        before = {'start': 0.0, 'end': 10.0, 'text': first,
+                  'words': _words(first, 0.0)}
+        after = {'start': 25.0, 'end': 40.0, 'text': second,
+                 'words': _words(second, 25.0)}
+        # The hole runs 9.9-25s and is read from 8.9s, a second either side.
+        hole = {'start': 0.0, 'end': 17.0, 'text': ' лишнее нужное тоже лишнее',
+                'words': [{'word': ' лишнее', 'start': 0.1, 'end': 0.6},
+                          {'word': ' нужное', 'start': 3.0, 'end': 3.5},
+                          {'word': ' тоже', 'start': 12.0, 'end': 12.5},
+                          {'word': ' лишнее', 'start': 16.5, 'end': 16.9}]}
+        fake, segments = self._run_voice(
+            monkeypatch,
+            [{'segments': [before, after], 'language': 'ru'},
+             {'segments': [hole], 'language': 'ru'}],
+            secs=40)
+
+        assert len(fake.calls) == 2, 'the hole should be read once, on its own'
+        assert fake.calls[1].get('initial_prompt') is None
+        assert fake.calls[1]['condition_on_previous_text'] is False
+        texts = [seg['text'].strip() for seg in segments]
+        assert texts[1] == 'нужное тоже', 'only the words inside the hole'
+        assert segments[1]['start'] == pytest.approx(8.9 + 3.0, abs=0.05)
+        assert [seg['start'] for seg in segments] == sorted(
+            seg['start'] for seg in segments)
+
+    def test_speech_every_word_covers_costs_nothing(self, monkeypatch):
+        text = _varied('слово', 80)
+        covered = {'start': 0.0, 'end': 40.0, 'text': text,
+                   'words': _words(text, 0.0)}
+        fake, segments = self._run_voice(
+            monkeypatch, [{'segments': [covered], 'language': 'ru'}], secs=40)
+
+        assert len(fake.calls) == 1
+        assert len(segments) == 1
 
 
 class TestMlxLanguageProbeWindow:
@@ -957,6 +1167,66 @@ class TestAssignSpeakersSimple:
         result = assign_speakers_simple(diarization, segments)
         # Empty diarization → speaker key either absent or empty
         assert result[0].get('speaker', '') == ''
+
+    # Host and guest talk in turn; a third label holds 5s of the recording,
+    # between two of the guest's turns.
+    _TURNS = [(0.0, 50.0, 'HOST'), (50.0, 100.0, 'GUEST'),
+              (100.0, 105.0, 'THIRD'), (105.0, 150.0, 'GUEST'),
+              (150.0, 200.0, 'HOST')]
+    # The host and the guest 0.66 alike, as on the interview this was measured on.
+    _HOST, _GUEST = [1.0, 0.0, 0.0], [0.66, 0.7513, 0.0]
+
+    @staticmethod
+    def _third_voice_segment():
+        return [{'start': 101.0, 'end': 104.0, 'text': 'Здесь масса причин.',
+                 'words': [{'start': 101.0, 'end': 104.0}]}]
+
+    def test_a_third_voice_is_kept_apart(self):
+        """An advert read by someone else, 0.35 alike the nearest main speaker,
+        was written under the guest's name."""
+        from ml_worker.diarize import NativeDiarization, assign_speakers_simple
+        third = [0.2, 0.3, 0.93]
+        diarization = NativeDiarization(
+            FakeDiarization(self._TURNS),
+            {'HOST': self._HOST, 'GUEST': self._GUEST, 'THIRD': third})
+        result = assign_speakers_simple(diarization, self._third_voice_segment())
+        assert result[0]['speaker'] == 'THIRD'
+
+    def test_a_split_off_voice_goes_to_whoever_it_sounds_like(self):
+        """Not to whoever talks around it: that is the guest, the voice is the host's."""
+        from ml_worker.diarize import NativeDiarization, assign_speakers_simple
+        like_host = [0.95, 0.1, 0.29]
+        diarization = NativeDiarization(
+            FakeDiarization(self._TURNS),
+            {'HOST': self._HOST, 'GUEST': self._GUEST, 'THIRD': like_host})
+        result = assign_speakers_simple(diarization, self._third_voice_segment())
+        assert result[0]['speaker'] == 'HOST'
+
+    def test_without_voices_a_minor_speaker_goes_to_its_neighbours(self):
+        from ml_worker.diarize import assign_speakers_simple
+        result = assign_speakers_simple(FakeDiarization(self._TURNS),
+                                        self._third_voice_segment())
+        assert result[0]['speaker'] == 'GUEST'
+
+    def test_voices_are_read_in_the_order_of_the_labels(self):
+        from ml_worker.diarize import speaker_centroids
+
+        class Labels:
+            def labels(self):
+                return ['SPEAKER_00', 'SPEAKER_01', 'SPEAKER_02']
+
+        class Output:
+            speaker_diarization = Labels()
+            speaker_embeddings = [[3.0, 4.0], [0.0, 2.0], [0.0, 0.0]]
+
+        centroids = speaker_centroids(Output())
+        assert centroids['SPEAKER_00'] == pytest.approx([0.6, 0.8])
+        assert centroids['SPEAKER_01'] == pytest.approx([0.0, 1.0])
+        assert 'SPEAKER_02' not in centroids, 'a zero row pads, it is no voice'
+
+    def test_an_output_without_voices_has_no_centroids(self):
+        from ml_worker.diarize import speaker_centroids
+        assert speaker_centroids(FakeDiarization([(0.0, 1.0, 'A')])) is None
 
 
 # ---------------------------------------------------------------------------
@@ -1471,6 +1741,39 @@ class TestDiarizeOutputUnwrap:
         assert result[0]['speaker'] == 'SPEAKER_00'
         assert result[1]['speaker'] == 'SPEAKER_01'
 
+    @needs_torch
+    def test_the_voices_travel_with_the_labels(self):
+        """What each label sounds like reaches the step that merges speakers."""
+        from dataclasses import dataclass
+
+        class Labelled(FakeDiarization):
+            def labels(self):
+                return sorted({spk for _s, _e, spk in self._turns})
+
+        annotation = Labelled([(0.0, 5.0, 'SPEAKER_00'), (5.0, 10.0, 'SPEAKER_01')])
+
+        @dataclass
+        class DiarizeOutput:
+            speaker_diarization: object
+            exclusive_speaker_diarization: object = None
+            speaker_embeddings: object = None
+
+        class Pipe:
+            model = MagicMock()
+
+            def __call__(self, x, **kwargs):
+                return DiarizeOutput(speaker_diarization=annotation,
+                                     exclusive_speaker_diarization=annotation,
+                                     speaker_embeddings=[[2.0, 0.0], [0.0, 3.0]])
+
+        import numpy as np
+        d = _make_diarizer(engine_kind='mlx', device='cpu', pipeline=Pipe())
+        result = d.compute(np.zeros(16000 * 10, dtype=np.float32), 'test-rec')
+
+        assert result.centroids == {'SPEAKER_00': [1.0, 0.0],
+                                    'SPEAKER_01': [0.0, 1.0]}
+        assert list(result.itertracks(yield_label=True))[1][2] == 'SPEAKER_01'
+
 
 class TestSpeakerCountThreading:
     """Per-recording speaker count is forwarded into the diarization pipeline."""
@@ -1619,6 +1922,60 @@ class TestEngineSelection:
 # ---------------------------------------------------------------------------
 # Mac pipeline: _write_wav helper
 # ---------------------------------------------------------------------------
+
+class TestParallelStages:
+    """Diarization under the STT stage: a Mac default only, and only for mlx."""
+
+    @pytest.fixture
+    def pipeline(self, monkeypatch):
+        from ml_worker import pipeline
+        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', None)
+        monkeypatch.delenv('PINE_DIARIZE_DEVICE', raising=False)
+        return pipeline
+
+    def test_a_mac_running_mlx_overlaps_them_on_the_cpu(self, pipeline, monkeypatch):
+        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
+        assert pipeline.parallel_stages('mlx') is True
+        assert pipeline.diarize_device_for('mlx') == 'cpu'
+
+    def test_whisperx_keeps_its_stages_in_turn(self, pipeline, monkeypatch):
+        for platform in ('win32', 'linux', 'darwin'):
+            monkeypatch.setattr(pipeline.sys, 'platform', platform)
+            assert pipeline.parallel_stages('whisperx') is False
+            assert pipeline.diarize_device_for('whisperx') is None
+
+    def test_the_variable_decides_when_it_is_set(self, pipeline, monkeypatch):
+        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
+        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', False)
+        assert pipeline.parallel_stages('mlx') is False
+        assert pipeline.diarize_device_for('mlx') is None, 'back on MPS, after STT'
+
+        monkeypatch.setattr(pipeline.sys, 'platform', 'win32')
+        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', True)
+        assert pipeline.parallel_stages('whisperx') is True
+
+    def test_a_chosen_device_is_not_overridden(self, pipeline, monkeypatch):
+        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
+        monkeypatch.setenv('PINE_DIARIZE_DEVICE', 'mps')
+        assert pipeline.diarize_device_for('mlx') is None
+
+    @pytest.mark.parametrize('value, expected', [
+        (None, 'None'), ('', 'None'), ('0', 'False'), ('1', 'True')])
+    def test_unset_reads_as_nobody_asked(self, value, expected):
+        # A fresh interpreter rather than a reload: other modules hold what
+        # they imported from ``constants``, and a reload would leave them stale.
+        import subprocess
+        import sys
+        env = {k: v for k, v in os.environ.items() if k != 'PINE_PARALLEL_STAGES'}
+        if value is not None:
+            env['PINE_PARALLEL_STAGES'] = value
+        backend = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        out = subprocess.run(
+            [sys.executable, '-c',
+             'from ml_worker.constants import PARALLEL_STAGES; print(PARALLEL_STAGES)'],
+            cwd=backend, env=env, capture_output=True, text=True, check=True)
+        assert out.stdout.strip() == expected
+
 
 class TestWriteWav:
     """Test the _write_wav helper produces valid WAV files."""

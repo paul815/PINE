@@ -108,6 +108,12 @@ def _configure_logging(log_dir):
     root = logging.getLogger()
     root.setLevel(level)
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
+    # Libraries that narrate every step at DEBUG. One model download on a Mac
+    # wrote ~130 filelock acquire/release lines into the app log, burying the
+    # dozen lines about what the app itself did. Their warnings still come
+    # through; urllib3 stays, since which URL answered what is worth keeping.
+    for chatty in ('filelock', 'fsspec', 'matplotlib'):
+        logging.getLogger(chatty).setLevel(max(level, logging.INFO))
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 
     for handler in list(root.handlers):
