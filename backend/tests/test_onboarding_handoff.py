@@ -58,8 +58,20 @@ def test_onboarding_template_waits_for_backend_ready_before_navigation():
     template = (REPO_ROOT / 'backend' / 'templates' / 'onboarding.html').read_text(encoding='utf-8')
 
     assert 'const HANDOFF_BACKEND_READY_TIMEOUT_MS = 150000;' in template
-    assert "if (st.supervisor_running && st.backend_ready) return st;" in template
+    assert "if (st.supervisor_running && st.backend_ready && await backendAnswersHere()) return st;" in template
     assert "window.location.replace(prep.main_url || '/');" in template
+
+
+def test_onboarding_handoff_waits_for_this_origin_to_serve_health():
+    """backend_ready fires from create_app, before the server binds its port.
+
+    On a Mac the AirPlay Receiver answers :5000 in that gap with a bare 403,
+    so the page must hear PINE's own health payload before it navigates.
+    """
+    template = (REPO_ROOT / 'backend' / 'templates' / 'onboarding.html').read_text(encoding='utf-8')
+
+    assert "const res = await fetch('/api/health', { cache: 'no-store' });" in template
+    assert 'return !!(body && body.ok === true);' in template
 
 
 def test_onboarding_template_suppresses_disconnect_banner_during_handoff():

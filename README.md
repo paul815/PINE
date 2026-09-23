@@ -246,6 +246,7 @@ Set `PINE_ALLOW_HF_NETWORK=1` to skip Hub offline mode entirely. Not needed for 
 | Setup finds no Python | Install 3.11–3.13 from python.org with "Add to PATH" ticked, then run the launcher again |
 | GPU ignored, everything is slow | System check reports what it found. A missing CUDA toolkit is the usual cause; without an NVIDIA card, CPU mode is expected |
 | Port 5000 busy | The supervisor picks the next free port automatically; open the URL printed in the console |
+| Blank "Access to 127.0.0.1 was denied — HTTP ERROR 403" on a Mac | That is the AirPlay Receiver, which holds port 5000 on macOS 12 and later, answering in PINE's place. Current PINE moves to the next free port on its own; with an older copy, turn off AirPlay Receiver in System Settings → General → AirDrop & Handoff |
 | Browser never opens | Go to `http://127.0.0.1:5000/` by hand. On Linux this is expected — the launcher uses the macOS `open` command |
 | Transcription stuck | A watchdog kills a hung worker and the recording returns to the queue. Details in `backend/logs/` |
 | Install broken beyond repair | `backend/reset_win.bat` or `backend/reset.command`, then run the launcher again |

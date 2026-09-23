@@ -87,6 +87,23 @@ def _read_stale_pid() -> int | None:
 PORT_FILE_PATH = _DATA_DIR / "supervisor.port"
 
 
+def _port_answers(host: str, port: int) -> bool:
+    """True when something already accepts connections on *host*:*port*.
+
+    The bind probe below cannot see a wildcard listener on macOS: BSD lets an
+    SO_REUSEADDR bind of 127.0.0.1 slip in beside ``*:port``. The AirPlay
+    Receiver holds ``*:5000`` on macOS 12 and later, so PINE used to share the
+    port with it, and whenever PINE was not listening -- the backend restart
+    behind Launch PINE, a crash, ``localhost`` resolving to ::1 -- the browser
+    got AirPlay's bare 403 instead of PINE.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
 def _find_free_port(preferred: int, host: str = "127.0.0.1",
                     exclude: frozenset = frozenset()) -> int:
     """Return *preferred* if free, otherwise scan upward for the next available port.
@@ -98,6 +115,8 @@ def _find_free_port(preferred: int, host: str = "127.0.0.1",
     """
     for port in range(preferred, preferred + 100):
         if port in exclude:
+            continue
+        if sys.platform == "darwin" and _port_answers(host, port):
             continue
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

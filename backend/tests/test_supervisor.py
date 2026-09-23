@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import threading
 import time
 import urllib.request
@@ -836,3 +837,23 @@ def test_health_still_answers_when_the_queue_cannot_be_read(client, monkeypatch)
     assert response.status_code == 200
     assert response.get_json()["ok"] is True
     assert response.get_json()["busy"] is False
+
+
+def test_mac_port_probe_skips_a_port_something_already_answers_on(monkeypatch):
+    """The AirPlay Receiver holds *:5000 on macOS; a bind probe cannot see it."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    taken = listener.getsockname()[1]
+    try:
+        monkeypatch.setattr(supervisor.sys, "platform", "darwin")
+        assert supervisor._find_free_port(taken) != taken
+    finally:
+        listener.close()
+
+
+def test_port_answers_false_when_nothing_listens():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        idle = probe.getsockname()[1]
+    assert supervisor._port_answers("127.0.0.1", idle) is False

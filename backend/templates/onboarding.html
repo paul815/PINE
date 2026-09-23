@@ -930,12 +930,27 @@ function hideOnboardingSocketBanner() {
   if (banner) banner.style.display = 'none';
 }
 
+// The backend tells the supervisor it is ready from create_app, before its
+// server has bound the port. Navigating in that gap lands on whatever else
+// answers there (on a Mac, the AirPlay Receiver's bare 403 on :5000), so only
+// a health answer from this very origin says PINE is serving the next page.
+async function backendAnswersHere() {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return !!(body && body.ok === true);
+  } catch (_) {
+    return false;
+  }
+}
+
 async function waitForSupervisedBackend(timeoutMs = HANDOFF_BACKEND_READY_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const st = await getSupervisorStatus();
-      if (st.supervisor_running && st.backend_ready) return st;
+      if (st.supervisor_running && st.backend_ready && await backendAnswersHere()) return st;
     } catch (_) {}
     await new Promise(resolve => setTimeout(resolve, 500));
   }
