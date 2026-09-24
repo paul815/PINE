@@ -8,7 +8,6 @@ PINE has always written.
 """
 
 import logging
-import os
 import re
 import sys
 import threading
@@ -26,44 +25,12 @@ from .constants import (
     SPEAKER_LABELS,
 )
 from .diarize import Diarizer, detect_diarize_device
-from .engines import (
-    ENGINE_MLX,
-    TranscribeContext,
-    create_engine,
-    engine_kind_for_model,
-)
+from .engines import TranscribeContext, create_engine, engine_kind_for_model
 from .errors import TranscriptionCancelled
 from .multitrack import run_multitrack
 from .progress import ProgressMapper
 
 log = logging.getLogger(__name__)
-
-
-def parallel_stages(engine_kind):
-    """Whether diarization runs underneath the STT stage for this engine.
-
-    ``PINE_PARALLEL_STAGES`` decides when it is set. Otherwise only mlx-whisper
-    on a Mac overlaps them, with pyannote moved to the CPU (``diarize_device_for``)
-    so the two do not queue on one GPU — see ``PARALLEL_STAGES``. whisperx keeps
-    its stages in turn, as it always has.
-    """
-    if PARALLEL_STAGES is not None:
-        return PARALLEL_STAGES
-    return engine_kind == ENGINE_MLX and sys.platform == 'darwin'
-
-
-def diarize_device_for(engine_kind):
-    """The device pyannote is loaded on, or None for ``detect_diarize_device``.
-
-    The CPU when it runs alongside mlx-whisper on a Mac: Metal is the STT
-    stage's, and pyannote on MPS next to it nearly doubled the STT stage. An
-    explicit ``PINE_DIARIZE_DEVICE`` still wins.
-    """
-    if (engine_kind == ENGINE_MLX and sys.platform == 'darwin'
-            and parallel_stages(engine_kind)
-            and not os.environ.get('PINE_DIARIZE_DEVICE', '').strip()):
-        return 'cpu'
-    return None
 
 
 
@@ -401,8 +368,7 @@ class MLPipeline:
 
         diarizer_key = (engine_kind, env.diarize_dir)
         if self._diarizer is None or self._diarizer_key != diarizer_key:
-            self._diarizer = Diarizer(env, engine_kind=engine_kind,
-                                      device=diarize_device_for(engine_kind))
+            self._diarizer = Diarizer(env, engine_kind=engine_kind)
             self._diarizer.load()
             self._diarizer_key = diarizer_key
         else:
@@ -457,9 +423,8 @@ class MLPipeline:
         # those into the single scale the UI shows. Nothing below this line
         # should emit a percent of its own.
         multitrack = bool(job.tracks)
-        parallel = parallel_stages(engine_kind_for_model(env.stt_model_id))
         progress = ProgressMapper(total_duration, events.status,
-                                  parallel=parallel and not multitrack,
+                                  parallel=PARALLEL_STAGES and not multitrack,
                                   multitrack=multitrack,
                                   scale=env.progress_scale).start()
         events = replace(events, status=progress)
@@ -536,7 +501,7 @@ class MLPipeline:
 
         diarize = _DiarizeTask(self._diarizer, job, total_duration,
                                events.check_cancel)
-        if parallel_stages(self._diarizer.engine_kind):
+        if PARALLEL_STAGES:
             log.info('Diarization runs alongside transcription, on %s',
                      self._diarizer.device)
             # Started before transcription rather than after it: pyannote reads

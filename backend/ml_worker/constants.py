@@ -65,18 +65,16 @@ DIARIZE_CHUNK_OVERLAP_SEC = 30       # 30s overlap for speaker continuity
 # worth it when diarization is on a different device (PINE_DIARIZE_DEVICE=cpu)
 # or the GPU has headroom to spare.
 #
-# A Mac running mlx-whisper has that other device to spare. Overlapped with
-# pyannote on MPS as well (2026-07-19, the same 74-min recording), the two
-# queued on one GPU: STT nearly doubled and the whole job gained only 17%. With
-# pyannote on the CPU the GPU is left to Metal, and serially the stages cost
-# 1051s + 307s on an 88-minute interview (2026-09-23), so the CPU has 1051s to
-# do what MPS did in 307s before anyone waits for it. On that path the stages
-# overlap by default, with diarization on the CPU (``pipeline.parallel_stages``
-# and ``pipeline.diarize_device_for``); PINE_PARALLEL_STAGES=0 puts it back
-# after STT on MPS. None here means nobody set the variable and the engine
-# decides.
+# A Mac running mlx-whisper looked like the exception, and is not. With pyannote
+# on MPS as well (2026-07-19, the same 74-min recording) the two queued on one
+# GPU: STT nearly doubled and the whole job gained 17%. With pyannote on the
+# CPU instead (2026-09-24, an 88-minute interview) STT kept its pace, 1081s
+# against 1051s serially, but diarization had not finished 33 minutes after it
+# started — MPS does the same file in 307s after STT — and the progress bar sat
+# at 99% the whole time, since a stage running underneath reports nothing. So
+# the stages run in turn everywhere; measure before turning this on.
 _PARALLEL_ENV = os.environ.get('PINE_PARALLEL_STAGES', '').strip()
-PARALLEL_STAGES = (_PARALLEL_ENV != '0') if _PARALLEL_ENV else None
+PARALLEL_STAGES = _PARALLEL_ENV not in ('', '0')
 
 # Progress weighting: expected cost of each stage as a multiple of the audio
 # duration. These only set how the single 0→100 scale is divided between

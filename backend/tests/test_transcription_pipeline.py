@@ -1924,44 +1924,13 @@ class TestEngineSelection:
 # ---------------------------------------------------------------------------
 
 class TestParallelStages:
-    """Diarization under the STT stage: a Mac default only, and only for mlx."""
-
-    @pytest.fixture
-    def pipeline(self, monkeypatch):
-        from ml_worker import pipeline
-        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', None)
-        monkeypatch.delenv('PINE_DIARIZE_DEVICE', raising=False)
-        return pipeline
-
-    def test_a_mac_running_mlx_overlaps_them_on_the_cpu(self, pipeline, monkeypatch):
-        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
-        assert pipeline.parallel_stages('mlx') is True
-        assert pipeline.diarize_device_for('mlx') == 'cpu'
-
-    def test_whisperx_keeps_its_stages_in_turn(self, pipeline, monkeypatch):
-        for platform in ('win32', 'linux', 'darwin'):
-            monkeypatch.setattr(pipeline.sys, 'platform', platform)
-            assert pipeline.parallel_stages('whisperx') is False
-            assert pipeline.diarize_device_for('whisperx') is None
-
-    def test_the_variable_decides_when_it_is_set(self, pipeline, monkeypatch):
-        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
-        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', False)
-        assert pipeline.parallel_stages('mlx') is False
-        assert pipeline.diarize_device_for('mlx') is None, 'back on MPS, after STT'
-
-        monkeypatch.setattr(pipeline.sys, 'platform', 'win32')
-        monkeypatch.setattr(pipeline, 'PARALLEL_STAGES', True)
-        assert pipeline.parallel_stages('whisperx') is True
-
-    def test_a_chosen_device_is_not_overridden(self, pipeline, monkeypatch):
-        monkeypatch.setattr(pipeline.sys, 'platform', 'darwin')
-        monkeypatch.setenv('PINE_DIARIZE_DEVICE', 'mps')
-        assert pipeline.diarize_device_for('mlx') is None
+    """Diarization under the STT stage is opt-in on every platform. On a Mac,
+    with pyannote on the CPU beside mlx-whisper, it had not finished 33 minutes
+    in, and the job sat at 99% until the tab was closed."""
 
     @pytest.mark.parametrize('value, expected', [
-        (None, 'None'), ('', 'None'), ('0', 'False'), ('1', 'True')])
-    def test_unset_reads_as_nobody_asked(self, value, expected):
+        (None, 'False'), ('', 'False'), ('0', 'False'), ('1', 'True')])
+    def test_only_asking_for_it_turns_it_on(self, value, expected):
         # A fresh interpreter rather than a reload: other modules hold what
         # they imported from ``constants``, and a reload would leave them stale.
         import subprocess
