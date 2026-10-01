@@ -1,0 +1,19 @@
+# Normalize to LF in the repository, check out platform-native by default.
+* text=auto
+
+# Launchers are line-ending sensitive: a .command with CRLF fails on macOS
+# with "bad interpreter", and cmd.exe reads .bat/.cmd by byte offset, so
+# LF there loses the offsets and label lookup fails. Without a rule the
+# working-tree bytes follow the checkout platform: Windows autocrlf hides
+# it, Linux and the CI runners do not.
+*.command text eol=lf
+*.sh      text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Binary assets — never diff or convert.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.mp3  binary
+*.woff2 binary

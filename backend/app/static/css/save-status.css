@@ -1,0 +1,66 @@
+/* ── Save feedback: toasts + inline save status ──
+   Single source of truth for every "Saved" affordance in PINE.
+   Loaded after each template's inline <style>, so it wins on equal specificity.
+
+   Channel contract:
+     .save-status  — autosave on a field or a settings section (feedback lands where the user is looking)
+     .toast        — explicit actions whose result is off-screen (export, backup, import) and ALL errors
+   One user action produces exactly one of these, never both. */
+
+/* ── Toast ── */
+/* z-index 2100 is the highest any page used (recording.html, which must clear its
+   modals). Safe everywhere: the toast is pointer-events:none, so it never blocks. */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius, 8px);
+  padding: 8px 18px; font-size: 0.923rem; color: var(--fg);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 2100;
+  max-width: 440px; text-align: center;
+}
+.toast.err { border-color: var(--destr); }
+.toast.show { opacity: 1; }
+
+/* ── Inline save status ──
+   Appears instantly (transition suppressed while .is-visible is on), then fades
+   out when the class is removed. No forced reflow, no textContent juggling.
+
+   Every declaration below is deliberate: this badge sits inside headings that
+   set text-transform:uppercase and letter-spacing (.field-card .label,
+   .seg-field-lbl). Without explicit resets it inherits them and renders as a
+   spaced-out "S A V E D" on those blocks but normally in Settings. It must look
+   identical everywhere, so it inherits nothing typographic from its heading. */
+.save-status {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 0.769rem;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--muted-fg);
+  margin-left: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;          /* headings are flex rows; never squeeze the badge */
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.save-status.is-visible { opacity: 1; transition: none; }
+
+/* Errors stay put until a retry succeeds — they are never dismissed on a timer. */
+.save-status.is-error {
+  opacity: 1; transition: none;
+  color: var(--destr, #dc2626);
+}
+.save-status.is-error a {
+  color: inherit; text-decoration: underline; cursor: pointer;
+  text-underline-offset: 2px;
+}
+
+/* The page-level status sits at the far right of the top bar. */
+.top-bar #pageSaveStatus { margin-left: auto; margin-right: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .save-status { transition: none; }
+}
