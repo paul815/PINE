@@ -1,0 +1,83 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc.*
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# User data and runtime state — never commit. Recordings and transcripts are
+# interview material; models are multi-GB downloads fetched during onboarding.
+# Anchored: an unanchored `projects/` also matched backend/app/api/projects/ and
+# silently kept that package out of every commit.
+/models/
+/projects/
+/backups/
+backend/data/
+backend/logs/
+pine_safety_backups/
+
+# Installer residue. The installers ship at the repo root, where
+# _promote_platform_launcher expects them; _sync_platform_launcher_layout copies
+# them into backend/ and tidies the dev-only config files into
+# Documentation/dev-config/ after onboarding. Those copies are runtime state, and
+# committing them once already deleted LICENSE and both installers from the repo.
+/backend/Setup_WIN.bat
+/backend/Setup_MAC.command
+# ...and the same pair under the names they shipped with before the rename.
+/backend/WIN_Install.bat
+/backend/MAC_Install.command
+/backend/Launch Pine.bat
+/Documentation/dev-config/.editorconfig
+/Documentation/dev-config/.gitattributes
+/Documentation/dev-config/.gitignore
+/Documentation/dev-config/.python-version
+/Documentation/dev-config/LICENSE
+# Same move, different destination: the installers park the root CLAUDE.md
+# (context-mode routing rules, itself ignored) here under a distinct name.
+/documentation/CLAUDE.context-mode.md
+
+# Test cache
+.pytest_cache/
+backend/.pytest_cache/
+backend/pytest-cache-files-*/
+
+# Test run detritus (tests leak tempfile dirs into the cwd)
+pytest-of-*/
+pytest-api-quit-*/
+_codex_*/
+
+# pip unpacks wheels into the working directory during ML installs; a stray
+# torch wheel here is ~116 MB.
+pip-metadata-*/
+pip-unpack-*/
+/tmp*/
+/tmp*.odt
+/tmp*.zip
+
+# Env files and secrets
+*.env
+.env*
+node_modules/
+
+# IDE / AI tooling (local, not part of the project)
+.idea/
+.vscode/
+.claude/
+# Root-only: local context-mode routing rules. Documentation/CLAUDE.md is
+# project documentation and stays tracked.
+/CLAUDE.md
+
+# OS
+Thumbs.db
+.DS_Store
+*.lnk

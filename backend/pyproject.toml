@@ -1,0 +1,17 @@
+[tool.ruff]
+# Restored 2026-08-21 after the file went missing from the working copy; it was
+# never committed, so a reset took it with the other dev-only files. Commit it
+# this time — without it `ruff check .` falls back to its own rule set and
+# buries the two real findings under ~230 style complaints.
+target-version = "py312"
+extend-exclude = [".venv", "venv", "__pycache__", "app/static/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "C4", "PIE", "UP"]
+ignore = [
+    # Line length is not enforced: the codebase wraps by meaning, not by column.
+    "E501",
+    # Late imports are deliberate — run.py and export_service.py import after
+    # sys.path / environment setup, and extensions.py after the compat patches.
+    "E402",
+]

@@ -1,0 +1,768 @@
+:root {
+  --btn-radius: 8px;
+  --btn-gap: 6px;
+  --btn-pad-x-sm: 10px;
+  --btn-pad-x-md: 14px;
+  --btn-pad-x-lg: 16px;
+  --btn-h-sm: 30px;
+  --btn-h-md: 34px;
+  --btn-h-lg: 38px;
+  --btn-icon-xs: 20px;
+  --btn-icon-sm: 22px;
+  --btn-icon-md: 28px;
+  --btn-font-sm: 0.846rem;
+  --btn-font-md: 0.923rem;
+  --btn-font-lg: 1rem;
+  --btn-focus-ring: 0 0 0 3px var(--accent-dim);
+}
+
+:is(
+  .btn,
+  .btn-new,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-save,
+  .btn-reset,
+  .btn-cancel,
+  .btn-delete-confirm,
+  .single-tx-sidebar-btn,
+  .btn-validate,
+  .m-cancel,
+  .m-export-btn,
+  .import-back-btn,
+  .import-confirm-btn,
+  .export-btn,
+  .back-btn,
+  .back-to-rec-btn,
+  .tags-link-btn,
+  .lf-btn,
+  .size-btn,
+  .theme-btn,
+  .font-btn,
+  .fmt-btn,
+  .seg-chip,
+  .export-tab,
+  .proj-pill,
+  .add-cmt-btn,
+  .tag-chip-remove-btn,
+  .archive-toggle-btn,
+  .btn-add-seg,
+  .btn-add-sec,
+  .btn-toggle-segs,
+  .btn-rec-filter,
+  .search-clear,
+  .hint-tip,
+  .seg-stepper-btn,
+  .rtab,
+  .fullscreen-btn
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--btn-gap);
+  border-radius: var(--btn-radius);
+  font-family: var(--font-body);
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+:is(
+  .btn,
+  .btn-new,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-save,
+  .btn-reset,
+  .btn-cancel,
+  .btn-delete-confirm,
+  .single-tx-sidebar-btn,
+  .btn-validate,
+  .m-cancel,
+  .m-export-btn,
+  .import-back-btn,
+  .import-confirm-btn,
+  .export-btn,
+  .back-btn,
+  .back-to-rec-btn,
+  .tags-link-btn,
+  .lf-btn,
+  .size-btn,
+  .theme-btn,
+  .font-btn,
+  .fmt-btn,
+  .seg-chip,
+  .export-tab,
+  .proj-pill,
+  .add-cmt-btn,
+  .tag-chip-remove-btn,
+  .archive-toggle-btn,
+  .btn-add-seg,
+  .btn-add-sec,
+  .btn-toggle-segs,
+  .btn-rec-filter,
+  .search-clear,
+  .hint-tip,
+  .seg-stepper-btn,
+  .rtab,
+  .fullscreen-btn
+):focus-visible {
+  outline: none;
+  box-shadow: var(--btn-focus-ring);
+}
+
+:is(
+  .btn,
+  .btn-new,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-save,
+  .btn-reset,
+  .btn-cancel,
+  .btn-delete-confirm,
+  .single-tx-sidebar-btn,
+  .btn-validate,
+  .m-cancel,
+  .m-export-btn,
+  .import-back-btn,
+  .import-confirm-btn,
+  .export-btn,
+  .back-btn,
+  .back-to-rec-btn,
+  .tags-link-btn,
+  .lf-btn,
+  .size-btn,
+  .theme-btn,
+  .font-btn,
+  .fmt-btn,
+  .seg-chip,
+  .export-tab,
+  .proj-pill,
+  .add-cmt-btn,
+  .tag-chip-remove-btn,
+  .archive-toggle-btn,
+  .btn-add-seg,
+  .btn-add-sec,
+  .btn-toggle-segs,
+  .btn-rec-filter,
+  .search-clear,
+  .hint-tip,
+  .seg-stepper-btn,
+  .rtab,
+  .fullscreen-btn
+):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+:is(
+  .btn,
+  .btn-new,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-save,
+  .btn-reset,
+  .btn-cancel,
+  .btn-delete-confirm,
+  .single-tx-sidebar-btn,
+  .btn-validate,
+  .m-cancel,
+  .m-export-btn,
+  .import-back-btn,
+  .import-confirm-btn,
+  .export-btn,
+  .proj-pill,
+  .back-btn,
+  .back-to-rec-btn,
+  .tags-link-btn,
+  .lf-btn
+) svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+:is(
+  .btn,
+  .btn-new,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-save,
+  .btn-reset,
+  .btn-cancel,
+  .btn-delete-confirm,
+  .single-tx-sidebar-btn,
+  .btn-validate,
+  .m-cancel,
+  .m-export-btn,
+  .import-back-btn,
+  .import-confirm-btn,
+  .export-btn,
+  .proj-pill,
+  .back-btn,
+  .tags-link-btn,
+  .lf-btn
+) {
+  min-height: var(--btn-h-md);
+  padding: 0 var(--btn-pad-x-md);
+  font-size: var(--btn-font-md);
+  font-weight: 500;
+}
+
+:is(.btn-lg, .btn-launch, .back-to-rec-btn) {
+  min-height: var(--btn-h-lg);
+  padding-left: var(--btn-pad-x-lg);
+  padding-right: var(--btn-pad-x-lg);
+  font-size: var(--btn-font-lg);
+}
+
+:is(.btn-sm, .btn-validate) {
+  min-height: var(--btn-h-sm);
+  padding-left: var(--btn-pad-x-sm);
+  padding-right: var(--btn-pad-x-sm);
+  font-size: var(--btn-font-sm);
+}
+
+/* Sits inside a running line of text rather than in a button row, so it gives
+   up the 30px hit target and takes the size of the copy around it. Pair it
+   with a variant class (.btn-outline) — this only sets the box. */
+.btn-inline-compact {
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: var(--btn-font-sm);
+}
+
+:is(.btn-primary, .btn-save, .m-export-btn, .import-confirm-btn) {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+}
+
+:is(.btn-primary, .btn-save, .m-export-btn, .import-confirm-btn):hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+:is(
+  .btn-outline,
+  .btn-ghost,
+  .btn-new,
+  .single-tx-sidebar-btn,
+  .export-btn,
+  .proj-pill,
+  .tags-link-btn,
+  .import-back-btn,
+  .m-cancel
+) {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+:is(
+  .btn-outline,
+  .btn-ghost,
+  .btn-new,
+  .single-tx-sidebar-btn,
+  .export-btn,
+  .proj-pill,
+  .tags-link-btn,
+  .import-back-btn,
+  .m-cancel
+):hover:not(:disabled) {
+  background: var(--muted);
+  border-color: var(--accent-bd);
+  color: var(--fg);
+}
+
+.btn-outline-danger {
+  color: var(--destr);
+  border-color: var(--destr-bd);
+}
+
+.btn-outline-danger:hover:not(:disabled) {
+  background: var(--destr-dim);
+  color: var(--destr);
+  border-color: var(--destr);
+}
+
+:is(.back-btn, .lf-btn) {
+  background: transparent;
+  color: var(--muted-fg);
+  border: 1px solid transparent;
+}
+
+:is(.back-btn, .lf-btn):hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--fg);
+}
+
+.btn-validate {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent-bd);
+  font-weight: 600;
+}
+
+.btn-validate:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.btn-reset {
+  background: var(--destr-dim);
+  color: var(--destr);
+  border: 1px solid var(--destr-bd);
+  font-weight: 600;
+}
+
+.btn-reset:hover:not(:disabled) {
+  background: var(--destr);
+  color: #fff;
+  border-color: var(--destr);
+}
+
+.btn-delete-confirm {
+  background: var(--destr);
+  color: #fff;
+  border: 1px solid var(--destr);
+  font-weight: 600;
+}
+
+.btn-delete-confirm:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-cancel {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--muted);
+  border-color: var(--accent-bd);
+}
+
+:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .seg-chip) {
+  min-height: var(--btn-h-sm);
+  padding: 0 var(--btn-pad-x-sm);
+  font-size: var(--btn-font-sm);
+  font-weight: 500;
+  background: var(--muted);
+  color: var(--muted-fg);
+  border: 1px solid var(--border);
+}
+
+:is(.size-btn, .theme-btn, .font-btn, .fmt-btn, .seg-chip):hover:not(:disabled) {
+  background: var(--secondary);
+  color: var(--fg);
+  border-color: var(--accent-bd);
+}
+
+/* A toggle that is currently on. Tinted rather than filled: the weight of a
+   solid accent belongs to a button that commits something, and these only say
+   which way a switch is set. */
+:is(.size-btn.on, .theme-btn.on, .font-btn.on, .fmt-btn.on, .seg-chip.active,
+    .export-btn.on) {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-bd);
+}
+
+:is(.export-tab, .rtab) {
+  min-height: var(--btn-h-md);
+  padding: 0 var(--btn-pad-x-md);
+  font-size: var(--btn-font-md);
+  font-weight: 500;
+  background: transparent;
+  color: var(--muted-fg);
+  border: 1px solid transparent;
+}
+
+:is(.export-tab, .rtab):hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--fg);
+}
+
+:is(.export-tab.on, .rtab.on) {
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+:is(.archive-toggle-btn, .btn-add-seg, .btn-add-sec) {
+  min-height: var(--btn-h-sm);
+  font-size: var(--btn-font-sm);
+}
+
+:is(.btn-add-seg, .btn-add-sec) {
+  padding: 0 var(--btn-pad-x-sm);
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid transparent;
+}
+
+:is(.btn-add-seg, .btn-add-sec):hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent-bd);
+  color: var(--accent);
+}
+
+.add-cmt-btn {
+  min-height: var(--btn-h-sm);
+  padding: 0 var(--btn-pad-x-sm);
+  font-size: var(--btn-font-sm);
+  font-weight: 500;
+}
+
+.add-cmt-btn {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.add-cmt-btn:hover:not(:disabled) {
+  background: var(--muted);
+  border-color: var(--accent-bd);
+  color: var(--fg);
+}
+
+.tag-chip-remove-btn {
+  min-height: var(--btn-h-md);
+  padding: 0 var(--btn-pad-x-md);
+  font-size: var(--btn-font-md);
+  font-weight: 600;
+  background: var(--destr-dim);
+  color: var(--destr);
+  border: 1px solid var(--destr-bd);
+}
+
+.tag-chip-remove-btn:hover:not(:disabled) {
+  background: var(--destr);
+  color: #fff;
+  border-color: var(--destr);
+}
+
+:is(
+  .icon-btn,
+  .py-link-status,
+  .split-arrow,
+  .play-btn,
+  .color-swatch
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  font-family: var(--font-body);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Row action — the small icon button that sits inside a list row, a card or
+   a panel header: delete, rename, remove-from-selection.
+
+   Replaces eleven private definitions that ranged 20-26px and disagreed on
+   whether the button is visible at all: main.html revealed .rec-del /
+   .att-del / .stx-del only on row hover, while recording.html and tags.html
+   kept theirs on screen at 0.6 opacity. Hover-reveal is unreachable on a
+   touch screen and invisible to keyboard users, so the visible variant wins.
+   -------------------------------------------------------------------------- */
+:is(.icon-btn, .py-link-status) {
+  width: var(--btn-icon-sm);
+  min-width: var(--btn-icon-sm);
+  height: var(--btn-icon-sm);
+  min-height: var(--btn-icon-sm);
+}
+
+.icon-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted-fg);
+  opacity: 0.6;
+  /* Several of these draw a bare × instead of an icon; without this they
+     inherit whatever the surrounding card or label happens to use. */
+  font-size: 1.077rem;
+}
+
+.icon-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--muted);
+  color: var(--fg);
+}
+
+.icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.icon-btn-danger:hover:not(:disabled) {
+  background: var(--destr-dim);
+  color: var(--destr);
+  border-color: var(--destr-bd);
+}
+
+.icon-btn-accent:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-bd);
+}
+
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.icon-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+/* The multiplication-sign glyph some delete buttons use instead of an icon. */
+.icon-btn .x {
+  font-size: 1.077rem;
+  line-height: 1;
+}
+
+.play-btn {
+  width: var(--btn-icon-md);
+  min-width: var(--btn-icon-md);
+  height: var(--btn-icon-md);
+  min-height: var(--btn-icon-md);
+}
+
+/* --------------------------------------------------------------------------
+   Colour swatch — picking a colour for a code or a speaker. Was six private
+   definitions across four files at 16/22/24/28px and four different radii.
+   -------------------------------------------------------------------------- */
+.color-swatch {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+}
+
+.color-swatch:hover:not(:disabled) {
+  transform: scale(1.15);
+}
+
+.color-swatch.selected {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px var(--card);
+}
+
+/* Larger target where the swatch is the field itself rather than one cell of
+   a grid — it needs a visible edge, since nothing around it draws one. */
+.color-swatch-lg {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: var(--border);
+}
+
+.color-swatch-lg:hover:not(:disabled) {
+  border-color: var(--accent-bd);
+  transform: scale(1.05);
+}
+
+/* Speakers read as people, not categories — a disc, not a tile. */
+.color-swatch-round {
+  border-radius: 50%;
+}
+
+/* Special controls intentionally keep their original UI pattern. */
+:is(.search-clear, .hint-tip, .btn-rec-filter, .btn-toggle-segs, .seg-stepper-btn, .fullscreen-btn) {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  background: var(--card);
+  color: var(--muted-fg);
+  border: 1px solid var(--border);
+}
+
+:is(.search-clear, .hint-tip, .btn-rec-filter, .btn-toggle-segs, .seg-stepper-btn, .fullscreen-btn):hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--fg);
+  border-color: var(--accent-bd);
+}
+
+.btn-toggle-segs {
+  background: none;
+  border: none;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0 0 0 4px;
+  color: var(--muted-fg);
+  border-radius: var(--radius);
+  transition: color 0.15s;
+}
+
+.btn-toggle-segs svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.btn-toggle-segs:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
+  color: var(--fg);
+}
+
+.btn-toggle-segs:focus-visible {
+  box-shadow: none;
+}
+
+.seg-stepper-btn {
+  border-radius: 0;
+  min-width: 26px;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+}
+
+.seg-stepper-btn:active {
+  background: var(--secondary);
+}
+
+.search-clear {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  border-radius: 50%;
+  background: var(--secondary);
+  color: var(--muted-fg);
+  border: none;
+}
+
+.search-clear:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--fg);
+  border-color: transparent;
+}
+
+.hint-tip {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-fg);
+  font-size: 0.769rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+  flex-shrink: 0;
+  font-family: var(--font-body);
+}
+
+.hint-tip:hover:not(:disabled),
+.hint-tip:focus-visible {
+  background: var(--muted);
+  color: var(--accent);
+  border-color: var(--accent-bd);
+  outline: none;
+  box-shadow: none;
+}
+
+.btn-rec-filter {
+  background: none;
+  border: none;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 4px;
+  color: var(--muted-fg);
+  border-radius: var(--radius);
+  transition: color 0.15s;
+}
+
+.btn-rec-filter:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
+  color: var(--fg);
+}
+
+.btn-rec-filter svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.btn-rec-filter:focus-visible {
+  box-shadow: none;
+}
+
+.archive-toggle-btn {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--muted-fg);
+  border: 1px solid transparent;
+  border-top-color: var(--border);
+  box-shadow: none;
+}
+
+.archive-toggle-btn:hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--fg);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.back-to-rec-btn {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.back-to-rec-btn:hover:not(:disabled) {
+  background: var(--muted);
+  border-color: var(--accent-bd);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
