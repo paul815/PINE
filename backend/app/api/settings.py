@@ -115,7 +115,7 @@ DEFAULTS = {
     'backup_include_audio': 'false',
     'auto_backup_enabled': 'false',
     'auto_backup_interval_hours': '24',
-    'backup_retention_count': '5',
+    'backup_retention_count': '10',
     'pii_threshold': '0.8',
     'last_open_project_id': '',
     'transcription_complete_sound_enabled': 'true',
@@ -894,6 +894,8 @@ def get_settings():
         'size_bytes': MODEL_REGISTRY.get(model_id, {}).get('size_bytes', 0),
         'installed': _stt_model_installed(model_id),
     } for model_id in supported_stt_models()]
+    # The same model runs on Metal on a Mac, where there is no VRAM to quote.
+    result['is_mac'] = _is_macos()
 
     result['app_version'] = __version__
 

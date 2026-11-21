@@ -32,18 +32,18 @@ PINE/
 │   │   ├── extensions.py  # db, socketio, ALLOWED_ORIGINS
 │   │   └── __init__.py    # create_app, routes
 │   ├── ml_worker/         # The ML process — torch/whisperx/pyannote live only here
-│   │   ├── engines/       # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon), base
+│   │   ├── engines/       # whisperx_engine (CUDA/Metal/CPU), base
 │   │   ├── pipeline.py    # stage orchestration
 │   │   ├── diarize.py     # pyannote
 │   │   ├── tracks.py      # per-speaker track handling
 │   │   ├── multitrack.py  # the per-track pipeline, and merging its transcripts
-│   │   ├── audio.py       # ffprobe/ffmpeg decode, WAV writing, MLX cache
+│   │   ├── audio.py       # ffprobe/ffmpeg decode, WAV writing
 │   │   ├── compat.py      # global shims (env, sys.modules, torch.load) — why this is a process
 │   │   ├── constants.py   # every tunable, each with its PINE_* env override
 │   │   ├── progress.py    # one 0–100 scale across all stages
 │   │   ├── errors.py      # exceptions shared with the caller
 │   │   └── protocol.py    # JSON messages over the pipe
-│   ├── templates/         # Jinja2 HTML (main, recording, settings, tags, manage_tags, onboarding)
+│   ├── templates/         # Jinja2 HTML (main, recording, settings, tags, onboarding)
 │   ├── tests/             # pytest suite
 │   ├── tools/             # dev helpers (dev_reset, design/contrast audits)
 │   ├── data/              # pine.db (SQLite), created at runtime
@@ -114,30 +114,32 @@ projects/<folder_name>/
   `worker_client.py` (JSON messages over a pipe, `ml_worker/protocol.py`). Torch,
   WhisperX and pyannote are imported **only** in that child process, so a CUDA
   crash or an OOM kills the worker, not the backend
-- **Engines:** `ml_worker/engines/` — `whisperx_engine` on CUDA/CPU,
-  `mlx_engine` on Apple Silicon, behind a common `base.py` interface
-- **Device:** Auto-detects CUDA; falls back to CPU with int8
+- **Engines:** `ml_worker/engines/` — `whisperx_engine` on CUDA, Apple Silicon
+  (Metal, CTranslate2 4.9+) and CPU, behind a common `base.py` interface. The
+  Mac's former `mlx_engine` was removed in 2026-11; its model ids map onto
+  `whisperx-large-v3`
+- **Device:** CUDA on Windows/Linux, Metal (float16) on a Mac; CPU with int8
+  otherwise. On Metal the engine hands Whisper and torch's MPS cache back
+  after each job (`release()`), since the GPU shares the Mac's RAM
 - **Progress:** SocketIO emits `transcription:status` — `{ recording_id, status, stage, message, percent? }`
-- **Language:** the worker detects it. Below `LANG_CONFIDENCE_MIN` (0.82), or with
-  two candidates inside `LANG_CONFIDENCE_MARGIN` (0.10), it asks instead of
-  guessing: the job thread parks on an `Event`, the recording goes to
+- **Language:** the worker detects it. Below `LANG_CONFIDENCE_MIN` (0.82) it asks
+  instead of guessing: the job thread parks on an `Event`, the recording goes to
   `awaiting_language`, and `POST …/transcription/language` wakes it. The waiters
   live in `services/transcription/__init__.py` (`_language_waiters`), so a
   backend restart abandons the prompt and the recording is requeued. A project's
   `default_transcription_language` answers ahead of time; `PINE_SKIP_LANG_CONFIRM=1`
   removes the question
 - **Chunking:** ASR splits files ≥30 min into 30-min chunks with 30s overlap
-  (`CHUNK_*` in `ml_worker/constants.py`). Diarization runs on the whole file:
-  its chunking path still exists but its threshold sits at 4 hours
-  (`DIARIZE_CHUNK_THRESHOLD_SEC`), because matching speakers across chunk seams
-  flipped labels; past 4 hours the ~4 MB-per-audio-minute waveform is the bigger
-  risk, so it accepts the drift rather than the OOM
+  (`CHUNK_*` in `ml_worker/constants.py`). Diarization runs on the whole file,
+  however long: matching speakers across chunk seams flipped labels, and the
+  chunked path that did it (the Mac's, past 4 hours) went with the mlx engine.
+  The waveform costs ~4 MB per audio minute, ~1 GB for a 4-hour file
 - **Stage order:** diarization runs *after* ASR, not alongside it. The two have no
   real dependency — pyannote reads only the audio — and overlapping them costs
   `max(STT, diarize)` instead of the sum. But on CUDA both land on the same card
   by default, and 12 GB running whisperx float16 next to pyannote spends minutes
   paging VRAM to host RAM with the desktop unusable and the progress line frozen.
-  A Mac fares no better: pyannote on MPS beside mlx-whisper nearly doubled STT,
+  A Mac fared no better (measured with mlx-whisper): pyannote on MPS beside it nearly doubled STT,
   and on the CPU it had not finished an 88-minute file 33 minutes in, where MPS
   takes 307s after STT. So `PARALLEL_STAGES` is **off**; set
   `PINE_PARALLEL_STAGES=1` only after measuring your own machine
@@ -182,8 +184,8 @@ The single-file path is untouched: no tracks means the pyannote flow, unchanged.
 - **Required:** two diarization entries — `pyannote-diarization`
   (`pyannote/speaker-diarization-community-1`, the pipeline config and small
   assets) and `pyannote-wespeaker-voxceleb-resnet34-LM` (the embedding weights) —
-  plus the transcription model for the platform: `whisperx-large-v3`
-  (`Systran/faster-whisper-large-v3`), or `mlx-whisper-large-v3` on Mac. Both
+  plus the transcription model, the same on every platform: `whisperx-large-v3`
+  (`Systran/faster-whisper-large-v3`). Both
   pyannote repos are gated and download through the pyannote hub cache
 - **Transcription model:** downloaded during onboarding, re-installable from
   Settings (`/api/settings/stt-model/install`) if that download never finished;
@@ -209,7 +211,8 @@ The single-file path is untouched: no tracks means the pyannote flow, unchanged.
   setting calls `refresh_auto_backup()`, which stops the timer and starts it
   again, so a new interval takes effect without a restart
 - **Retention:** `prune_backups()` keeps the `backup_retention_count` newest
-  `pine_backup_*.zip` (default 5); `0` or less keeps everything
+  `pine_backup_*.zip` (default 10 — with the daily default, about ten days of
+  history); `0` or less keeps everything
 
 ### Supervisor
 

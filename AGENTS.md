@@ -11,8 +11,8 @@ Last updated: 2026-08-27.
 
 PINE (Private Interview & Notes Environment) is a fully local, offline Flask
 desktop web app for product researchers. Audio and transcripts are processed on
-the user's machine; nothing leaves the PC. Speech-to-text is WhisperX (mlx-whisper
-on Apple Silicon), speaker diarization is pyannote.
+the user's machine; nothing leaves the PC. Speech-to-text is WhisperX (on Apple
+Silicon through CTranslate2's Metal backend), speaker diarization is pyannote.
 
 The top engineering goal is data integrity for research assets:
 
@@ -133,9 +133,9 @@ backend/
     services/     # transcription/ (job_runner + worker_client), export, model_manager,
                   # launcher_layout, pip_installer, annotations, multitrack_ingest, pii,
                   # backup, system_check, ffmpeg_setup, transcript_format
-  ml_worker/      # ML process. torch/whisperx/pyannote/mlx live only here
-    engines/      # whisperx_engine (CUDA/CPU), mlx_engine (Apple Silicon), behind base.py
-  templates/      # main, recording, tags, manage_tags, settings, onboarding
+  ml_worker/      # ML process. torch/whisperx/pyannote live only here
+    engines/      # whisperx_engine (CUDA/Metal/CPU), behind base.py
+  templates/      # main, recording, tags, settings, onboarding
   scripts/        # check_mojibake.py, check_line_endings.py, build_cyrillic_fonts.py
   data/           # pine.db (created at runtime)
   tests/          # pytest suite with conftest.py fixtures
@@ -157,7 +157,7 @@ two halves is a data-loss event, not a cosmetic bug.
 
 ### Process boundary
 
-`backend/app/` must **never** import `torch`, `whisperx`, `pyannote` or `mlx`.
+`backend/app/` must **never** import `torch`, `whisperx` or `pyannote`.
 Those belong to `backend/ml_worker/` alone, so a CUDA crash or an OOM kills the
 worker rather than the backend. An import across this line looks harmless and
 quietly undoes the split.
@@ -189,9 +189,9 @@ quietly undoes the split.
   Required: pyannote-diarization, pyannote-segmentation, one transcription model.
   Optional: gliner-pii, offered during onboarding and installable or removable
   from Settings afterwards
-- **One transcription model per platform:** `whisperx-large-v3`
-  (`mlx-whisper-large-v3` on Mac). `supported_stt_models()` lists what a platform
-  may offer; `normalize_stt_model_id()` rejects the rest
+- **One transcription model on every platform:** `whisperx-large-v3` — on a Mac it
+  runs on Metal (CTranslate2 4.9+), CPU int8 without it. The retired
+  `mlx-whisper-large-v3` id maps onto it; `normalize_stt_model_id()` rejects the rest
 - Heavy ML deps are **not** in `requirements.txt` — `pip_installer.py` installs
   them at download time
 - Models come from HuggingFace Hub during onboarding; pyannote needs an HF token,
@@ -228,11 +228,16 @@ migrations at startup. New migrations go there.
 
 ### Frontend
 
-- Six standalone Jinja2 templates with inline `<style>` and `<script>`. None uses
+- Five standalone Jinja2 templates with inline `<style>` and `<script>`. None uses
   `{% extends %}`
-- Shared CSS in `app/static/css/`: `tokens.css` (palette, radius scale, z-index
-  ladder), `button-system.css`, `fonts.css`, `save-status.css` — all six templates
-  link them
+- Shared CSS in `app/static/css/`: `tokens.css` (palette, spacing and radius
+  scales, z-index ladder), `fonts.css`, `button-system.css`, `ui-system.css`,
+  `save-status.css`. Every template links them *before* its own `<style>` block
+  (onboarding skips `save-status.css`), so a page rule overrides a shared one at
+  equal specificity
+- `python backend/tools/design_audit.py --rules` checks the CSS against
+  `documentation/DESIGN.md` — spacing scale, radii, colours, z-index, motion,
+  shadows, line height, tracking, duplicated classes — and names each line
 - A colour or font is defined in exactly one place. What remains in a template's
   `:root` is page-only (layout metrics, player colours)
 - Never write a raw `z-index` — use the `--z-*` ladder. Scope theme rules to
