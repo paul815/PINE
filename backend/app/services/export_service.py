@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime
 
-from .file_utils import atomic_read_json
+from .file_utils import atomic_read_json, safe_child_path
 
 # How PINE's own markdown reads (see _render_transcript_blocks and
 # _build_project_header). Both prompts carry it, so a change to the export
@@ -643,6 +643,174 @@ def _build_project_header(project):
     return lines
 
 
+def _transcript_file(project_dir, transcript_path):
+    """The recording's transcript inside *project_dir*, or None if it points elsewhere."""
+    if not transcript_path:
+        return None
+    try:
+        return safe_child_path(project_dir, transcript_path)
+    except ValueError:
+        log.warning('Export skipped a transcript path outside %s: %r', project_dir, transcript_path)
+        return None
+
+
+class _AnchorRemap:
+    """Move tag and comment offsets from a transcript onto its redacted copy.
+
+    Anchors are character offsets, into one segment's text or into the merged
+    text of a speaker block (see ``_inline_span_bounds``). Redaction changes
+    lengths, so every offset is taken through the old block to the segment it
+    falls in, moved with that segment's ``where`` map, and placed back into the
+    block that segment sits in after redaction. The export then reads exactly
+    as it would without PII removal, names replaced by their markers.
+    """
+
+    def __init__(self, old_segments, new_segments, maps):
+        self._old, self._new, self._maps = old_segments, new_segments, maps
+        self._old_blocks = self._blocks(old_segments)
+        self._new_blocks = self._blocks(new_segments)
+
+    @staticmethod
+    def _blocks(segments):
+        where = {}
+        for block in merge_speaker_blocks(segments):
+            indices = block['indices']
+            _, offsets = block_text_and_offsets(segments, indices)
+            for i in indices:
+                where[i] = (indices, offsets)
+        return where
+
+    @staticmethod
+    def _lead(segments, i):
+        text = segments[i].get('text') or ''
+        return len(text) - len(text.lstrip())
+
+    def _known(self, anchor, pos):
+        return (isinstance(anchor, int) and anchor in self._old_blocks
+                and isinstance(pos, (int, float)))
+
+    def merged(self, anchor, pos, side):
+        """An offset into the block holding segment *anchor*, after redaction."""
+        if not self._known(anchor, pos):
+            return pos
+        indices, offsets = self._old_blocks[anchor]
+        target = indices[0]
+        for i in indices:
+            if offsets[i] <= pos:
+                target = i
+        local = pos - offsets[target]
+        # Blocks join stripped segment texts; the maps work on the raw text.
+        raw = self._maps[target](local + self._lead(self._old, target), side)
+        moved = max(0, raw - self._lead(self._new, target))
+        _, new_offsets = self._new_blocks.get(target, (None, {}))
+        return new_offsets.get(target, 0) + moved
+
+    def segment(self, anchor, pos, side):
+        """An offset relative to segment *anchor* (it may run on into the block)."""
+        if not self._known(anchor, pos):
+            return pos
+        _, old_offsets = self._old_blocks[anchor]
+        _, new_offsets = self._new_blocks.get(anchor, (None, {}))
+        moved = self.merged(anchor, old_offsets[anchor] + pos, side)
+        return moved - new_offsets.get(anchor, 0)
+
+    def span(self, span):
+        out = dict(span)
+        idx = span.get('segment_idx')
+        end_idx = span.get('end_segment_idx')
+        if out.get('start_char') is not None:
+            out['start_char'] = self.segment(idx, out['start_char'], 'start')
+        if out.get('end_char') is not None:
+            out['end_char'] = self.segment(idx, out['end_char'], 'end')
+        if out.get('merged_start') is not None:
+            out['merged_start'] = self.merged(idx, out['merged_start'], 'start')
+        if out.get('merged_end') is not None:
+            out['merged_end'] = self.merged(idx, out['merged_end'], 'end')
+        # Both renderers read either key as an offset into the end block.
+        end_anchor = end_idx if end_idx is not None else idx
+        for key in ('end_merged_end', 'end_seg_end_char'):
+            if out.get(key) is not None:
+                out[key] = self.merged(end_anchor, out[key], 'end')
+        return out
+
+
+def _remove_pii_for_export(app, recording, segments, tag_spans, comments, notes, ordinal):
+    """Redact what an export of *recording* would otherwise carry out by name.
+
+    The transcript text was always covered. A respondent's name more often sits
+    in the places that were not: the speaker they were renamed to, the file
+    name, a comment, the participant notes. Speakers whose label holds PII
+    become "Speaker N" (by order of appearance, so blocks stay apart); a
+    recording name that holds any becomes "Recording N". Tags and comments are
+    moved onto the redacted text (``_AnchorRemap``). Any detector failure
+    raises PIIError and the export stops: nothing goes out half-redacted.
+
+    Only the export's copies change; annotation files on disk are untouched.
+
+    Returns ``(segments, tag_spans, comments, notes, title)``.
+    """
+    import re
+
+    from .pii_service import (
+        PIIError,
+        _load_model,
+        detect_pii,
+        redact_segments_with_offsets,
+        redact_text,
+    )
+
+    original_segments = segments
+    try:
+        _load_model(app)
+        threshold = float(Setting.get('pii_threshold', '0.8'))
+        segments, offset_maps = redact_segments_with_offsets(segments, threshold=threshold)
+    except PIIError:
+        raise
+    except Exception as exc:
+        raise PIIError(f'PII removal failed: {exc}') from exc
+
+    def redact(text):
+        if not text:
+            return text
+        entities = detect_pii(text, threshold=threshold)
+        return redact_text(text, entities) if entities else text
+
+    speakers = []
+    for seg in segments:
+        spk = seg.get('speaker') or ''
+        if spk and spk not in speakers:
+            speakers.append(spk)
+    pseudonyms = {
+        spk: f'Speaker {n}' for n, spk in enumerate(speakers, 1) if redact(spk) != spk
+    }
+    if pseudonyms:
+        segments = [
+            dict(seg, speaker=pseudonyms.get(seg.get('speaker'), seg.get('speaker')))
+            for seg in segments
+        ]
+
+    remap = _AnchorRemap(original_segments, segments, offset_maps)
+
+    def moved(span):
+        out = remap.span(span)
+        # The fallback text a renderer shows for an anchor with no width.
+        if out.get('anchor_text'):
+            out['anchor_text'] = redact(out['anchor_text'])
+        return out
+
+    tag_spans = [moved(t) for t in tag_spans]
+    comments = [dict(moved(c), text=redact(c.get('text', ''))) for c in comments]
+    notes = redact(notes)
+
+    title = recording.original_name or ''
+    # File names join words with _ - . which hides a name from the detector.
+    readable = re.sub(r'[_.\-]+', ' ', os.path.splitext(title)[0]).strip()
+    if redact(readable) != readable or redact(title) != title:
+        title = f'Recording {ordinal}'
+
+    return segments, tag_spans, comments, notes, title
+
+
 def export_recording_markdown(app, project_id, recording_id, opts):
     """Export a single recording to Markdown."""
     with app.app_context():
@@ -653,8 +821,8 @@ def export_recording_markdown(app, project_id, recording_id, opts):
 
         root = _projects_root(app)
         project_dir = os.path.join(root, project.folder_name)
-        transcript_path = os.path.join(project_dir, recording.transcript_path or '')
-        if not os.path.isfile(transcript_path):
+        transcript_path = _transcript_file(project_dir, recording.transcript_path)
+        if not transcript_path or not os.path.isfile(transcript_path):
             return None, 'Transcript not found'
 
         transcript = atomic_read_json(transcript_path)
@@ -679,32 +847,28 @@ def export_recording_markdown(app, project_id, recording_id, opts):
                 if spk and spk in speaker_labels:
                     seg['speaker'] = speaker_labels[spk]
 
+        tag_spans = ann.get('tag_spans', [])
+        comments = ann.get('comments', [])
+        notes = (recording.participant_notes or '').strip() or '—'
+        title = recording.original_name
         if remove_pii:
-            from .pii_service import PIIError, _load_model, redact_segments
-            try:
-                _load_model(current_app._get_current_object())
-                pii_thresh = float(Setting.get('pii_threshold', '0.8'))
-                segments = redact_segments(segments, threshold=pii_thresh)
-            except PIIError:
-                raise
-            except Exception as exc:
-                raise PIIError(f'PII removal failed: {exc}') from exc
+            segments, tag_spans, comments, notes, title = _remove_pii_for_export(
+                current_app._get_current_object(), recording, segments, tag_spans, comments,
+                notes, 1,
+            )
 
         lines = [f'# {project.name}']
         if include_project_details:
             lines += _build_project_header(project)
 
-        lines.append(f'# {recording.original_name} (Transcript)')
+        lines.append(f'# {title} (Transcript)')
         if include_participant_details and not project.is_system:
             seg = db.session.get(Segment, recording.segment_id) if recording.segment_id else None
             segment_name = _segment_export_line(seg)
-            notes = (recording.participant_notes or '').strip() or '—'
             lines += ['## Segment', segment_name]
             lines += ['## Additional details', notes]
         lines.append('')
 
-        tag_spans = ann.get('tag_spans', [])
-        comments = ann.get('comments', [])
         merged_blocks = _merge_consecutive_speakers(segments)
         lines += _render_transcript_blocks(
             segments, merged_blocks, tag_spans, comments, tag_map, include_tags, include_comments
@@ -764,8 +928,8 @@ def export_project_markdown(app, project_id, recording_ids, opts):
             if recording.transcription_status != 'transcribed' or not recording.transcript_path:
                 continue
 
-            transcript_path = os.path.join(project_dir, recording.transcript_path or '')
-            if not os.path.isfile(transcript_path):
+            transcript_path = _transcript_file(project_dir, recording.transcript_path)
+            if not transcript_path or not os.path.isfile(transcript_path):
                 continue
 
             transcript = atomic_read_json(transcript_path)
@@ -781,28 +945,24 @@ def export_project_markdown(app, project_id, recording_ids, opts):
                     if spk and spk in speaker_labels:
                         seg['speaker'] = speaker_labels[spk]
 
+            tag_spans = ann.get('tag_spans', [])
+            comments = ann.get('comments', [])
+            notes = (recording.participant_notes or '').strip() or '—'
+            title = recording.original_name
             if remove_pii:
-                from .pii_service import PIIError, _load_model, redact_segments
-                try:
-                    _load_model(current_app._get_current_object())
-                    pii_thresh = float(Setting.get('pii_threshold', '0.8'))
-                    segments = redact_segments(segments, threshold=pii_thresh)
-                except PIIError:
-                    raise
-                except Exception as exc:
-                    raise PIIError(f'PII removal failed: {exc}') from exc
+                segments, tag_spans, comments, notes, title = _remove_pii_for_export(
+                    current_app._get_current_object(), recording, segments, tag_spans, comments,
+                    notes, exported + 1,
+                )
 
-            lines.append(f'# {recording.original_name} (Transcript)')
+            lines.append(f'# {title} (Transcript)')
             if include_participant_details and not project.is_system:
                 seg = db.session.get(Segment, recording.segment_id) if recording.segment_id else None
                 segment_name = _segment_export_line(seg)
-                notes = (recording.participant_notes or '').strip() or '—'
                 lines += ['## Segment', segment_name]
                 lines += ['## Additional details', notes]
             lines.append('')
 
-            tag_spans = ann.get('tag_spans', [])
-            comments = ann.get('comments', [])
             merged_blocks = _merge_consecutive_speakers(segments)
             lines += _render_transcript_blocks(
                 segments, merged_blocks, tag_spans, comments, tag_map, include_tags, include_comments
@@ -834,7 +994,7 @@ def export_project_odt(app, project_id, recording_ids, opts):
 
 def _markdown_to_odt(md_text):
     """Convert markdown to minimal ODT (OpenDocument Text) XML."""
-    import tempfile
+    import io
     import zipfile
 
     content = _md_to_odt_content(md_text)
@@ -848,14 +1008,15 @@ def _markdown_to_odt(md_text):
 <office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" office:version="1.2">
  <office:styles/>
 </office:document-styles>'''
-    with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as f:
-        with zipfile.ZipFile(f.name, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr('mimetype', 'application/vnd.oasis.opendocument.text', zipfile.ZIP_STORED)
-            zf.writestr('content.xml', content)
-            zf.writestr('styles.xml', styles)
-            zf.writestr('META-INF/manifest.xml', manifest)
-        with open(f.name, 'rb') as rf:
-            return rf.read()
+    # Built in memory: the temp file this used to go through was never removed,
+    # so every export left a copy of the transcript in the system temp folder.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('mimetype', 'application/vnd.oasis.opendocument.text', zipfile.ZIP_STORED)
+        zf.writestr('content.xml', content)
+        zf.writestr('styles.xml', styles)
+        zf.writestr('META-INF/manifest.xml', manifest)
+    return buf.getvalue()
 
 
 def _parse_bold_to_odt(text):

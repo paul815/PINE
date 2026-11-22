@@ -1395,11 +1395,11 @@ async function loadBackupList() {
       return '<div class="backup-item">'
         + '<div class="backup-meta">'
         + '<div class="backup-name">' + esc(b.filename) + '</div>'
-        + '<div class="backup-info">' + dateStr + ' &middot; ' + fmtBytes(b.size_bytes) + ' &middot; ' + b.project_count + ' projects' + audioTag + '</div>'
+        + '<div class="backup-info">' + dateStr + ' &middot; ' + fmtBytes(b.size_bytes) + ' &middot; ' + escNum(b.project_count) + ' projects' + audioTag + '</div>'
         + '</div>'
         + '<div class="backup-actions">'
-        + '<button class="btn-outline" onclick="openRestoreModal(\'' + esc(b.filename) + '\')">Restore</button>'
-        + '<button class="btn-outline btn-outline-danger" onclick="deleteBackup(\'' + esc(b.filename) + '\')">Delete</button>'
+        + '<button class="btn-outline" onclick="openRestoreModal(' + escJsAttr(b.filename) + ')">Restore</button>'
+        + '<button class="btn-outline btn-outline-danger" onclick="deleteBackup(' + escJsAttr(b.filename) + ')">Delete</button>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -1426,7 +1426,7 @@ async function uploadBackup(input) {
     const res = await fetch(BACKUP_API + '/upload', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Upload failed');
-    toast('Uploaded: ' + data.filename + ' (' + data.project_count + ' projects)');
+    toast('Uploaded: ' + data.filename + ' (' + escNum(data.project_count) + ' projects)');
     loadBackupList();
   } catch (e) { toast('Upload failed: ' + e.message); }
   input.value = '';
@@ -1448,12 +1448,12 @@ async function openRestoreModal(filename) {
     const m = _restoreManifest;
     const dt = new Date(m.created_at);
     let html = '<div style="font-size:0.923rem;color:var(--muted-fg);margin-bottom:10px">'
-      + dt.toLocaleDateString() + ' &middot; ' + m.project_count + ' projects &middot; ' + m.recording_count + ' recordings'
+      + dt.toLocaleDateString() + ' &middot; ' + escNum(m.project_count) + ' projects &middot; ' + escNum(m.recording_count) + ' recordings'
       + (m.include_audio ? ' &middot; includes audio' : '') + '</div>';
 
     html += '<div class="chk-row"><input type="checkbox" id="restoreSelectAll" checked onchange="toggleRestoreAll(this.checked)"><label for="restoreSelectAll" style="font-weight:500">Select all projects</label></div>';
     (m.projects || []).forEach((p, i) => {
-      html += '<div class="chk-row" style="padding-left:20px"><input type="checkbox" class="restore-proj-chk" data-folder="' + esc(p.folder_name) + '" id="rp' + i + '" checked><label for="rp' + i + '">' + esc(p.name) + ' <span style="color:var(--muted-fg);font-size:0.846rem">(' + p.recording_count + ' rec.)</span></label></div>';
+      html += '<div class="chk-row" style="padding-left:20px"><input type="checkbox" class="restore-proj-chk" data-folder="' + esc(p.folder_name) + '" id="rp' + i + '" checked><label for="rp' + i + '">' + esc(p.name) + ' <span style="color:var(--muted-fg);font-size:0.846rem">(' + escNum(p.recording_count) + ' rec.)</span></label></div>';
     });
 
     html += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">';
